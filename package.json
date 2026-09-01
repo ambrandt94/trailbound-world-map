@@ -1,0 +1,33 @@
+{
+  "name": "world-map",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve --port 4202",
+    "build": "ng build",
+    "build:pages": "ng build --configuration production --base-href /trailbound-world-map/",
+    "watch": "ng build --watch --configuration development"
+  },
+  "dependencies": {
+    "@angular/animations": "^19.2.25",
+    "@angular/cdk": "^19.2.19",
+    "@angular/common": "^19.2.0",
+    "@angular/compiler": "^19.2.0",
+    "@angular/core": "^19.2.0",
+    "@angular/forms": "^19.2.0",
+    "@angular/material": "^19.2.19",
+    "@angular/platform-browser": "^19.2.0",
+    "@angular/platform-browser-dynamic": "^19.2.0",
+    "@angular/router": "^19.2.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.0"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^19.2.27",
+    "@angular/cli": "^19.2.27",
+    "@angular/compiler-cli": "^19.2.0",
+    "typescript": "~5.7.2"
+  }
+}
