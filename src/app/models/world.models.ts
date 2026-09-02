@@ -61,8 +61,54 @@ export function minScaleFor(width: number): number {
   return Math.max(0.006, 0.09 * (WORLD_BASE / width));
 }
 
+/** Far-orbit floor: planet sits in the view with space around it. */
+export function globeMinScaleFor(width: number): number {
+  return Math.max(0.001, minScaleFor(width) / 6);
+}
+
+/** Scale at and below which the mesh is a full sphere. */
+export function globeMorphStartFor(width: number): number {
+  return minScaleFor(width) / 2.2;
+}
+
+/** 0 = flat overworld sheet, 1 = wrapped globe. */
+export function globeMorphT(scale: number, width: number): number {
+  const flat = minScaleFor(width);
+  const start = globeMorphStartFor(width);
+  if (scale >= flat) return 0;
+  if (scale <= start) return 1;
+  const lo = Math.log(Math.max(1e-6, start));
+  const hi = Math.log(Math.max(start * 1.01, flat));
+  return clamp((hi - Math.log(scale)) / (hi - lo), 0, 1);
+}
+
+export function globeActive(scale: number, width: number): boolean {
+  return globeMorphT(scale, width) > 0.002;
+}
+
 export function startScaleFor(width: number): number {
   return 0.26 * (WORLD_BASE / width);
+}
+
+export function wrapX(x: number, width: number): number {
+  if (!(width > 0) || !Number.isFinite(x)) return 0;
+  const w = x % width;
+  return w < 0 ? w + width : w;
+}
+
+export function wrapDeltaX(from: number, to: number, width: number): number {
+  let d = to - from;
+  if (d > width * 0.5) d -= width;
+  if (d < -width * 0.5) d += width;
+  return d;
+}
+
+export function lerpWrapX(from: number, to: number, t: number, width: number): number {
+  return wrapX(from + wrapDeltaX(from, to, width) * t, width);
+}
+
+export function clampLatY(y: number, height: number): number {
+  return clamp(y, 0.35, Math.max(0.35, height - 0.35));
 }
 
 export function clampSettings(raw: Partial<WorldSettings>): WorldSettings {
@@ -1121,7 +1167,8 @@ export function placeTouchesTile(place: MapNode, x: number, y: number): boolean 
   return false;
 }
 
-export function scaleLabel(scale: number): string {
+export function scaleLabel(scale: number, width = WORLD_BASE): string {
+  if (scale < minScaleFor(width) * 1.01) return 'Globe';
   if (scale < 0.07) return 'Continent';
   if (scale < 0.28) return 'Kingdom';
   if (scale < 0.95) return 'Region';

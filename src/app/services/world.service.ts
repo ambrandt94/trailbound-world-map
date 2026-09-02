@@ -38,6 +38,7 @@ import {
   presentedFocus,
   scaleLabel,
   tileKey,
+  wrapX,
   AdventureRegion,
   Vec2,
 } from '../models/world.models';
@@ -158,7 +159,7 @@ export class WorldService {
       nodeOrigin: near?.origin ?? null,
       poiName: poi?.name ?? null,
       poiKind: poi?.kind ?? null,
-      scaleLabel: scaleLabel(scale),
+      scaleLabel: scaleLabel(scale, world.width),
       scale,
       uncharted: !near && !poi,
     };
@@ -292,7 +293,7 @@ export class WorldService {
   setPlayer(x: number, y: number): void {
     const world = this.world();
     if (!world) return;
-    const nx = clamp(x, 0.5, world.width - 0.5);
+    const nx = wrapX(x, world.width);
     const ny = clamp(y, 0.5, world.height - 0.5);
     this.player.set({ x: nx, y: ny });
   }

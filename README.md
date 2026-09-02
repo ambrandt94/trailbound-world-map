@@ -2,7 +2,7 @@
 
 Kingdom-scale camera prototype: zoom from a biome overworld into street-level places. Standalone Angular app in `world-map/`. Hub visual style matches `json-viewer/` (see `../.cursor/rules/ui-style.mdc`).
 
-Canvas renderer, not Three.js. Engine code in `src/app/engine/` stays free of Angular imports.
+Canvas renderer for the overworld and street zoom. Far zoom is a raw WebGL globe (`src/app/engine/globe.ts`), not Three.js. Engine code in `src/app/engine/` stays free of Angular imports.
 
 ## Live site
 
@@ -27,14 +27,15 @@ npm run build:pages
 
 ## Controls
 
-- Scroll to zoom, drag to pan, WASD to walk
+- Scroll to zoom — past the fitted continent the map curves onto a globe; zoom in to flatten, then dive into places
+- Drag to pan the map or orbit the globe; WASD to walk
 - Click a traveler to zoom in
 - Toolbar: node outlines, POI author view, sim clock, recenter, zoom, new seed, clear detail, settings, theme
 - In **sync** sim mode, Space waits a turn
 
 ## Camera and nodes
 
-The overworld is a biome map. **Zoom is node-based**, not “every world tile is playable.” Diving into a place loads (or generates) a zone and **saves it**; diving there again returns the same layout.
+The overworld is a biome map. Zooming out past the fitted continent wraps the square onto a globe (`x` → longitude, `y` → latitude). Zooming in flattens back to the canvas map. **Zoom is node-based**, not “every world tile is playable.” Diving into a place loads (or generates) a zone and **saves it**; diving there again returns the same layout.
 
 - Nodes are **irregular tile blobs** (`MapNode.tiles`), not circles or freeform polygons. Each world tile in the blob is a detail **chunk** (`ZONE_SCALE` inner tiles). Adjacent chunks inform edges.
 - Zooming near a node but outside it still dives: the walker stays on overworld coords; the camera presents them at the **edge** of that zone. At street scale the place is isolated with a shadowed fog border — panning does not spawn new zones or stream wilderness.
@@ -66,14 +67,14 @@ Overlay panel: continent scale (`1×`–`8×` of a 192-tile base), land shape (c
 
 ## Layout
 
-- `src/app/models/world.models.ts` — types, zoom constants, tile-blob / adventure-region helpers
+- `src/app/models/world.models.ts` — types, zoom constants, wrap / globe scale helpers, tile-blob / adventure-region helpers
 - `src/app/services/world.service.ts` — world, player, chunks, entities, sim
 - `src/app/services/preferences.service.ts` — theme and adventure toggles
-- `src/app/components/map-viewport/` — canvas, camera, dive / adventure confirm
+- `src/app/components/map-viewport/` — canvas + WebGL globe layer, camera, dive / adventure confirm
 - `src/app/components/shell/` — toolbar chrome
-- `src/app/components/location-panel/` — status overlay
+- `src/app/components/location-panel/` — status overlay (View band includes Globe)
 - `src/app/components/world-setup/` — generation settings
 - `src/app/components/settings-panel/` — adventure debug options
-- `src/app/engine/` — world-gen, chunk-gen, renderer, tileset, entities, POIs, names, assets (no Angular)
+- `src/app/engine/` — world-gen, chunk-gen, renderer, globe, projection, tileset, entities, POIs, names, assets (no Angular)
 
 Pixel Kingdom tiles and sprites live under `public/assets/`.

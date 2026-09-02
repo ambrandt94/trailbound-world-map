@@ -64,6 +64,13 @@ function worldBakeStep(width: number, maxCells: number): number {
   return minStep;
 }
 
+function worldWrapShifts(cameraX: number, halfW: number, width: number): number[] {
+  const shifts = [0];
+  if (cameraX - halfW < 0) shifts.push(-width);
+  if (cameraX + halfW > width) shifts.push(width);
+  return shifts;
+}
+
 function fogIdentity(tiles: Array<{ x: number; y: number }>): string {
   let minX = 1e9;
   let minY = 1e9;
@@ -149,8 +156,9 @@ export class WorldRenderer {
       ctx.drawImage(g, sx, sy, TILE, TILE, cx * stamp, cy * stamp, stamp, stamp);
     };
     const cellAt = (cx: number, cy: number): Biome => {
-      if (cx < 0 || cy < 0 || cx >= cellsX || cy >= cellsY) return Biome.Water;
-      return cellBiomes[cx + cy * cellsX] as Biome;
+      if (cy < 0 || cy >= cellsY) return Biome.Water;
+      const wx = ((cx % cellsX) + cellsX) % cellsX;
+      return cellBiomes[wx + cy * cellsX] as Biome;
     };
 
     for (let cy = 0; cy < cellsY; cy++) {
@@ -171,10 +179,11 @@ export class WorldRenderer {
         }
 
         if (cellPaths[cx + cy * cellsX] && biome !== Biome.Water) {
+          const wrap = (ix: number) => ((ix % cellsX) + cellsX) % cellsX;
           const pn = cy > 0 && !!cellPaths[cx + (cy - 1) * cellsX];
-          const pe = cx + 1 < cellsX && !!cellPaths[cx + 1 + cy * cellsX];
+          const pe = !!cellPaths[wrap(cx + 1) + cy * cellsX];
           const ps = cy + 1 < cellsY && !!cellPaths[cx + (cy + 1) * cellsX];
-          const pw = cx > 0 && !!cellPaths[cx - 1 + cy * cellsX];
+          const pw = !!cellPaths[wrap(cx - 1) + cy * cellsX];
           const [lx, ly] = blobLocal(pn, pe, ps, pw);
           const src = tileSrc(GROUPS.path, pathSeason(biome), lx, ly);
           stampTile(src.sx, src.sy, cx, cy);
@@ -363,14 +372,26 @@ export class WorldRenderer {
 
     if (this.worldBake) {
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(this.worldBake, 0, 0, world.width * TILE, world.height * TILE);
+      const wpx = world.width * TILE;
+      const hpx = world.height * TILE;
+      ctx.drawImage(this.worldBake, 0, 0, wpx, hpx);
+      const halfW = viewW / (2 * camera.scale) / TILE;
+      if (camera.x - halfW < 0) ctx.drawImage(this.worldBake, -wpx, 0, wpx, hpx);
+      if (camera.x + halfW > world.width) ctx.drawImage(this.worldBake, wpx, 0, wpx, hpx);
     }
 
     const featureAlpha = smoothstep(0.35, 1.35, camera.scale);
     const detailT = smoothstep(DETAIL_START, DETAIL_END, camera.scale);
+    const halfW = viewW / (2 * camera.scale) / TILE;
+    const wrapShifts = worldWrapShifts(camera.x, halfW, world.width);
     if (featureAlpha > 0.02) {
       ctx.globalAlpha = featureAlpha;
-      this.drawFeatures(ctx, world, camera, viewW, viewH, featureAlpha, detailT);
+      for (const shift of wrapShifts) {
+        ctx.save();
+        ctx.translate(shift * TILE, 0);
+        this.drawFeatures(ctx, world, camera, viewW, viewH, featureAlpha, detailT, shift);
+        ctx.restore();
+      }
       ctx.globalAlpha = 1;
     }
 
@@ -379,9 +400,14 @@ export class WorldRenderer {
       this.drawChunkSprites(ctx, camera, viewW, viewH, world, detailT, opts.chunks);
     }
 
-    this.drawOutlines(ctx, world.nodes, camera.scale, opts.showOutlines, opts.hoveredId, detailT, opts.detailNode);
-    this.drawPois(ctx, world, camera.scale, opts.showPois, opts.hoveredPoiId, opts.detailNode);
-    this.drawEntities(ctx, opts.entities, camera, viewW, viewH, player, opts.hoveredEntityId);
+    for (const shift of wrapShifts) {
+      ctx.save();
+      ctx.translate(shift * TILE, 0);
+      this.drawOutlines(ctx, world.nodes, camera.scale, opts.showOutlines, opts.hoveredId, detailT, opts.detailNode);
+      this.drawPois(ctx, world, camera.scale, opts.showPois, opts.hoveredPoiId, opts.detailNode);
+      this.drawEntities(ctx, opts.entities, camera, viewW, viewH, player, opts.hoveredEntityId, shift);
+      ctx.restore();
+    }
     ctx.restore();
   }
 
@@ -565,12 +591,13 @@ export class WorldRenderer {
     viewH: number,
     alpha: number,
     detailT: number,
+    shift = 0,
   ): void {
     const pad = 4;
     const halfW = viewW / (2 * camera.scale) / TILE;
     const halfH = viewH / (2 * camera.scale) / TILE;
-    const x0 = camera.x - halfW - pad;
-    const x1 = camera.x + halfW + pad;
+    const x0 = camera.x - shift - halfW - pad;
+    const x1 = camera.x - shift + halfW + pad;
     const y0 = camera.y - halfH - pad;
     const y1 = camera.y + halfH + pad;
     const hideBaked = detailT > 0.38;
@@ -729,12 +756,13 @@ export class WorldRenderer {
     viewH: number,
     player: PlayerState,
     hoveredId: string | null,
+    shift = 0,
   ): void {
     const halfW = viewW / (2 * camera.scale) / TILE;
     const halfH = viewH / (2 * camera.scale) / TILE;
     const pad = 3;
-    const x0 = camera.x - halfW - pad;
-    const x1 = camera.x + halfW + pad;
+    const x0 = camera.x - shift - halfW - pad;
+    const x1 = camera.x - shift + halfW + pad;
     const y0 = camera.y - halfH - pad;
     const y1 = camera.y + halfH + pad;
     const pinT = 1 - smoothstep(0.4, 1.65, camera.scale);

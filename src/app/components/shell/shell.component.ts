@@ -30,7 +30,7 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
         <mat-icon class="brand-icon">public</mat-icon>
         <div>
           <div class="title">Trailbound World Map</div>
-          <div class="subtitle">Continent map · Pixel Kingdom tiles</div>
+          <div class="subtitle">Continent map · zoom out to globe</div>
         </div>
       </div>
       <span class="spacer"></span>

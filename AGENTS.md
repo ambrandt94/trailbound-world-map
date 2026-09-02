@@ -4,11 +4,11 @@ Kingdom-scale camera prototype: zoom from overworld into street-level places. Li
 
 ## Stack
 
-Angular 19 standalone + Material. Canvas renderer, not Three.js. `npm start` serves on port **4202**. Engine code in `src/app/engine/` stays free of Angular imports.
+Angular 19 standalone + Material. Canvas renderer for kingdom and street scales; far zoom is a raw WebGL globe in `src/app/engine/globe.ts` (**not** Three.js). `npm start` serves on port **4202**. Engine code in `src/app/engine/` stays free of Angular imports.
 
 ## Camera and nodes
 
-The overworld is a biome map. **Zoom is node-based**, not “every world tile is playable.” Diving into a place loads (or generates) a zone and **saves it**; diving there again returns the same layout.
+The overworld is a biome map. Zooming out past the fitted continent curves the square onto a wrapped globe (equirectangular: `x` → longitude, `y` → latitude). Zooming in flattens back into the canvas map, then into places. **Zoom is node-based**, not “every world tile is playable.” Diving into a place loads (or generates) a zone and **saves it**; diving there again returns the same layout.
 
 - Nodes are **irregular tile blobs** (`MapNode.tiles`), not circles or freeform polygons. Each world tile in the blob is a detail **chunk** (`ZONE_SCALE` inner tiles). Adjacent chunks inform edges.
 - Zooming near a node but outside it still dives: the walker stays on overworld coords; the camera presents them at the **edge** of that zone. Outside fades away at street scale.
@@ -31,4 +31,4 @@ Pixel Kingdom tiles/sprites under `public/assets/`. Models in `src/app/models/wo
 
 ## Controls
 
-Scroll zoom, drag pan, WASD walk, click a traveler to zoom in. Toolbar: node outlines, POI author view, sim, recenter, new seed, clear detail.
+Scroll zoom (out to globe, in to street), drag pan / orbit, WASD walk, click a traveler to zoom in. Toolbar: node outlines, POI author view, sim, recenter, new seed, clear detail.
