@@ -18,10 +18,9 @@ import {
   MapNode,
   MAX_SCALE,
   PlayerState,
-  SPEED_REF_SCALE,
+  playerWalkSpeed,
   SYNC_TURN_TILES,
   TILE,
-  WALK_SPEED,
   clamp,
   chunkKey,
   detailAnchor,
@@ -501,7 +500,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) mx += 1;
     if (!mx && !my) return;
     const len = Math.hypot(mx, my) || 1;
-    const speed = clamp(WALK_SPEED * (SPEED_REF_SCALE / this.camera.scale), 0.38, 92);
+    const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    const speed = playerWalkSpeed(this.camera.scale, sprint);
     const ox = this.player.x;
     const oy = this.player.y;
     const world = this.world.world();
