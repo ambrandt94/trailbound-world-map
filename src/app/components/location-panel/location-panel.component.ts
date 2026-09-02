@@ -23,7 +23,7 @@ import { WorldService } from '../../services/world.service';
         </div>
         <div>
           <dt>View</dt>
-          <dd>{{ world.location().scaleLabel }} · {{ world.location().scale.toFixed(2) }}×</dd>
+          <dd>{{ world.location().scaleLabel }} · {{ scaleText() }}</dd>
         </div>
         @if (world.adventureLock(); as region) {
           <div>
@@ -149,6 +149,12 @@ import { WorldService } from '../../services/world.service';
 })
 export class LocationPanelComponent {
   readonly world = inject(WorldService);
+
+  readonly scaleText = computed(() => {
+    const s = this.world.location().scale;
+    const n = s < 0.05 ? s.toFixed(3) : s < 1 ? s.toFixed(2) : s.toFixed(s < 10 ? 1 : 0);
+    return `${n}×`;
+  });
 
   readonly coords = computed(() => {
     const loc = this.world.location();

@@ -29,7 +29,6 @@ import {
   connectedPlaceTiles,
   fillEnclosedPockets,
   regionFromTiles,
-  minScaleFor,
   knownPlaceAt,
   nodeApproaching,
   nodeContaining,

@@ -556,8 +556,10 @@ function cameraDistance(
   const t = morph * morph * (3 - 2 * morph);
   let d = dFlat + (dOrbit - dFlat) * t;
   const start = globeMorphStartFor(width);
+  const lo = globeMinScaleFor(width);
   if (scale < start) {
-    d *= start / Math.max(scale, globeMinScaleFor(width) * 0.65);
+    const u = clamp((start - scale) / Math.max(1e-6, start - lo), 0, 1);
+    d = dOrbit * (1 + 0.42 * u);
   }
   return Math.max(radius * 1.18, d);
 }
@@ -739,8 +741,12 @@ function lookBasis(lon: number, lat: number): {
 
 export function canvasGlobeRadiusPx(viewW: number, viewH: number, scale: number, width: number): number {
   const start = globeMorphStartFor(width);
+  const lo = globeMinScaleFor(width);
   let fill = 0.64;
-  if (scale < start) fill *= scale / Math.max(scale, globeMinScaleFor(width) * 0.7);
+  if (scale < start) {
+    const u = clamp((start - scale) / Math.max(1e-6, start - lo), 0, 1);
+    fill = 0.64 - 0.16 * u;
+  }
   return (fill * Math.min(viewW, viewH)) / 2;
 }
 
