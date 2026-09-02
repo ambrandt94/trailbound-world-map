@@ -64,7 +64,8 @@ function worldBakeStep(width: number, maxCells: number): number {
   return minStep;
 }
 
-function worldWrapShifts(cameraX: number, halfW: number, width: number): number[] {
+function worldWrapShifts(cameraX: number, halfW: number, width: number, viewTilesX: number): number[] {
+  if (viewTilesX >= width * 0.92) return [0];
   const shifts = [0];
   if (cameraX - halfW < 0) shifts.push(-width);
   if (cameraX + halfW > width) shifts.push(width);
@@ -376,14 +377,18 @@ export class WorldRenderer {
       const hpx = world.height * TILE;
       ctx.drawImage(this.worldBake, 0, 0, wpx, hpx);
       const halfW = viewW / (2 * camera.scale) / TILE;
-      if (camera.x - halfW < 0) ctx.drawImage(this.worldBake, -wpx, 0, wpx, hpx);
-      if (camera.x + halfW > world.width) ctx.drawImage(this.worldBake, wpx, 0, wpx, hpx);
+      const viewTilesX = viewW / (camera.scale * TILE);
+      if (viewTilesX < world.width * 0.92) {
+        if (camera.x - halfW < 0) ctx.drawImage(this.worldBake, -wpx, 0, wpx, hpx);
+        if (camera.x + halfW > world.width) ctx.drawImage(this.worldBake, wpx, 0, wpx, hpx);
+      }
     }
 
     const featureAlpha = smoothstep(0.35, 1.35, camera.scale);
     const detailT = smoothstep(DETAIL_START, DETAIL_END, camera.scale);
     const halfW = viewW / (2 * camera.scale) / TILE;
-    const wrapShifts = worldWrapShifts(camera.x, halfW, world.width);
+    const viewTilesX = viewW / (camera.scale * TILE);
+    const wrapShifts = worldWrapShifts(camera.x, halfW, world.width, viewTilesX);
     if (featureAlpha > 0.02) {
       ctx.globalAlpha = featureAlpha;
       for (const shift of wrapShifts) {

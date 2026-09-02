@@ -41,7 +41,9 @@ const GRID_U = 128;
 const GRID_V = 64;
 const SPACE = [0.027, 0.043, 0.063] as const;
 
-const PLANET_VS = `
+const P = 'precision mediump float;\n';
+
+const PLANET_VS = P + `
 attribute vec2 aUv;
 uniform mat4 uView;
 uniform mat4 uProj;
@@ -77,8 +79,7 @@ void main() {
 }
 `;
 
-const PLANET_FS = `
-precision mediump float;
+const PLANET_FS = P + `
 uniform sampler2D uAlbedo;
 uniform vec3 uLight;
 uniform float uMorph;
@@ -94,7 +95,7 @@ void main() {
 }
 `;
 
-const ATM_VS = `
+const ATM_VS = P + `
 attribute vec2 aUv;
 uniform mat4 uView;
 uniform mat4 uProj;
@@ -110,8 +111,7 @@ void main() {
 }
 `;
 
-const ATM_FS = `
-precision mediump float;
+const ATM_FS = P + `
 varying vec3 vNormal;
 void main() {
   float fresnel = pow(1.0 - abs(vNormal.z), 2.15);
@@ -120,7 +120,7 @@ void main() {
 }
 `;
 
-const MARK_VS = `
+const MARK_VS = P + `
 attribute vec2 aTile;
 attribute vec3 aColor;
 attribute float aSize;
@@ -157,8 +157,7 @@ void main() {
 }
 `;
 
-const MARK_FS = `
-precision mediump float;
+const MARK_FS = P + `
 varying vec3 vColor;
 varying float vFacing;
 void main() {
@@ -190,22 +189,27 @@ export class GlobeRenderer {
   private lastSize = { w: 0, h: 0 };
 
   constructor(canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext('webgl', {
+    const opts: WebGLContextAttributes = {
       alpha: false,
       antialias: true,
       depth: true,
       premultipliedAlpha: true,
-    });
+      failIfMajorPerformanceCaveat: false,
+    };
+    const gl =
+      canvas.getContext('webgl', opts) ||
+      (canvas.getContext('experimental-webgl', opts) as WebGLRenderingContext | null);
     if (!gl) return;
     this.gl = gl;
     this.planet = compile(gl, PLANET_VS, PLANET_FS);
+    this.grid = buildGrid(gl, GRID_U, GRID_V);
+    if (!this.planet || !this.grid) {
+      this.dispose();
+      return;
+    }
     this.atmosphere = compile(gl, ATM_VS, ATM_FS);
     this.markers = compile(gl, MARK_VS, MARK_FS);
-    this.grid = buildGrid(gl, GRID_U, GRID_V);
     this.markerBuf = gl.createBuffer();
-    if (!this.planet || !this.atmosphere || !this.markers || !this.grid) {
-      this.dispose();
-    }
   }
 
   get ready(): boolean {
@@ -220,7 +224,7 @@ export class GlobeRenderer {
     if (!this.texture) return;
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -521,17 +525,22 @@ function buildGrid(gl: WebGLRenderingContext, segU: number, segV: number): Mesh 
 }
 
 function downsampleBake(bake: HTMLCanvasElement, max: number): HTMLCanvasElement {
-  const longest = Math.max(bake.width, bake.height);
-  if (longest <= max) return bake;
-  const k = max / longest;
+  const dim = potSize(Math.min(max, Math.max(bake.width, bake.height)));
+  if (bake.width === dim && bake.height === dim) return bake;
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(bake.width * k));
-  canvas.height = Math.max(1, Math.round(bake.height * k));
+  canvas.width = dim;
+  canvas.height = dim;
   const ctx = canvas.getContext('2d');
   if (!ctx) return bake;
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(bake, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bake, 0, 0, dim, dim);
   return canvas;
+}
+
+function potSize(n: number): number {
+  let p = 1;
+  while (p < n && p < GLOBE_TEX_MAX) p *= 2;
+  return Math.max(64, Math.min(GLOBE_TEX_MAX, p));
 }
 
 function cameraDistance(
@@ -710,4 +719,144 @@ function transformDir(m: Float32Array, d: [number, number, number]): [number, nu
 function norm3(v: [number, number, number]): [number, number, number] {
   const n = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / n, v[1] / n, v[2] / n];
+}
+
+function cross3(a: [number, number, number], b: [number, number, number]): [number, number, number] {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+function lookBasis(lon: number, lat: number): {
+  look: [number, number, number];
+  east: [number, number, number];
+  north: [number, number, number];
+} {
+  const look = lonLatToSphere(lon, lat, 1);
+  const up: [number, number, number] = Math.abs(look[1]) > 0.92 ? [0, 0, 1] : [0, 1, 0];
+  const east = norm3(cross3(up, look));
+  const north = cross3(look, east);
+  return { look, east, north };
+}
+
+export function canvasGlobeRadiusPx(viewW: number, viewH: number, scale: number, width: number): number {
+  const start = globeMorphStartFor(width);
+  let fill = 0.64;
+  if (scale < start) fill *= scale / Math.max(scale, globeMinScaleFor(width) * 0.7);
+  return (fill * Math.min(viewW, viewH)) / 2;
+}
+
+let bakeCache: { src: HTMLCanvasElement; w: number; h: number; pix: Uint8ClampedArray } | null = null;
+let softCanvas: HTMLCanvasElement | null = null;
+
+function bakePixels(bake: HTMLCanvasElement): { w: number; h: number; pix: Uint8ClampedArray } {
+  if (bakeCache && bakeCache.src === bake) return bakeCache;
+  const ctx = bake.getContext('2d');
+  if (!ctx) return { w: 1, h: 1, pix: new Uint8ClampedArray(4) };
+  const img = ctx.getImageData(0, 0, bake.width, bake.height);
+  bakeCache = { src: bake, w: bake.width, h: bake.height, pix: img.data };
+  return bakeCache;
+}
+
+/** Software sphere when WebGL is unavailable. */
+export function drawCanvasGlobe(
+  ctx: CanvasRenderingContext2D,
+  bake: HTMLCanvasElement | null,
+  state: GlobeDrawState,
+): void {
+  const { viewW, viewH, width, height, cameraX, cameraY, scale, markers } = state;
+  ctx.fillStyle = '#070b10';
+  ctx.fillRect(0, 0, viewW, viewH);
+  if (!bake) return;
+  const radiusPx = canvasGlobeRadiusPx(viewW, viewH, scale, width);
+  const look = tileToLonLat(cameraX, cameraY, width, height);
+  const basis = lookBasis(look.lon, look.lat);
+  const src = bakePixels(bake);
+  const dim = Math.max(48, Math.min(520, Math.round(radiusPx * 2)));
+  if (!softCanvas || softCanvas.width !== dim) {
+    softCanvas = document.createElement('canvas');
+    softCanvas.width = dim;
+    softCanvas.height = dim;
+  }
+  const tctx = softCanvas.getContext('2d');
+  if (!tctx) return;
+  const img = tctx.createImageData(dim, dim);
+  const out = img.data;
+  const light = norm3([0.42, 0.62, 0.78]);
+  for (let py = 0; py < dim; py++) {
+    for (let px = 0; px < dim; px++) {
+      const nx = ((px + 0.5) / dim) * 2 - 1;
+      const ny = 1 - ((py + 0.5) / dim) * 2;
+      const r2 = nx * nx + ny * ny;
+      if (r2 > 1) continue;
+      const nz = Math.sqrt(1 - r2);
+      const wx = basis.east[0] * nx + basis.north[0] * ny + basis.look[0] * nz;
+      const wy = basis.east[1] * nx + basis.north[1] * ny + basis.look[1] * nz;
+      const wz = basis.east[2] * nx + basis.north[2] * ny + basis.look[2] * nz;
+      const lon = Math.atan2(wz, wx);
+      const lat = Math.asin(clamp(wy, -1, 1));
+      let u = lon / (Math.PI * 2);
+      if (u < 0) u += 1;
+      const v = clamp(0.5 - lat / Math.PI, 0, 0.9999);
+      const sx = Math.floor(u * src.w) % src.w;
+      const sy = Math.min(src.h - 1, Math.floor(v * src.h));
+      const si = (sy * src.w + sx) * 4;
+      const ndotl = 0.4 + 0.6 * Math.max(0, wx * light[0] + wy * light[1] + wz * light[2]);
+      const oi = (py * dim + px) * 4;
+      out[oi] = (src.pix[si] ?? 20) * ndotl;
+      out[oi + 1] = (src.pix[si + 1] ?? 28) * ndotl;
+      out[oi + 2] = (src.pix[si + 2] ?? 40) * ndotl;
+      out[oi + 3] = 255;
+    }
+  }
+  tctx.putImageData(img, 0, 0);
+  const cx = viewW / 2;
+  const cy = viewH / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(softCanvas, cx - radiusPx, cy - radiusPx, radiusPx * 2, radiusPx * 2);
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radiusPx * 1.02, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(108, 158, 226, 0.42)';
+  ctx.lineWidth = Math.max(2.5, radiusPx * 0.035);
+  ctx.stroke();
+
+  for (const m of markers) {
+    const ll = tileToLonLat(m.x, m.y, width, height);
+    const p = lonLatToSphere(ll.lon, ll.lat, 1);
+    const facing = p[0] * basis.look[0] + p[1] * basis.look[1] + p[2] * basis.look[2];
+    if (facing < 0.06) continue;
+    const vx = p[0] * basis.east[0] + p[1] * basis.east[1] + p[2] * basis.east[2];
+    const vy = p[0] * basis.north[0] + p[1] * basis.north[1] + p[2] * basis.north[2];
+    ctx.beginPath();
+    ctx.arc(cx + vx * radiusPx, cy - vy * radiusPx, m.size * 0.55, 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${Math.round(m.color[0] * 255)}, ${Math.round(m.color[1] * 255)}, ${Math.round(m.color[2] * 255)})`;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(20, 16, 10, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+export function unprojectCanvasGlobe(
+  sx: number,
+  sy: number,
+  state: Pick<GlobeDrawState, 'width' | 'height' | 'cameraX' | 'cameraY' | 'scale' | 'viewW' | 'viewH'>,
+): { x: number; y: number } | null {
+  const { viewW, viewH, width, height, cameraX, cameraY, scale } = state;
+  const radiusPx = canvasGlobeRadiusPx(viewW, viewH, scale, width);
+  const nx = (sx - viewW / 2) / radiusPx;
+  const ny = (viewH / 2 - sy) / radiusPx;
+  const r2 = nx * nx + ny * ny;
+  if (r2 > 1) return null;
+  const nz = Math.sqrt(1 - r2);
+  const look = tileToLonLat(cameraX, cameraY, width, height);
+  const basis = lookBasis(look.lon, look.lat);
+  const wx = basis.east[0] * nx + basis.north[0] * ny + basis.look[0] * nz;
+  const wy = basis.east[1] * nx + basis.north[1] * ny + basis.look[1] * nz;
+  const wz = basis.east[2] * nx + basis.north[2] * ny + basis.look[2] * nz;
+  const ll = sphereToLonLat(wx, wy, wz);
+  return lonLatToTile(ll.lon, ll.lat, width, height);
 }

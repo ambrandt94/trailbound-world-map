@@ -49,7 +49,7 @@ import {
 } from '../../models/world.models';
 import { AssetLibrary } from '../../engine/assets';
 import { nearestEntity } from '../../engine/entities';
-import { GlobeMarker, GlobeRenderer } from '../../engine/globe';
+import { drawCanvasGlobe, GlobeMarker, GlobeRenderer, unprojectCanvasGlobe } from '../../engine/globe';
 import { WorldRenderer } from '../../engine/renderer';
 import { PreferencesService } from '../../services/preferences.service';
 import { WorldService } from '../../services/world.service';
@@ -246,7 +246,6 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.renderer.bakeWorld(data);
     this.globe = new GlobeRenderer(this.globeRef.nativeElement);
     if (this.globe.ready) this.globe.setTexture(this.renderer.worldBake);
-    else this.globe = null;
     this.ngZone.run(() => this.world.generating.set(false));
 
     const canvas = this.canvasRef.nativeElement;
@@ -579,12 +578,15 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const height = world?.height ?? 192;
     this.camera.scale += (this.camera.targetScale - this.camera.scale) * k;
     const isolating = !!this.isolatePlaceId && this.camera.scale >= DETAIL_START;
-    if (isolating) {
-      this.camera.x += (this.camera.targetX - this.camera.x) * k;
-      this.camera.x = clamp(this.camera.x, 0, width);
-    } else {
+    const viewTilesX = this.viewW / (this.camera.scale * TILE);
+    const wrapLon = !isolating && (globeActive(this.camera.scale, width) || viewTilesX < width * 0.92);
+    if (wrapLon) {
       this.camera.x = lerpWrapX(this.camera.x, this.camera.targetX, k, width);
       this.camera.targetX = wrapX(this.camera.targetX, width);
+    } else {
+      this.camera.x += (this.camera.targetX - this.camera.x) * k;
+      this.camera.x = clamp(this.camera.x, 0, width);
+      this.camera.targetX = clamp(this.camera.targetX, 0, width);
     }
     this.camera.y += (this.camera.targetY - this.camera.y) * k;
     this.camera.y = clamp(this.camera.y, 0, height);
@@ -850,7 +852,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
 
   private minZoom(): number {
     const width = this.world.world()?.width ?? 192;
-    return this.globe?.ready ? globeMinScaleFor(width) : minScaleFor(width);
+    return globeMinScaleFor(width);
   }
 
   private fitCameraScale(width: number, snap: boolean): void {
@@ -867,20 +869,26 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const isolate = this.isolationTiles();
-    const usingGlobe = !isolate && !!this.globe?.ready && globeActive(this.camera.scale, world.width);
-    this.setGlobeVisible(usingGlobe);
-    if (usingGlobe && this.globe) {
+    const usingGlobe = !isolate && globeActive(this.camera.scale, world.width);
+    const globeState = {
+      width: world.width,
+      height: world.height,
+      cameraX: this.camera.x,
+      cameraY: this.camera.y,
+      scale: this.camera.scale,
+      viewW: this.viewW,
+      viewH: this.viewH,
+      markers: this.globeMarkers(world),
+    };
+    if (usingGlobe && this.globe?.ready) {
+      this.setGlobeVisible(true);
       ctx.clearRect(0, 0, this.viewW, this.viewH);
-      this.globe.draw({
-        width: world.width,
-        height: world.height,
-        cameraX: this.camera.x,
-        cameraY: this.camera.y,
-        scale: this.camera.scale,
-        viewW: this.viewW,
-        viewH: this.viewH,
-        markers: this.globeMarkers(world),
-      });
+      this.globe.draw(globeState);
+      return;
+    }
+    this.setGlobeVisible(false);
+    if (usingGlobe) {
+      drawCanvasGlobe(ctx, this.renderer.worldBake, globeState);
       return;
     }
     const focus = this.camera.followPlayer ? this.player : { x: this.camera.x, y: this.camera.y };
@@ -957,8 +965,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const width = world?.width ?? 192;
     const height = world?.height ?? 192;
     const isolated = this.camera.scale >= DETAIL_START && !!this.isolatePlaceId;
-    if (!isolated && this.globe?.ready && globeActive(scale, width)) {
-      const hit = this.globe.unproject(sx, sy, {
+    if (!isolated && globeActive(scale, width)) {
+      const args = {
         width,
         height,
         cameraX: this.camera.x,
@@ -966,7 +974,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
         scale,
         viewW: this.viewW,
         viewH: this.viewH,
-      });
+      };
+      const hit = this.globe?.ready ? this.globe.unproject(sx, sy, args) : unprojectCanvasGlobe(sx, sy, args);
       if (hit) return { x: wrapX(hit.x, width), y: clamp(hit.y, 0, height) };
     }
     return {
@@ -991,7 +1000,11 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       mx = panX + (sphereX - panX) * t;
       my = panY + (sphereY - panY) * t;
     }
-    this.camera.targetX = wrapX(this.camera.targetX - mx, width);
+    const viewTilesX = this.viewW / (this.camera.scale * TILE);
+    const wrapLon = globeActive(this.camera.scale, width) || viewTilesX < width * 0.92;
+    this.camera.targetX = wrapLon
+      ? wrapX(this.camera.targetX - mx, width)
+      : clamp(this.camera.targetX - mx, 0, width);
     this.camera.targetY = clampLatY(this.camera.targetY - my, height);
   }
 
