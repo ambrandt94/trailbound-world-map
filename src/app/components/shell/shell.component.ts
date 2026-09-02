@@ -145,7 +145,7 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
         <app-world-setup (rebuilt)="onRebuild($event)" />
         <app-location-panel />
         <p class="hint">
-          Scroll to zoom · drag to pan · WASD to walk · click a traveler to zoom in
+          Scroll to zoom · drag to pan · WASD to walk · Shift to sprint · click a traveler to zoom in
           @if (world.simMode() === 'sync') {
             · Space waits a turn
           }

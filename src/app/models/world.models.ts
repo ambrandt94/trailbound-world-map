@@ -16,8 +16,15 @@ export const ADVENTURE_ASK_SCALE = 4.2;
 export const ADVENTURE_POCKET_MAX = 16;
 export const FADE_START = 1.2;
 export const FADE_END = 3.9;
-export const WALK_SPEED = 3.2;
-export const SPEED_REF_SCALE = 2.2;
+/** Overworld walk speed when zoomed out (continent / kingdom). */
+export const WALK_SPEED_OVERWORLD_FAR = 1.05;
+/** Overworld walk speed when zoomed in but not yet isolated (region / locale). */
+export const WALK_SPEED_OVERWORLD_NEAR = 1.65;
+/** Walk speed inside an isolated place; does not vary with zoom. */
+export const WALK_SPEED_ISOLATED = 1.35;
+/** Scale at which overworld switches from far to near walk speed. */
+export const OVERWORLD_NEAR_SCALE = 0.95;
+export const SPRINT_MULTIPLIER = 1.75;
 export const GAME_HOURS_PER_REAL_SEC = 8 / 60;
 export const PLAY_RATE = 1;
 export const FAST_RATE = 8;
@@ -1119,6 +1126,18 @@ export function placeTouchesTile(place: MapNode, x: number, y: number): boolean 
     if (Math.abs(t.x - x) + Math.abs(t.y - y) <= 1) return true;
   }
   return false;
+}
+
+/** Discrete walk speed tiers: far overworld, near overworld, or isolated detail. */
+export function playerWalkSpeed(scale: number, sprint = false): number {
+  let speed =
+    scale >= DETAIL_START
+      ? WALK_SPEED_ISOLATED
+      : scale >= OVERWORLD_NEAR_SCALE
+        ? WALK_SPEED_OVERWORLD_NEAR
+        : WALK_SPEED_OVERWORLD_FAR;
+  if (sprint) speed *= SPRINT_MULTIPLIER;
+  return speed;
 }
 
 export function scaleLabel(scale: number): string {
