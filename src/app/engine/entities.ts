@@ -9,7 +9,12 @@ import {
   clamp,
   facingFromDelta,
   facingVec,
+  lerpWrapX,
+  traversableAt,
   walkableAt,
+  waterAt,
+  wrapDeltaX,
+  wrapX,
 } from '../models/world.models';
 import { Rng } from './noise';
 
@@ -34,6 +39,29 @@ const WANDER_NAMES = [
 
 const ARMY_NAMES = ['Thorn Host', 'Pike Company', 'Crow Banner', 'Ashfen Levy', 'Watch Riders'];
 
+/** People sheets from Time Fantasy NPC + dwarf/elf packs (plus a few animals). */
+const PEOPLE_SHEETS = [
+  'townsfolk',
+  'farmer',
+  'household',
+  'elder',
+  'bard',
+  'blacksmith',
+  'children',
+  'dwarf1',
+  'dwarf2',
+  'elf1',
+  'elf2',
+  'animals1',
+  'animals2',
+] as const;
+
+const ARMY_SHEETS = ['knights', 'knights2', 'dwarf1', 'dwarf2', 'executioner', 'animals5'] as const;
+
+const ARMY_COLS = 5;
+/** Far-zoom marker / trail size. Close zoom draws the full roster. */
+const ARMY_FAR_VISIBLE = 5;
+
 export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
   const rng = new Rng(seed ^ 0x51ed);
   const cities = world.nodes.filter((n) => n.kind === 'city' || n.kind === 'town');
@@ -47,6 +75,7 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
     const spot = findLand(world, rng, landMarks);
     if (!spot) continue;
     const dest = wanderDest(world, rng, cities);
+    const look = pickPerson(rng);
     entities.push({
       id: `wanderer-${i}`,
       name: `${rng.pick(WANDER_NAMES)} ${rng.pick(['Walker', 'Scout', 'Peddler', 'Messenger', 'Pilgrim'])}`,
@@ -57,11 +86,12 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
       frame: 1,
       anim: rng.range(0, 4),
       speed: rng.range(1.35, 1.9),
-      sheet: rng.chance(0.55) ? 'animals1' : 'animals2',
-      char: rng.int(0, 7),
+      sheet: look.sheet,
+      char: look.char,
       destX: dest.x,
       destY: dest.y,
       members: [],
+      afloat: false,
     });
   }
 
@@ -71,14 +101,25 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
       const to = cities[(i + 1) % cities.length] ?? from;
       const start = edgeOf(from, rng);
       const packed = 4 + (i % 4);
-      const members = [1, 2].map((n) => ({
-        x: start.x,
-        y: start.y + n * 0.4,
-        sheet: 'horse1',
-        char: 4 + ((i + n) % 4),
-        facing: 0 as Facing,
-        frame: 1,
-      }));
+      const escort = pickPerson(rng);
+      const members = [
+        {
+          x: start.x,
+          y: start.y + 0.4,
+          sheet: 'horse1',
+          char: 4 + ((i + 1) % 4),
+          facing: 0 as Facing,
+          frame: 1,
+        },
+        {
+          x: start.x,
+          y: start.y + 0.8,
+          sheet: escort.sheet,
+          char: escort.char,
+          facing: 0 as Facing,
+          frame: 1,
+        },
+      ];
       entities.push({
         id: `caravan-${i}`,
         name: `${from.name}–${to.name} caravan`,
@@ -94,6 +135,7 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
         destX: to.cx,
         destY: to.cy,
         members,
+        afloat: false,
       });
     }
   }
@@ -101,17 +143,20 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
   for (let i = 0; i < armyN; i++) {
     const spot = findLand(world, rng, landMarks) ?? { x: world.width * 0.4, y: world.height * 0.4 };
     const dest = armyDest(world, rng);
-    const sheet = rng.chance(0.5) ? 'animals5' : 'animals1';
-    const lead = sheet === 'animals5' ? rng.pick([5, 7]) : rng.pick([0, 3, 4]);
-    const count = rng.int(3, 5);
-    const members = Array.from({ length: count }, (_, n) => ({
-      x: spot.x - (n + 1) * 0.4,
-      y: spot.y + (n % 2) * 0.28,
-      sheet,
-      char: sheet === 'animals5' ? rng.pick([4, 5, 6, 7]) : rng.pick([0, 2, 3, 4]),
-      facing: 0 as Facing,
-      frame: 1,
-    }));
+    const lead = pickSoldier(rng);
+    const roster = rng.int(28, 44);
+    const members = Array.from({ length: roster - 1 }, (_, n) => {
+      const look = pickSoldier(rng);
+      const slot = armySlot(n);
+      return {
+        x: spot.x + slot.dx,
+        y: spot.y + slot.dy,
+        sheet: look.sheet,
+        char: look.char,
+        facing: 0 as Facing,
+        frame: 1,
+      };
+    });
     entities.push({
       id: `army-${i}`,
       name: ARMY_NAMES[i % ARMY_NAMES.length]!,
@@ -122,33 +167,81 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
       frame: 1,
       anim: 0,
       speed: rng.range(0.72, 1.05),
-      sheet,
-      char: lead,
+      sheet: lead.sheet,
+      char: lead.char,
       destX: dest.x,
       destY: dest.y,
       members,
+      afloat: false,
     });
   }
 
   return entities;
 }
 
+/** How many army followers to draw at this zoom (lead is separate). */
+export function armyVisibleFollowers(scale: number, roster: number): number {
+  if (roster <= 0) return 0;
+  if (scale < 3.2) return Math.min(ARMY_FAR_VISIBLE, roster);
+  if (scale < 7) return Math.min(12, roster);
+  if (scale < 14) return Math.min(22, roster);
+  if (scale < 28) return Math.min(32, roster);
+  return roster;
+}
+
 export function stepEntities(world: WorldData, entities: MapEntity[], dt: number, rng: Rng): void {
   if (dt <= 0) return;
   for (const e of entities) {
-    const dist = Math.hypot(e.destX - e.x, e.destY - e.y);
+    const dist = Math.hypot(wrapDeltaX(e.x, e.destX, world.width), e.destY - e.y);
     if (dist < 1.15) retarget(world, e, rng);
-    const step = e.speed * dt;
+    const step = e.speed * dt * (e.afloat ? 1.15 : 1);
     const moved = moveToward(world, e, step);
+    const wasAfloat = e.afloat;
+    e.afloat = waterAt(world, e.x, e.y);
     if (moved > 0.002) {
-      e.anim += moved * 3.4;
+      e.anim += moved * (e.afloat ? 2.2 : 3.4);
       e.frame = [0, 1, 2, 1][Math.floor(e.anim) % 4]!;
-      trailMembers(e, dt);
+      if (e.afloat) {
+        for (const m of e.members) {
+          m.x = e.x;
+          m.y = e.y;
+          m.facing = e.facing;
+          m.frame = e.frame;
+        }
+      } else {
+        if (wasAfloat) {
+          for (const m of e.members) {
+            m.x = e.x;
+            m.y = e.y;
+          }
+        }
+        trailMembers(e, dt, world.width);
+      }
     } else {
       e.frame = 1;
       retarget(world, e, rng);
     }
   }
+}
+
+function pickPerson(rng: Rng): { sheet: string; char: number } {
+  const sheet = rng.pick([...PEOPLE_SHEETS]);
+  return { sheet, char: rng.int(0, 7) };
+}
+
+function pickSoldier(rng: Rng): { sheet: string; char: number } {
+  const sheet = rng.pick([...ARMY_SHEETS]);
+  if (sheet === 'animals5') return { sheet, char: rng.pick([4, 5, 6, 7]) };
+  return { sheet, char: rng.int(0, 7) };
+}
+
+function armySlot(index: number): { dx: number; dy: number } {
+  const row = Math.floor(index / ARMY_COLS);
+  const col = index % ARMY_COLS;
+  return {
+    dx: (col - (ARMY_COLS - 1) / 2) * 0.3,
+    dy: (row + 1) * 0.34,
+  };
 }
 
 function retarget(world: WorldData, e: MapEntity, rng: Rng): void {
@@ -174,7 +267,7 @@ function retarget(world: WorldData, e: MapEntity, rng: Rng): void {
 
 function moveToward(world: WorldData, e: MapEntity, dist: number): number {
   if (dist <= 0) return 0;
-  const dx = e.destX - e.x;
+  const dx = wrapDeltaX(e.x, e.destX, world.width);
   const dy = e.destY - e.y;
   const remain = Math.hypot(dx, dy);
   if (remain < 0.02) return 0;
@@ -194,10 +287,10 @@ function moveToward(world: WorldData, e: MapEntity, dist: number): number {
   ];
   const look = Math.min(1.15, Math.max(0.45, dist));
   for (const [ox, oy] of dirs) {
-    const nx = e.x + ox * look;
-    const ny = e.y + oy * look;
-    if (!walkableAt(world, nx, ny)) continue;
-    let score = -Math.hypot(e.destX - nx, e.destY - ny);
+    const nx = wrapX(e.x + ox * look, world.width);
+    const ny = clamp(e.y + oy * look, 0.6, world.height - 0.6);
+    if (!traversableAt(world, nx, ny)) continue;
+    let score = -Math.hypot(wrapDeltaX(nx, e.destX, world.width), e.destY - ny);
     const ix = Math.floor(nx);
     const iy = Math.floor(ny);
     if (ix >= 0 && iy >= 0 && ix < world.width && iy < world.height && world.paths[ix + iy * world.width]) {
@@ -212,33 +305,41 @@ function moveToward(world: WorldData, e: MapEntity, dist: number): number {
       bestY = ny;
     }
   }
-  const mx = bestX - e.x;
+  const mx = wrapDeltaX(e.x, bestX, world.width);
   const my = bestY - e.y;
   const md = Math.hypot(mx, my);
   if (md < 0.0001) return 0;
   const use = Math.min(dist, remain, md);
   const ux = (mx / md) * use;
   const uy = (my / md) * use;
-  const nx = clamp(e.x + ux, 0.6, world.width - 0.6);
+  const nx = wrapX(e.x + ux, world.width);
   const ny = clamp(e.y + uy, 0.6, world.height - 0.6);
-  if (!walkableAt(world, nx, ny)) return 0;
+  if (!traversableAt(world, nx, ny)) return 0;
   e.facing = facingFromDelta(ux, uy);
   e.x = nx;
   e.y = ny;
   return use;
 }
 
-function trailMembers(e: MapEntity, dt: number): void {
+function trailMembers(e: MapEntity, dt: number, width: number): void {
   if (!e.members.length) return;
   const f = facingVec(e.facing);
-  const k = 1 - Math.exp(-dt * 7);
+  const k = 1 - Math.exp(-dt * (e.kind === 'army' ? 5.5 : 7));
   for (let i = 0; i < e.members.length; i++) {
     const m = e.members[i]!;
-    const along = -(i + 1) * (e.kind === 'army' ? 0.42 : 0.55);
-    const side = e.kind === 'army' ? ((i % 2) * 2 - 1) * 0.28 : 0;
-    const tx = e.x + f.x * along + -f.y * side;
+    let along: number;
+    let side: number;
+    if (e.kind === 'army') {
+      const slot = armySlot(i);
+      along = -slot.dy;
+      side = slot.dx;
+    } else {
+      along = -(i + 1) * 0.55;
+      side = 0;
+    }
+    const tx = wrapX(e.x + f.x * along + -f.y * side, width);
     const ty = e.y + f.y * along + f.x * side;
-    m.x += (tx - m.x) * k;
+    m.x = lerpWrapX(m.x, tx, k, width);
     m.y += (ty - m.y) * k;
     m.facing = e.facing;
     m.frame = e.frame;
@@ -312,21 +413,21 @@ function edgeOf(node: MapNode, rng: Rng): { x: number; y: number } {
       !set.has(`${p.x},${p.y + 1}`) ||
       !set.has(`${p.x - 1},${p.y}`),
   );
-  const t = rng.pick(rim.length ? rim : tiles);
-  return { x: t.x + rng.range(0.15, 0.85), y: t.y + rng.range(0.15, 0.85) };
+  const pick = rim.length ? rng.pick(rim) : rng.pick(tiles);
+  return { x: pick.x + 0.5, y: pick.y + 0.5 };
 }
 
 function nearestCityName(cities: MapNode[], x: number, y: number): string {
-  let best = cities[0];
+  let best = cities[0]!;
   let bestD = Infinity;
   for (const c of cities) {
     const d = Math.hypot(c.cx - x, c.cy - y);
     if (d < bestD) {
-      best = c;
       bestD = d;
+      best = c;
     }
   }
-  return best?.name ?? 'Road';
+  return best.name;
 }
 
 export function nearestEntity(entities: MapEntity[], x: number, y: number, maxDist: number): MapEntity | null {
@@ -335,8 +436,8 @@ export function nearestEntity(entities: MapEntity[], x: number, y: number, maxDi
   for (const e of entities) {
     const d = Math.hypot(e.x - x, e.y - y);
     if (d < bestD) {
-      best = e;
       bestD = d;
+      best = e;
     }
   }
   return best;
@@ -344,11 +445,22 @@ export function nearestEntity(entities: MapEntity[], x: number, y: number, maxDi
 
 export function kindColor(kind: EntityKind): string {
   switch (kind) {
+    case 'army':
+      return '#e89090';
     case 'caravan':
       return '#e0a86a';
-    case 'army':
-      return '#ffb4b4';
     default:
       return '#7dcea0';
+  }
+}
+
+export function boatChar(kind: EntityKind): number {
+  switch (kind) {
+    case 'army':
+      return 2;
+    case 'caravan':
+      return 1;
+    default:
+      return 0;
   }
 }

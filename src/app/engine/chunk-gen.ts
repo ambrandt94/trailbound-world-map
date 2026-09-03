@@ -212,6 +212,7 @@ export function generateChunk(
   stampRoadNetwork(world, node, wx, wy, size, paths);
 
   if (node) applyNodeOverlay(node, wx, wy, size, tiles, paths, cobble, sprites, layoutRng);
+  stampNearbyPois(world, node, wx, wy, size, tiles, paths, cobble, sprites, layoutRng);
 
   const pool = treePool(base);
   const settlement = node && (node.kind === 'city' || node.kind === 'town' || node.kind === 'hamlet' || node.kind === 'camp');
@@ -249,6 +250,28 @@ function mixBiome(a: Biome, b: Biome, t: number): Biome {
 
 function coveringRegion(world: WorldData, wx: number, wy: number): MapNode | null {
   return tileCoveredByNode(world.nodes, wx, wy);
+}
+
+function stampNearbyPois(
+  world: WorldData,
+  node: MapNode | null,
+  wx: number,
+  wy: number,
+  size: number,
+  tiles: Uint8Array,
+  paths: Uint8Array,
+  cobble: Uint8Array,
+  sprites: PlacedSprite[],
+  rng: Rng,
+): void {
+  for (const poi of world.pois) {
+    if (node?.id === poi.id) continue;
+    const owner = tileCoveredByNode(world.nodes, Math.floor(poi.x), Math.floor(poi.y));
+    if (owner?.poiKind && owner.id !== node?.id) continue;
+    const reach = poi.kind === 'battlefield' || poi.kind === 'ruins' ? 2 : 1;
+    if (Math.abs(poi.x - (wx + 0.5)) > reach + 1.1 || Math.abs(poi.y - (wy + 0.5)) > reach + 1.1) continue;
+    stampPoiIntoChunk(poi.kind, wx, wy, size, tiles, paths, cobble, sprites, poi.x * size, poi.y * size, rng);
+  }
 }
 
 function wantsRoadLink(world: WorldData, wx: number, wy: number, nwx: number, nwy: number): boolean {
@@ -389,9 +412,8 @@ function applyNodeOverlay(
 ): void {
   const originX = wx * size;
   const originY = wy * size;
-  const b = nodeBounds(node);
-  const midX = ((b.x0 + b.x1) / 2) * size;
-  const midY = ((b.y0 + b.y1) / 2) * size;
+  const midX = node.cx * size;
+  const midY = node.cy * size;
   const settlement = node.kind === 'city' || node.kind === 'town' || node.kind === 'hamlet' || node.kind === 'camp';
 
   if (node.poiKind) {

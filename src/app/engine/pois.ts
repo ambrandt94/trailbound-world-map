@@ -2,37 +2,20 @@ import { Biome, PointOfInterest, PoiKind } from '../models/world.models';
 import { Rng } from './noise';
 
 export const POI_SPECS: Array<{ kind: PoiKind; want: Biome[]; radius: number; names: string[]; count?: number }> = [
-  { kind: 'ruins', want: [Biome.Hills, Biome.Heath, Biome.Plains], radius: 6.8, names: ['Greyfen Ruins', "King's Fall", 'Oldwatch Stones'] },
-  { kind: 'mansion', want: [Biome.Plains, Biome.Forest, Biome.Meadow], radius: 7.0, names: ['Duskmanor', 'Hallow House', 'Ashveil Hall'] },
-  { kind: 'abandoned-camp', want: [Biome.Forest, Biome.Hills, Biome.Heath], radius: 6.4, names: ['Coldfire Camp', 'Last Watch', 'Ember Rest'] },
-  { kind: 'shrine', want: [Biome.Forest, Biome.DarkForest, Biome.Meadow], radius: 6.4, names: ['Rowan Shrine', 'Fern Altar', 'Moss Chapel'] },
-  { kind: 'cave', want: [Biome.Mountain, Biome.Hills, Biome.Snow], radius: 6.2, names: ['Nettle Cave', 'Hollow Mouth', 'Dunharrow Cleft'] },
-  { kind: 'graves', want: [Biome.Plains, Biome.Heath, Biome.Hills], radius: 6.4, names: ['The Quiet Stones', 'Crowbarrow', 'Lark Grave'], count: 2 },
-  { kind: 'homestead', want: [Biome.Plains, Biome.Meadow, Biome.Hills], radius: 7.0, names: ['Briar Croft', 'Goldlea Farm', 'Otterstead'] },
-  { kind: 'hideout', want: [Biome.DarkForest, Biome.Marsh, Biome.Forest], radius: 6.4, names: ['Fox Den', 'Thorn Cache', 'Mire Hold'] },
-  { kind: 'treehouse', want: [Biome.Forest, Biome.DarkForest], radius: 6.8, names: ['Canopy Hold', 'Willow Nest', 'Sedge Perch'] },
-  { kind: 'battlefield', want: [Biome.Plains, Biome.Heath, Biome.Meadow], radius: 7.8, names: ['Crow Field', 'Ashfen Moor', 'Broken Ridge'] },
-  { kind: 'military-camp', want: [Biome.Hills, Biome.Plains, Biome.Heath], radius: 7.0, names: ['Watchpost Thorn', 'Gate Camp', 'Pike Rest'] },
+  { kind: 'ruins', want: [Biome.Hills, Biome.Heath, Biome.Plains], radius: 6.4, names: ['Greyfen Ruins', "King's Fall", 'Oldwatch Stones'] },
+  { kind: 'mansion', want: [Biome.Plains, Biome.Forest, Biome.Meadow], radius: 5.8, names: ['Duskmanor', 'Hallow House', 'Ashveil Hall'] },
+  { kind: 'abandoned-camp', want: [Biome.Forest, Biome.Hills, Biome.Heath], radius: 3.6, names: ['Coldfire Camp', 'Last Watch', 'Ember Rest'] },
+  { kind: 'shrine', want: [Biome.Forest, Biome.DarkForest, Biome.Meadow], radius: 4.2, names: ['Rowan Shrine', 'Fern Altar', 'Moss Chapel'] },
+  { kind: 'cave', want: [Biome.Mountain, Biome.Hills, Biome.Snow], radius: 4.4, names: ['Nettle Cave', 'Hollow Mouth', 'Dunharrow Cleft'] },
+  { kind: 'graves', want: [Biome.Plains, Biome.Heath, Biome.Hills], radius: 4.6, names: ['The Quiet Stones', 'Crowbarrow', 'Lark Grave'], count: 2 },
+  { kind: 'homestead', want: [Biome.Plains, Biome.Meadow, Biome.Hills], radius: 4.1, names: ['Briar Croft', 'Goldlea Farm', 'Otterstead'] },
+  { kind: 'hideout', want: [Biome.DarkForest, Biome.Marsh, Biome.Forest], radius: 4.3, names: ['Fox Den', 'Thorn Cache', 'Mire Hold'] },
+  { kind: 'treehouse', want: [Biome.Forest, Biome.DarkForest], radius: 4.5, names: ['Canopy Hold', 'Willow Nest', 'Sedge Perch'] },
+  { kind: 'battlefield', want: [Biome.Plains, Biome.Heath, Biome.Meadow], radius: 8.4, names: ['Crow Field', 'Ashfen Moor', 'Broken Ridge'] },
+  { kind: 'military-camp', want: [Biome.Hills, Biome.Plains, Biome.Heath], radius: 5.2, names: ['Watchpost Thorn', 'Gate Camp', 'Pike Rest'] },
 ];
 
-export function poiKindToNodeKind(kind: PoiKind): 'hamlet' | 'grove' | 'camp' | 'pass' | 'meadow' {
-  switch (kind) {
-    case 'homestead':
-      return 'hamlet';
-    case 'treehouse':
-    case 'shrine':
-    case 'hideout':
-      return 'grove';
-    case 'military-camp':
-    case 'abandoned-camp':
-      return 'camp';
-    case 'cave':
-    case 'ruins':
-      return 'pass';
-    default:
-      return 'meadow';
-  }
-}
+export { poiKindToNodeKind } from '../models/world.models';
 
 export function placePois(
   biomes: Uint8Array,

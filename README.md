@@ -27,30 +27,35 @@ npm run build:pages
 
 ## Controls
 
-- Scroll to zoom — past the fitted continent the map curves onto a globe; zoom in to flatten, then dive into places
-- Drag to pan the map or orbit the globe; WASD to walk
-- Click a traveler to zoom in
-- Toolbar: node outlines, POI author view, sim clock, recenter, zoom, new seed, clear detail, settings, theme
+- Scroll to zoom — with **Planet view** on, you stay on the globe from space down to street on **explored** land; clouds cover the rest. Off, and in adventure mode, the map is flat.
+- Drag to pan the map or orbit the globe
+- **Start adventure**: remakes the kingdom, turns on adventure mode, and zooms to Close (32×) in the starting town
+- **Planet view** (Settings): a globe you can zoom all the way into (on explored land). Off keeps a flat continent map.
+- Click a traveler in explored land to zoom in
+- Toolbar: start adventure, node outlines, POI author view, sim clock, recenter, zoom, new seed, clear detail, settings, theme
 - In **sync** sim mode, Space waits a turn
 
 ## Camera and nodes
 
-The overworld is a biome map. Zooming out past the fitted continent wraps the square onto a globe (`x` → longitude, `y` → latitude). Zooming in flattens back to the canvas map. **Zoom is node-based**, not “every world tile is playable.” Diving into a place loads (or generates) a zone and **saves it**; diving there again returns the same layout.
+The overworld is a biome map. With **Planet view** on, you stay on the globe (`x` → longitude, `y` → latitude) from space down to street; the same tiles, places, and people as the flat map wrap around the sphere. Off, and in adventure mode, the map stays flat. **Zoom is node-based**, not “every world tile is playable.” Diving into a place loads (or generates) a zone and **saves it**; diving there again returns the same layout.
 
 - Nodes are **irregular tile blobs** (`MapNode.tiles`), not circles or freeform polygons. Each world tile in the blob is a detail **chunk** (`ZONE_SCALE` inner tiles). Adjacent chunks inform edges.
-- Zooming near a node but outside it still dives: the walker stays on overworld coords; the camera presents them at the **edge** of that zone. At street scale the place is isolated with a shadowed fog border — panning does not spawn new zones or stream wilderness.
-- **Authored** cities/towns are pre-marked (Ashfen, Goldmere, Saltgate, Veldcross, plus groves/camps). Small settlements generate on first dive in uncharted land and are saved.
-- **POIs** are pre-placed and steer generation. Hidden from players; author view is on by default. Diving a POI creates a settlement-sized zone around it, not a tiny marker blob.
+- Dive uses the world tile under the camera (or walker). If that tile belongs to a **visited** place, that place loads at your actual position, including edge cells. Uncharted land is under **clouds**; scrolling in while standing there generates a new region. In adventure mode a place only initializes if the walker is on that tile.
+- At street scale the place is isolated with a shadowed fog border. Inside a place you can zoom in close, or zoom out until the whole instance fits. One extra zoom-out past that fitted view returns to the overworld map.
+- **Authored** cities/towns are pre-marked (Ashfen, Goldmere, and Saltgate are cities; Veldcross is a smaller town; groves/camps stay small). Generated places pick a kind-based size, with 2× / 4× / 8× (and occasional shrink) rolls plus rotated/lobed outlines.
+- **POIs** are pre-placed and steer generation. Hidden from players; author view is on by default. Diving a POI creates a settlement-sized zone around it; the author pin and kind label stay on the ground when you zoom in.
+- Default: **8×** continent, adventure mode **on**, camera at **Close (32×)**. **Start adventure** rolls a new seed and dives in again.
 
 Do not go back to continuous rectangle/polygon streaming that broke zoom isolation.
 
 ## Adventure mode
 
-Debug toggle in **Settings**. Off by default (persisted).
+On by default (persisted). **Start adventure** remakes the map and zooms to Close (32×).
 
-- Zoom into a mapped place to isolate it.
-- Walk off the edge while zoomed in to generate a new region (zoom stays put).
-- Zooming into uncharted land from the overworld asks first, then dives in close.
+- Off: map viewer — pan and zoom, no player character. Planet view is a globe you can zoom into.
+- On: a walker appears at the starting town, already at Close zoom. WASD to move, **Shift** to sprint. Scroll zoom matches map view (through to street and character). A place only loads if the walker is on that tile; zooming in on wilderness generates a region underfoot. Zoom-out stays on the fitted continent (no globe).
+- Walk off the edge while zoomed in to generate a new region (zoom stays put). That punches a hole in the clouds.
+- Clouds still mark land you have not visited; they do not block scroll zoom while you are standing there.
 - **Load adjacent regions**: off loads only the current place (neighbors stay behind fog until you walk in); on streams touching mapped places together.
 
 ## Simulation
@@ -59,22 +64,22 @@ World clock: pause, play, fast forward (8×), **sync** (others move when you mov
 
 ## World setup
 
-Overlay panel: continent scale (`1×`–`8×` of a 192-tile base), land shape (continent, isles, isthmus, lakes, highlands), POI/traveler/caravan/host counts. **Rebuild** keeps the seed; **New seed** rolls a new kingdom.
+Overlay panel: continent scale (`1×`–`16×` of a 192-tile base), land shape (continent, isles, isthmus, lakes, highlands, **custom**), POI/traveler/caravan/host counts. **Rebuild** keeps the seed; **New seed** rolls a new kingdom. Custom shows a sketch pad (draw, erase, undo/redo). Blank ink stays ocean; coasts are warped a little so the result follows the silhouette without tracing it.
 
 ## Persist
 
-`localStorage`: seed, generated nodes per seed, outline/POI toggles, sim mode, world setup, theme, adventure flags. Chunks are in-memory for the session. **Clear detail** forgets generated places and baked tiles; authored nodes stay.
+`localStorage`: seed, generated nodes per seed, visited authored places, outline/POI toggles, sim mode, world setup, theme, planet view, adventure flags. Chunks are in-memory for the session. **Clear detail** forgets generated places and baked tiles; authored nodes stay. A prefs version bump clears stale setup/adventure/planet keys once, then keeps saving new choices.
 
 ## Layout
 
 - `src/app/models/world.models.ts` — types, zoom constants, wrap / globe scale helpers, tile-blob / adventure-region helpers
 - `src/app/services/world.service.ts` — world, player, chunks, entities, sim
-- `src/app/services/preferences.service.ts` — theme and adventure toggles
+- `src/app/services/preferences.service.ts` — theme, planet view, and adventure toggles
 - `src/app/components/map-viewport/` — canvas + WebGL globe layer, camera, dive / adventure confirm
 - `src/app/components/shell/` — toolbar chrome
 - `src/app/components/location-panel/` — status overlay (View band includes Globe)
 - `src/app/components/world-setup/` — generation settings
-- `src/app/components/settings-panel/` — adventure debug options
-- `src/app/engine/` — world-gen, chunk-gen, renderer, globe, projection, tileset, entities, POIs, names, assets (no Angular)
+- `src/app/components/settings-panel/` — planet view and adventure options
+- `src/app/engine/` — world-gen, land-sketch, chunk-gen, renderer, globe, projection, tileset, entities, POIs, names, assets (no Angular)
 
 Pixel Kingdom tiles and sprites live under `public/assets/`.

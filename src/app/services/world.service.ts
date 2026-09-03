@@ -1,4 +1,4 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   BIOME_LABELS,
   Biome,
@@ -6,12 +6,13 @@ import {
   DETAIL_START,
   DEFAULT_WORLD_SETTINGS,
   FAST_RATE,
+  FASTEST_RATE,
   GAME_HOURS_PER_REAL_SEC,
-  GENERATED_ZONE_RADIUS,
   KIND_LABELS,
   LocationInfo,
   MapEntity,
   MapNode,
+  MIN_ZONE_TILES,
   PLAY_RATE,
   POI_LABELS,
   PointOfInterest,
@@ -22,37 +23,52 @@ import {
   SimMode,
   WorldData,
   WorldSettings,
+  capGeneratedZoneTiles,
+  MAX_GENERATED_ZONE_TILES,
+  capZoneRadius,
   chunkKey,
   biomeAt,
   boundsFromTiles,
   clamp,
   clampSettings,
   ensureNodeRegion,
-  fillEnclosedPockets,
   formatClock,
   growTileBlob,
-  nodeApproaching,
   nodeContaining,
+  nodeTouching,
   poiApproaching,
+  poiOnTile,
   poiAsNode,
+  poiFootprintTiles,
+  poiFootprintTouchesPlace,
+  poiCovering,
+  settlePoiSites,
+  poiKindToNodeKind,
   presentedFocus,
   scaleLabel,
+  sealPlaceTiles,
+  clipBlobAwayFromPlaces,
+  placeGrowthSeed,
+  separateNestedPlaces,
   tileKey,
   wrapX,
+  zoneRadiusFor,
   AdventureRegion,
   Vec2,
 } from '../models/world.models';
 import { Rng } from '../engine/noise';
 import { generatedName, kindForBiome } from '../engine/names';
 import { nearestEntity, spawnEntities, stepEntities } from '../engine/entities';
+import { clampHeroName, defaultPlayerState, findHeroLook, LOCAL_PLAYER_ID } from '../engine/hero';
 import { generateChunk, neighborMap } from '../engine/chunk-gen';
-import { poiKindToNodeKind } from '../engine/pois';
 import { defaultPlayerStart, generateWorld } from '../engine/world-gen';
+import { migrateWorldMapPrefs, PreferencesService } from './preferences.service';
 
 const SEED_KEY = 'tb-world-map-seed';
 const OUTLINES_KEY = 'tb-world-map-outlines';
 const POIS_KEY = 'tb-world-map-pois';
-const nodesKey = (seed: number) => `tb-world-map-nodes-v6-${seed}`;
+const nodesKey = (seed: number) => `tb-world-map-nodes-v7-${seed}`;
+const visitedKey = (seed: number) => `tb-world-map-visited-v1-${seed}`;
 
 const SETTINGS_KEY = 'tb-world-map-setup';
 const SIM_KEY = 'tb-world-map-sim';
@@ -61,8 +77,9 @@ const START_HOUR = 8;
 
 @Injectable({ providedIn: 'root' })
 export class WorldService {
+  private readonly prefs = inject(PreferencesService);
   readonly world = signal<WorldData | null>(null);
-  readonly player = signal<PlayerState>({ x: 80, y: 80 });
+  readonly player = signal<PlayerState>(this.heroFromPrefs({ x: 80, y: 80 }));
   readonly showOutlines = signal(this.readOutlines());
   readonly showPois = signal(this.readPois());
   readonly hoveredNodeId = signal<string | null>(null);
@@ -76,6 +93,8 @@ export class WorldService {
   readonly simMode = signal<SimMode>(this.readSimMode());
   readonly adventureLock = signal<AdventureRegion | null>(null);
   readonly adventurePrompt = signal(false);
+  /** Bumps when fog-of-war holes change (visited places). */
+  readonly fogRev = signal(0);
   readonly simHours = signal(START_HOUR);
   readonly simTick = signal(0);
   readonly entities = signal<MapEntity[]>([]);
@@ -141,10 +160,11 @@ export class WorldService {
     }
     const biome = biomeAt(world, player.x, player.y);
     const inside = nodeContaining(world.nodes, player.x, player.y);
-    const near = nodeApproaching(world.nodes, player.x, player.y);
+    const touching = nodeTouching(world.nodes, player.x, player.y);
     const poi = poiApproaching(world.pois, player.x, player.y);
+    const poiHere = poiOnTile(world.pois, player.x, player.y);
     const view = presentedFocus(player, world.nodes, world.pois, scale);
-    const atGate = !!near && !inside;
+    const atGate = !!touching && !inside;
     return {
       x: player.x,
       y: player.y,
@@ -154,14 +174,14 @@ export class WorldService {
       biomeLabel: BIOME_LABELS[biome],
       inNode: !!inside,
       atGate,
-      nodeName: near?.name ?? null,
-      nodeKind: near?.kind ?? null,
-      nodeOrigin: near?.origin ?? null,
+      nodeName: (inside ?? touching)?.name ?? null,
+      nodeKind: (inside ?? touching)?.kind ?? null,
+      nodeOrigin: (inside ?? touching)?.origin ?? null,
       poiName: poi?.name ?? null,
       poiKind: poi?.kind ?? null,
       scaleLabel: scaleLabel(scale, world.width),
       scale,
-      uncharted: !near && !poi,
+      uncharted: !inside && !poiHere,
     };
   });
 
@@ -211,9 +231,10 @@ export class WorldService {
       world.nodes.push(ensureNodeRegion(node, world));
       used.add(node.id);
     }
+    if (settlePoiSites(world.nodes, world) || separateNestedPlaces(world.nodes)) this.persistGenerated(world);
     this.chunks.clear();
     this.world.set(world);
-    this.player.set(defaultPlayerStart(world));
+    this.player.set(this.heroFromPrefs(defaultPlayerStart(world)));
     this.followPlayer.set(true);
     this.simHours.set(START_HOUR);
     this.clockHours = START_HOUR;
@@ -222,23 +243,69 @@ export class WorldService {
     this.simTick.update((n) => n + 1);
     this.ready.set(true);
     this.clearAdventure();
+    this.visitedIds = this.readVisited(this.seed);
+    this.exploredCache = null;
+    this.fogRev.update((n) => n + 1);
     return world;
   }
 
+  /** Clip nested donuts and 1-tile spikes on an already-loaded world (HMR / old saves). */
+  repairPlaceShapes(): void {
+    const world = this.world();
+    if (!world) return;
+    if (!settlePoiSites(world.nodes, world) && !separateNestedPlaces(world.nodes)) return;
+    this.world.set({ ...world, nodes: world.nodes });
+    this.persistGenerated(world);
+    this.simTick.update((n) => n + 1);
+  }
+
   toggleOutlines(): void {
-    this.showOutlines.update((v) => {
-      const next = !v;
-      localStorage.setItem(OUTLINES_KEY, next ? '1' : '0');
-      return next;
-    });
+    this.setOutlines(!this.showOutlines());
+  }
+
+  setOutlines(on: boolean): void {
+    this.showOutlines.set(on);
+    localStorage.setItem(OUTLINES_KEY, on ? '1' : '0');
   }
 
   togglePois(): void {
-    this.showPois.update((v) => {
-      const next = !v;
-      localStorage.setItem(POIS_KEY, next ? '1' : '0');
-      return next;
-    });
+    this.setPois(!this.showPois());
+  }
+
+  setPois(on: boolean): void {
+    this.showPois.set(on);
+    localStorage.setItem(POIS_KEY, on ? '1' : '0');
+  }
+
+  /** Author view shows every marker. Adventure reveals a POI after its site is entered or a neighboring place exists. */
+  poiRevealed(poi: PointOfInterest, adventureMode: boolean): boolean {
+    if (this.showPois()) return true;
+    if (!adventureMode) return false;
+    const world = this.world();
+    if (!world) return false;
+    const own = world.nodes.find((n) => n.id === poi.id);
+    if (own && this.placeExplored(own)) return true;
+    for (const node of world.nodes) {
+      if (node.id === poi.id) continue;
+      if (!this.placeExplored(node)) continue;
+      if (poiFootprintTouchesPlace(node, poi, world)) return true;
+    }
+    return false;
+  }
+
+  visiblePoiIds(adventureMode: boolean): Set<string> {
+    const world = this.world();
+    const ids = new Set<string>();
+    if (!world) return ids;
+    if (this.showPois()) {
+      for (const poi of world.pois) ids.add(poi.id);
+      return ids;
+    }
+    if (!adventureMode) return ids;
+    for (const poi of world.pois) {
+      if (this.poiRevealed(poi, true)) ids.add(poi.id);
+    }
+    return ids;
   }
 
   setHovered(id: string | null): void {
@@ -283,6 +350,7 @@ export class WorldService {
     const mode = this.simMode();
     if (mode === 'play') return PLAY_RATE;
     if (mode === 'fast') return FAST_RATE;
+    if (mode === 'fastest') return FASTEST_RATE;
     return 0;
   }
 
@@ -290,12 +358,29 @@ export class WorldService {
     this.scale.set(scale);
   }
 
-  setPlayer(x: number, y: number): void {
+  applyHero(name: string, sheet: string, char: number): void {
+    const look = findHeroLook(sheet, char);
+    this.prefs.setHero(name, look.sheet, look.char);
+    const p = this.player();
+    this.player.set({
+      ...p,
+      id: LOCAL_PLAYER_ID,
+      name: clampHeroName(name),
+      sheet: look.sheet,
+      char: look.char,
+      facing: 0,
+      frame: 1,
+      anim: 0,
+    });
+  }
+
+  setPlayer(x: number, y: number, pose?: Partial<Pick<PlayerState, 'facing' | 'frame' | 'anim'>>): void {
     const world = this.world();
     if (!world) return;
+    const cur = this.player();
     const nx = wrapX(x, world.width);
     const ny = clamp(y, 0.5, world.height - 0.5);
-    this.player.set({ x: nx, y: ny });
+    this.player.set({ ...cur, ...pose, x: nx, y: ny });
   }
 
   movePlayer(dx: number, dy: number): void {
@@ -311,6 +396,57 @@ export class WorldService {
     return this.chunks.has(chunkKey(wx, wy));
   }
 
+  private visitedIds = new Set<string>();
+  private exploredCache: { rev: number; keys: Set<string> } | null = null;
+
+  fogKey(): string {
+    const world = this.world();
+    return `${this.seed}:${this.fogRev()}:${world?.nodes.length ?? 0}`;
+  }
+
+  placeExplored(node: MapNode): boolean {
+    if (node.poiKind) return this.visitedIds.has(node.id);
+    if (node.origin === 'generated') return true;
+    return this.visitedIds.has(node.id);
+  }
+
+  tileExplored(x: number, y: number): boolean {
+    const world = this.world();
+    if (!world) return false;
+    const wx = Math.floor(wrapX(x, world.width));
+    const wy = Math.floor(clamp(y, 0, world.height - 0.001));
+    return this.exploredTileKeys().has(tileKey(wx, wy));
+  }
+
+  exploredTileKeys(): Set<string> {
+    const rev = this.fogRev();
+    if (this.exploredCache?.rev === rev) return this.exploredCache.keys;
+    const keys = new Set<string>();
+    const world = this.world();
+    if (world) {
+      for (const node of world.nodes) {
+        if (!this.placeExplored(node)) continue;
+        for (const t of node.tiles ?? []) keys.add(tileKey(t.x, t.y));
+      }
+    }
+    this.exploredCache = { rev, keys };
+    return keys;
+  }
+
+  markVisited(place: MapNode | null | undefined): void {
+    if (!place) return;
+    if (place.origin !== 'authored' && !place.poiKind) return;
+    if (this.visitedIds.has(place.id)) return;
+    this.visitedIds.add(place.id);
+    this.persistVisited();
+    this.bumpFog();
+  }
+
+  private bumpFog(): void {
+    this.exploredCache = null;
+    this.fogRev.update((n) => n + 1);
+  }
+
   adventureBlocked(): Set<string> {
     const blocked = new Set<string>();
     for (const key of this.chunks.keys()) blocked.add(key);
@@ -319,34 +455,43 @@ export class WorldService {
     for (const node of world.nodes) {
       for (const t of node.tiles ?? []) blocked.add(tileKey(t.x, t.y));
     }
+    for (const poi of world.pois) {
+      for (const t of poiFootprintTiles(poi, world)) blocked.add(tileKey(t.x, t.y));
+    }
     return blocked;
   }
 
-  registerAdventureInstance(region: AdventureRegion): MapNode | null {
+  registerAdventureInstance(region: AdventureRegion, kind?: MapNode['kind']): MapNode | null {
     const world = this.world();
     if (!world || !region.tiles.length) return null;
     const existing = world.nodes.find((n) =>
       n.tiles?.some((t) => region.keys.has(tileKey(t.x, t.y))),
     );
     if (existing) return existing;
+    if (region.tiles.length < MIN_ZONE_TILES) {
+      const seed = region.tiles[0];
+      const neighbor = seed ? nodeTouching(world.nodes, seed.x + 0.5, seed.y + 0.5) : null;
+      if (neighbor) return this.expandAdventurePlace(neighbor, region.tiles);
+    }
     const cx = (region.x0 + region.x1) / 2;
     const cy = (region.y0 + region.y1) / 2;
     const biome = biomeAt(world, cx, cy);
     const used = new Set(world.nodes.map((n) => n.name));
     const rng = new Rng((world.seed ^ (region.tiles.length * 2654435761) ^ (region.x0 << 16) ^ region.y0) >>> 0);
-    const kind =
-      biome === Biome.Forest || biome === Biome.DarkForest
+    const resolved =
+      kind ??
+      (biome === Biome.Forest || biome === Biome.DarkForest
         ? 'grove'
         : biome === Biome.Water || biome === Biome.Sand || biome === Biome.Marsh
           ? 'shore'
           : biome === Biome.Mountain || biome === Biome.Snow || biome === Biome.Taiga
             ? 'pass'
-            : 'meadow';
+            : kindForBiome(biome, rng));
     const node: MapNode = {
       id: `adv-${region.x0}-${region.y0}-${region.tiles.length}-${world.nodes.length}`,
       name: generatedName(rng, used),
       origin: 'generated',
-      kind,
+      kind: resolved,
       biome,
       cx,
       cy,
@@ -396,18 +541,44 @@ export class WorldService {
   /** Grow an existing generated place by absorbing a new uncharted lobe. */
   expandAdventurePlace(place: MapNode, extra: Vec2[]): MapNode {
     this.claimAdventurePockets(place, extra);
-    this.claimAdventurePockets(place, fillEnclosedPockets(place.tiles ?? []));
+    const world = this.world();
+    if (world) {
+      const blocked = new Set<string>();
+      for (const n of world.nodes) {
+        if (n.id === place.id) continue;
+        for (const t of n.tiles ?? []) blocked.add(tileKey(t.x, t.y));
+      }
+      this.claimAdventurePockets(
+        place,
+        sealPlaceTiles(place.tiles ?? [], blocked, world.width, world.height, world.biomes),
+      );
+    }
     const tiles = place.tiles ?? [];
-    if (tiles.length) {
-      const b = boundsFromTiles(tiles);
+    if (world && tiles.length) {
+      const blocked = new Set<string>();
+      for (const n of world.nodes) {
+        if (n.id === place.id) continue;
+        for (const t of n.tiles ?? []) blocked.add(tileKey(t.x, t.y));
+      }
+      const seed = placeGrowthSeed(place);
+      const avoid = world.nodes
+        .filter((n) => n.id !== place.id)
+        .map((n) => {
+          const s = placeGrowthSeed(n);
+          return { cx: s.x, cy: s.y };
+        });
+      const clipped = clipBlobAwayFromPlaces(tiles, seed.x, seed.y, avoid, blocked);
+      if (clipped !== tiles) place.tiles = clipped;
+      const b = boundsFromTiles(place.tiles ?? clipped);
       place.cx = (b.x0 + b.x1) / 2;
       place.cy = (b.y0 + b.y1) / 2;
-      place.radius = Math.max(1.6, Math.sqrt(tiles.length / Math.PI));
-      const world = this.world();
-      if (world) {
-        this.world.set({ ...world, nodes: world.nodes });
-        this.persistGenerated(world);
-      }
+      place.x0 = b.x0;
+      place.y0 = b.y0;
+      place.x1 = b.x1;
+      place.y1 = b.y1;
+      place.radius = Math.max(1.6, Math.sqrt((place.tiles?.length ?? 0) / Math.PI));
+      this.world.set({ ...world, nodes: world.nodes });
+      this.persistGenerated(world);
     }
     return place;
   }
@@ -493,8 +664,16 @@ export class WorldService {
     return this.createChunkJobs(jobs, maxNew);
   }
 
-  ensureTiles(tiles: Vec2[], maxNew = 128): ChunkData[] {
+  ensureTiles(tiles: Vec2[], maxNew = 128, near?: Vec2): ChunkData[] {
     const jobs = tiles.filter((t) => !this.chunks.has(chunkKey(t.x, t.y)));
+    if (near && jobs.length > maxNew) {
+      jobs.sort(
+        (a, b) =>
+          (a.x + 0.5 - near.x) ** 2 +
+          (a.y + 0.5 - near.y) ** 2 -
+          ((b.x + 0.5 - near.x) ** 2 + (b.y + 0.5 - near.y) ** 2),
+      );
+    }
     return this.createChunkJobs(jobs, maxNew, false);
   }
 
@@ -504,7 +683,7 @@ export class WorldService {
     const created: ChunkData[] = [];
     for (const job of jobs.slice(0, maxNew)) {
       if (discoverPois) {
-        const poi = poiApproaching(world.pois, job.x + 0.5, job.y + 0.5);
+        const poi = poiOnTile(world.pois, job.x + 0.5, job.y + 0.5);
         if (poi && !world.nodes.some((n) => n.id === poi.id)) this.nodeFromPoi(world, poi);
       }
       const chunk = generateChunk(world, job.x, job.y, neighborMap(this.chunks, job.x, job.y));
@@ -527,13 +706,12 @@ export class WorldService {
 
   ensureZoneAt(x: number, y: number, scale: number): MapNode | null {
     const world = this.world();
-    if (!world || scale < DETAIL_START) {
-      return nodeApproaching(world?.nodes ?? [], x, y);
-    }
-    const near = nodeApproaching(world.nodes, x, y);
-    if (near) return near;
-    const poi = poiApproaching(world.pois, x, y);
+    if (!world) return null;
+    if (scale < DETAIL_START) return nodeContaining(world.nodes, x, y);
+    const poi = poiCovering(world.pois, x, y, world);
     if (poi) return this.nodeFromPoi(world, poi);
+    const here = nodeContaining(world.nodes, x, y);
+    if (here) return here;
     return this.discoverPlace(world, x, y);
   }
 
@@ -545,7 +723,24 @@ export class WorldService {
     localStorage.removeItem(nodesKey(this.seed));
     this.world.set({ ...world, nodes: [...world.nodes] });
     this.clearAdventure();
+    this.bumpFog();
     this.simTick.update((n) => n + 1);
+  }
+
+  /** Mint compact, POI-centered sites for markers that sit on this place's edge. */
+  attachEdgePois(placeId: string): void {
+    const world = this.world();
+    if (!world) return;
+    const place = world.nodes.find((n) => n.id === placeId);
+    if (!place?.tiles?.length) return;
+    let added = false;
+    for (const poi of world.pois) {
+      if (world.nodes.some((n) => n.id === poi.id)) continue;
+      if (!poiFootprintTouchesPlace(place, poi, world)) continue;
+      this.nodeFromPoi(world, poi);
+      added = true;
+    }
+    if (added) settlePoiSites(world.nodes, world);
   }
 
   private nodeFromPoi(world: WorldData, poi: PointOfInterest): MapNode {
@@ -553,34 +748,30 @@ export class WorldService {
     if (existing) return existing;
     const blocked = new Set<string>();
     for (const n of world.nodes) {
-      for (const t of n.tiles ?? []) blocked.add(`${t.x},${t.y}`);
+      if (n.origin !== 'authored') continue;
+      for (const t of n.tiles ?? []) blocked.add(tileKey(t.x, t.y));
     }
-    const kind = poiKindToNodeKind(poi.kind);
-    const radius = Math.max(poi.radius, GENERATED_ZONE_RADIUS);
-    const blob = growTileBlob(poi.x, poi.y, radius, {
-      kind,
-      seed: poi.seed,
+    const node = poiAsNode(poi, {
+      kind: poiKindToNodeKind(poi.kind),
       biomes: world.biomes,
       width: world.width,
       height: world.height,
       blocked,
-      biomeBias: 0.18,
     });
-    const node: MapNode = {
-      ...poiAsNode(poi),
-      kind,
-      radius,
-      tiles: blob.tiles,
-      x0: blob.x0,
-      y0: blob.y0,
-      x1: blob.x1,
-      y1: blob.y1,
-    };
     world.nodes = [...world.nodes, node];
+    settlePoiSites(world.nodes, world);
+    const placed = world.nodes.find((n) => n.id === poi.id) ?? node;
+    for (const t of placed.tiles ?? []) {
+      this.chunks.delete(chunkKey(t.x, t.y));
+      this.chunks.delete(chunkKey(t.x - 1, t.y));
+      this.chunks.delete(chunkKey(t.x + 1, t.y));
+      this.chunks.delete(chunkKey(t.x, t.y - 1));
+      this.chunks.delete(chunkKey(t.x, t.y + 1));
+    }
     this.world.set({ ...world, nodes: world.nodes });
     this.persistGenerated(world);
     this.simTick.update((n) => n + 1);
-    return node;
+    return placed;
   }
 
   /** First dive into uncharted land: mint a persisted settlement-sized place. */
@@ -594,10 +785,17 @@ export class WorldService {
     if (covered) return covered;
     const rng = new Rng((world.seed ^ (wx * 73856093) ^ (wy * 19349663) ^ 0x51ed) >>> 0);
     const kind = kindForBiome(biome, rng);
-    const radius = GENERATED_ZONE_RADIUS + rng.range(-0.5, 1.3);
+    const radius = capZoneRadius(
+      zoneRadiusFor(kind, rng.next(), rng.range(0.94, 1.08)),
+      world.width,
+      world.height,
+    );
     const blocked = new Set<string>();
     for (const n of world.nodes) {
       for (const t of n.tiles ?? []) blocked.add(tileKey(t.x, t.y));
+    }
+    for (const poi of world.pois) {
+      for (const t of poiFootprintTiles(poi, world)) blocked.add(tileKey(t.x, t.y));
     }
     const blob = growTileBlob(wx + 0.5, wy + 0.5, radius, {
       kind,
@@ -607,6 +805,8 @@ export class WorldService {
       height: world.height,
       blocked,
       biomeBias: 0.18,
+      maxTiles: MAX_GENERATED_ZONE_TILES,
+      avoid: world.nodes.map((n) => ({ cx: n.cx, cy: n.cy })),
     });
     if (!blob.tiles.length) return null;
     const used = new Set(world.nodes.map((n) => n.name));
@@ -637,6 +837,23 @@ export class WorldService {
   private persistGenerated(world: WorldData): void {
     const generated = world.nodes.filter((n) => n.origin === 'generated');
     localStorage.setItem(nodesKey(this.seed), JSON.stringify(generated));
+    this.bumpFog();
+  }
+
+  private persistVisited(): void {
+    localStorage.setItem(visitedKey(this.seed), JSON.stringify([...this.visitedIds]));
+  }
+
+  private readVisited(seed: number): Set<string> {
+    try {
+      const raw = localStorage.getItem(visitedKey(seed));
+      if (!raw) return new Set();
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return new Set();
+      return new Set(parsed.filter((id): id is string => typeof id === 'string'));
+    } catch {
+      return new Set();
+    }
   }
 
   private readGenerated(seed: number): MapNode[] {
@@ -644,7 +861,14 @@ export class WorldService {
       const raw = localStorage.getItem(nodesKey(seed));
       if (!raw) return [];
       const parsed = JSON.parse(raw) as MapNode[];
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((node) => {
+        const tiles = node.tiles ?? [];
+        if (tiles.length <= MAX_GENERATED_ZONE_TILES) return node;
+        const trimmed = capGeneratedZoneTiles(tiles, node.cx, node.cy);
+        const b = boundsFromTiles(trimmed);
+        return { ...node, tiles: trimmed, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 };
+      });
     } catch {
       return [];
     }
@@ -664,11 +888,22 @@ export class WorldService {
 
   private readSimMode(): SimMode {
     const stored = localStorage.getItem(SIM_KEY);
-    if (stored === 'paused' || stored === 'play' || stored === 'fast' || stored === 'sync') return stored;
+    if (stored === 'paused' || stored === 'play' || stored === 'fast' || stored === 'fastest' || stored === 'sync') return stored;
     return 'play';
   }
 
+  private heroFromPrefs(pos: { x: number; y: number }): PlayerState {
+    const look = findHeroLook(this.prefs.heroSheet(), this.prefs.heroChar());
+    return {
+      ...defaultPlayerState(pos),
+      name: clampHeroName(this.prefs.heroName()),
+      sheet: look.sheet,
+      char: look.char,
+    };
+  }
+
   private readSettings(): WorldSettings {
+    migrateWorldMapPrefs();
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (!raw) return { ...DEFAULT_WORLD_SETTINGS };

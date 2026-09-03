@@ -271,65 +271,67 @@ function stampPoi(
       });
     }
   };
+  stampDisk(cobble, size, mid, mid, Math.max(5, size * 0.09), 2);
+  stampLine(paths, size, 3, mid, size - 4, mid, 1.15);
   switch (kind) {
     case 'ruins':
-      stampDisk(cobble, size, mid, mid, size * 0.1, 1);
       sprites.push({ sprite: 'church', x: mid, y: mid - 2 });
-      scatter(['rock-4', 'rock-3', 'rock-1', 'chest'], 10, size * 0.18);
+      sprites.push({ sprite: 'town-hall', x: mid + size * 0.08, y: mid + 3 });
+      scatter(['rock-4', 'rock-3', 'rock-1', 'chest', 'fence'], 14, size * 0.2);
       break;
     case 'mansion':
-      stampWinding(paths, size, rng, 1.1);
       sprites.push({ sprite: 'inn-2', x: mid, y: mid });
       sprites.push({ sprite: 'house-8', x: mid + size * 0.12, y: mid + 4 });
-      scatter(['plant-1', 'flower-1', 'rock-1'], 8, size * 0.16);
+      sprites.push({ sprite: 'lantern', x: mid - size * 0.08, y: mid + 2 });
+      scatter(['plant-1', 'flower-1', 'bench', 'fence'], 10, size * 0.16);
       break;
     case 'abandoned-camp':
-      stampDisk(paths, size, mid, mid, 5, 1);
       sprites.push({ sprite: 'farm', x: mid - 3, y: mid });
-      scatter(['lantern', 'chest', 'bench', 'rock-1'], 7, 10);
+      sprites.push({ sprite: 'lantern', x: mid + 4, y: mid - 2 });
+      scatter(['chest', 'bench', 'rock-1', 'fence'], 9, 12);
       break;
     case 'shrine':
-      scatter(['flower-1', 'flower-7', 'plant-1'], 14, size * 0.16);
-      sprites.push({ sprite: 'well', x: mid, y: mid });
-      sprites.push({ sprite: 'church', x: mid, y: mid - size * 0.08 });
+      sprites.push({ sprite: 'church', x: mid, y: mid - size * 0.06 });
+      sprites.push({ sprite: 'well', x: mid + size * 0.08, y: mid + 4 });
+      scatter(['flower-1', 'flower-7', 'plant-1', 'lantern'], 16, size * 0.16);
       break;
     case 'cave':
       stampDisk(tiles, size, mid, mid, 8, Biome.Mountain);
-      scatter(['rock-4', 'rock-3', 'rock-snow'], 12, 12);
       sprites.push({ sprite: 'rock-4', x: mid, y: mid + 2 });
-      stampLine(paths, size, 4, mid + 6, mid, mid + 2, 1.1);
+      sprites.push({ sprite: 'rock-3', x: mid - 5, y: mid + 1 });
+      scatter(['rock-4', 'rock-3', 'rock-snow', 'chest'], 14, 12);
       break;
     case 'graves':
-      stampWinding(paths, size, rng, 0.8);
-      scatter(['fence', 'rock-1', 'rock-3', 'chest'], 14, size * 0.14);
       sprites.push({ sprite: 'church', x: mid, y: mid - 3 });
+      scatter(['fence', 'rock-1', 'rock-3', 'chest', 'flower-1'], 16, size * 0.16);
       break;
     case 'homestead':
-      stampLine(paths, size, 4, mid, size - 5, mid, 1.15);
       sprites.push({ sprite: 'farm', x: mid - 4, y: mid - 2 });
       sprites.push({ sprite: 'house-1', x: mid + 6, y: mid - 1 });
       sprites.push({ sprite: 'well', x: mid + 2, y: mid + 5 });
-      scatter(['fence', 'plant-1', 'flower-7'], 8, 12);
+      scatter(['fence', 'plant-1', 'flower-7', 'bench'], 10, 12);
       break;
     case 'hideout':
       stampDisk(tiles, size, mid, mid, 6, Biome.DarkForest);
       sprites.push({ sprite: 'house-7', x: mid, y: mid });
-      scatter(['chest', 'lantern', 'rock-1'], 6, 9);
+      sprites.push({ sprite: 'chest', x: mid + 5, y: mid + 3 });
+      scatter(['lantern', 'rock-1', 'chest'], 8, 9);
       break;
     case 'treehouse':
-      scatter(['summer-11', 'forest-1', 'forest-2', 'summer-1'], 16, size * 0.2);
       sprites.push({ sprite: 'house-3', x: mid - 2, y: mid });
       sprites.push({ sprite: 'house-5', x: mid + 8, y: mid + 4 });
+      scatter(['summer-11', 'forest-1', 'forest-2', 'summer-1', 'lantern'], 18, size * 0.2);
       break;
     case 'battlefield':
-      stampWinding(paths, size, rng, 1.3);
-      scatter(['rock-3', 'rock-1', 'chest', 'fence', 'lantern'], 16, size * 0.22);
+      sprites.push({ sprite: 'fence', x: mid, y: mid });
+      sprites.push({ sprite: 'chest', x: mid + 4, y: mid - 3 });
+      scatter(['rock-3', 'rock-1', 'chest', 'fence', 'lantern'], 18, size * 0.22);
       break;
     case 'military-camp':
-      stampLine(paths, size, 3, mid, size - 4, mid, 1.3);
       stampLine(paths, size, mid, 4, mid, size - 5, 1.1);
       sprites.push({ sprite: 'farm', x: mid, y: mid - 3 });
-      scatter(['lantern', 'house-7', 'chest', 'bench', 'fence'], 9, size * 0.14);
+      sprites.push({ sprite: 'house-7', x: mid + size * 0.1, y: mid + 2 });
+      scatter(['lantern', 'chest', 'bench', 'fence'], 12, size * 0.14);
       break;
   }
 }

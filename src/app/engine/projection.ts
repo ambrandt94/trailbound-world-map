@@ -1,4 +1,4 @@
-import { clamp, wrapX } from '../models/world.models';
+import { TILE, clamp, globeFillFor, wrapX } from '../models/world.models';
 
 export const GLOBE_FOV = (40 * Math.PI) / 180;
 export const GLOBE_TEX_MAX = 2048;
@@ -40,6 +40,23 @@ export function lonLatToSphere(lon: number, lat: number, radius: number): [numbe
   return [radius * cl * Math.cos(lon), radius * Math.sin(lat), radius * cl * Math.sin(lon)];
 }
 
+/** Camera axes for a north-up globe: screen-right is east, screen-up is north. */
+export function globeLookBasis(lon: number, lat: number): {
+  look: [number, number, number];
+  east: [number, number, number];
+  north: [number, number, number];
+} {
+  const cl = Math.cos(lat);
+  const sl = Math.sin(lat);
+  const co = Math.cos(lon);
+  const so = Math.sin(lon);
+  return {
+    look: [cl * co, sl, cl * so],
+    east: [-so, 0, co],
+    north: [-sl * co, cl, -sl * so],
+  };
+}
+
 export function sphereToLonLat(
   x: number,
   y: number,
@@ -63,4 +80,37 @@ export function globeOrbitDistance(viewW: number, viewH: number, radius: number,
   const targetPx = fill * Math.min(viewW, viewH);
   const visibleH = ((2 * radius) * viewH) / Math.max(1, targetPx);
   return visibleH / (2 * Math.tan(GLOBE_FOV / 2));
+}
+
+/** Distance from planet center so one world tile matches `scale * TILE` CSS pixels. */
+export function globeSurfaceDistance(viewH: number, scale: number, radius: number): number {
+  return radius + globeFlatDistance(viewH, scale, TILE);
+}
+
+function globeOrbitCap(viewW: number, viewH: number, scale: number, width: number, radius: number): number {
+  return Math.max(radius * 1.045, globeOrbitDistance(viewW, viewH, radius, globeFillFor(scale, width)));
+}
+
+/** Orbit when the whole planet fits; otherwise sit above the surface at 2D-matching scale. */
+export function globeCameraDistance(
+  viewW: number,
+  viewH: number,
+  scale: number,
+  width: number,
+  radius = globeRadius(width),
+): number {
+  const surface = globeSurfaceDistance(viewH, scale, radius);
+  const orbit = globeOrbitCap(viewW, viewH, scale, width, radius);
+  return Math.max(radius * 1.035, Math.min(surface, orbit));
+}
+
+/** True while the camera is still framing the whole planet rather than a local patch. */
+export function globeShowsWholePlanet(
+  viewW: number,
+  viewH: number,
+  scale: number,
+  width: number,
+): boolean {
+  const radius = globeRadius(width);
+  return globeSurfaceDistance(viewH, scale, radius) + 1e-4 >= globeOrbitCap(viewW, viewH, scale, width, radius);
 }

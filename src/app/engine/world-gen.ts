@@ -10,16 +10,18 @@ import {
   DEFAULT_WORLD_SETTINGS,
   growTileBlob,
   worldExtent,
+  clamp,
 } from '../models/world.models';
 import { fbm, Rng, ridged } from './noise';
 import { placePois } from './pois';
+import { prepareLandSketch, sampleLandSketch } from './land-sketch';
 
 const AUTHORED: Array<Omit<MapNode, 'cx' | 'cy' | 'biome' | 'x0' | 'y0' | 'x1' | 'y1' | 'tiles'> & { want: Biome }> = [
-  { id: 'ashfen', name: 'Ashfen', origin: 'authored', kind: 'city', radius: 8.2, seed: 1101, want: Biome.Plains },
-  { id: 'goldmere', name: 'Goldmere', origin: 'authored', kind: 'city', radius: 7.4, seed: 1105, want: Biome.Meadow },
-  { id: 'saltgate', name: 'Saltgate', origin: 'authored', kind: 'city', radius: 7.0, seed: 1103, want: Biome.Sand },
-  { id: 'veldcross', name: 'Veldcross', origin: 'authored', kind: 'city', radius: 6.8, seed: 1107, want: Biome.Hills },
-  { id: 'hollowmere', name: 'Hollowmere', origin: 'authored', kind: 'grove', radius: 3.4, seed: 1102, want: Biome.Forest },
+  { id: 'ashfen', name: 'Ashfen', origin: 'authored', kind: 'city', radius: 11.4, seed: 1101, want: Biome.Plains },
+  { id: 'goldmere', name: 'Goldmere', origin: 'authored', kind: 'city', radius: 9.6, seed: 1105, want: Biome.Meadow },
+  { id: 'saltgate', name: 'Saltgate', origin: 'authored', kind: 'city', radius: 8.8, seed: 1103, want: Biome.Sand },
+  { id: 'veldcross', name: 'Veldcross', origin: 'authored', kind: 'town', radius: 6.4, seed: 1107, want: Biome.Hills },
+  { id: 'hollowmere', name: 'Hollowmere', origin: 'authored', kind: 'grove', radius: 3.5, seed: 1102, want: Biome.Forest },
   { id: 'dunharrow', name: 'Dunharrow', origin: 'authored', kind: 'camp', radius: 3.3, seed: 1104, want: Biome.Mountain },
   { id: 'rowancopse', name: 'Rowan Copse', origin: 'authored', kind: 'grove', radius: 3.2, seed: 1106, want: Biome.DarkForest },
 ];
@@ -76,7 +78,24 @@ function bump(nx: number, ny: number, cx: number, cy: number, sx: number, sy: nu
   return Math.exp(-Math.hypot((nx - cx) * sx, (ny - cy) * sy));
 }
 
-function landMask(nx: number, ny: number, style: MapStyle, seed: number): number {
+function landMask(
+  nx: number,
+  ny: number,
+  style: MapStyle,
+  seed: number,
+  sketch: Float32Array | null,
+): number {
+  if (style !== 'custom') return styleMask(nx, ny, style, seed);
+  if (!sketch) return styleMask(nx, ny, 'continent', seed);
+  const warp = (fbm(nx * 3.1, ny * 2.9, seed + 71, 3) - 0.5) * 0.04;
+  const warpY = (fbm(ny * 2.9, nx * 3.0, seed + 88, 3) - 0.5) * 0.04;
+  const drawn = sampleLandSketch(sketch, nx + warp, ny + warpY);
+  if (drawn < 0.08) return 0;
+  const nibble = (fbm(nx * 11, ny * 11, seed + 19, 2) - 0.5) * 0.1 * drawn;
+  return clamp(drawn * 0.96 + nibble, 0, 1);
+}
+
+function styleMask(nx: number, ny: number, style: MapStyle, seed: number): number {
   switch (style) {
     case 'continent': {
       const warp = (fbm(nx * 2.1, ny * 2.0, seed + 4, 3) - 0.5) * 0.14;
@@ -118,6 +137,8 @@ function landMask(nx: number, ny: number, style: MapStyle, seed: number): number
       const edge = Math.max(0, 1 - Math.pow(Math.hypot((nx - 0.5) * 1.88, (ny - 0.5) * 1.88), 7.4));
       return 0.6 + edge * 0.28;
     }
+    case 'custom':
+      return 0;
   }
 }
 
@@ -134,6 +155,8 @@ function styleFreq(style: MapStyle, geo: number): number {
       return 3.15 * g;
     case 'highlands':
       return 3.5 * g;
+    case 'custom':
+      return 2.35 * g;
   }
 }
 
@@ -234,21 +257,29 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
   const paths = new Uint8Array(w * h);
   const geo = w / WORLD_BASE;
   const style = settings.mapStyle ?? 'continent';
+  const sketch = style === 'custom' ? prepareLandSketch(settings.landSketch) : null;
   const freq = styleFreq(style, geo);
-  const noiseW = style === 'continent' || style === 'isthmus' ? 0.4 : style === 'archipelago' ? 0.58 : 0.44;
+  const noiseW = sketch
+    ? 0.28
+    : style === 'continent' || style === 'isthmus'
+      ? 0.4
+      : style === 'archipelago'
+        ? 0.58
+        : 0.44;
   const maskW = 1 - noiseW;
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const nx = x / w;
       const ny = y / h;
-      const mask = landMask(nx, ny, style, seed);
+      const mask = landMask(nx, ny, style, seed, sketch);
       const height = fbm(nx * freq, ny * freq, seed, 5) * noiseW + mask * maskW;
       const moist = fbm(nx * (freq * 1.17) + 9.2, ny * (freq * 1.17), seed + 17, 4);
       const temp = fbm(nx * (freq * 0.74) - 2.1, ny * (freq * 0.83) + 4.4, seed + 53, 4);
       const river = ridged(nx * (freq * 1.54), ny * (freq * 1.54), seed + 31);
       let biome = classify(height, moist, temp, river);
-      if (mask < 0.07 && style !== 'highlands') biome = Biome.Water;
+      if (style === 'custom' && mask < 0.12) biome = Biome.Water;
+      else if (mask < 0.07 && style !== 'highlands') biome = Biome.Water;
       if (style === 'lakes' && river > 0.8 && height < 0.78 && biome !== Biome.Water && mask > 0.2) {
         biome = Biome.Water;
       }
@@ -279,6 +310,7 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
       width: w,
       height: h,
       blocked,
+      avoid: nodes.map((n) => ({ cx: n.cx, cy: n.cy })),
     });
     for (const t of blob.tiles) blocked.add(`${t.x},${t.y}`);
     nodes.push({
@@ -317,8 +349,9 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
 
   const features: WorldFeature[] = [];
   const keep = 1 / Math.max(1, settings.worldScale);
-  for (let y = 2; y < h - 2; y++) {
-    for (let x = 2; x < w - 2; x++) {
+  const step = settings.worldScale >= 8 ? 2 : 1;
+  for (let y = 2; y < h - 2; y += step) {
+    for (let x = 2; x < w - 2; x += step) {
       if (hashNoise(x, y, seed + 3) > keep * 1.35) continue;
       const b = biomes[idx(x, y, w)] as Biome;
       const n = hashNoise(x, y, seed);

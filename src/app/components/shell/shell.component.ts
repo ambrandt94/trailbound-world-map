@@ -10,6 +10,7 @@ import { LocationPanelComponent } from '../location-panel/location-panel.compone
 import { MapViewportComponent } from '../map-viewport/map-viewport.component';
 import { SettingsPanelComponent } from '../settings-panel/settings-panel.component';
 import { WorldSetupComponent } from '../world-setup/world-setup.component';
+import { HeroPickerComponent } from '../hero-picker/hero-picker.component';
 
 @Component({
   selector: 'app-shell',
@@ -23,44 +24,22 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
     LocationPanelComponent,
     WorldSetupComponent,
     SettingsPanelComponent,
+    HeroPickerComponent,
   ],
   template: `
     <mat-toolbar class="topbar">
       <div class="brand">
         <mat-icon class="brand-icon">public</mat-icon>
-        <div>
-          <div class="title">Trailbound World Map</div>
-          <div class="subtitle">Continent map · zoom out to globe</div>
-        </div>
+        <div class="title">World Map</div>
       </div>
       <span class="spacer"></span>
-      <button
-        mat-stroked-button
-        type="button"
-        [class.active]="world.showOutlines()"
-        (click)="world.toggleOutlines()"
-        matTooltip="Toggle region outlines. Hover always shows them."
-      >
-        <mat-icon>{{ world.showOutlines() ? 'visibility' : 'visibility_off' }}</mat-icon>
-        Node areas
-      </button>
-      <button
-        mat-stroked-button
-        type="button"
-        [class.active]="world.showPois()"
-        (click)="world.togglePois()"
-        matTooltip="Author view of hidden points of interest. Players will not see these."
-      >
-        <mat-icon>{{ world.showPois() ? 'place' : 'location_off' }}</mat-icon>
-        POIs
-      </button>
-      <div class="time-group">
+      <div class="time-group" role="group" aria-label="World clock">
         <button
           mat-icon-button
           type="button"
           [class.active]="world.simMode() === 'paused'"
           (click)="world.setSimMode('paused')"
-          matTooltip="Pause the world clock"
+          matTooltip="Pause"
         >
           <mat-icon>pause</mat-icon>
         </button>
@@ -69,7 +48,7 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
           type="button"
           [class.active]="world.simMode() === 'play'"
           (click)="world.setSimMode('play')"
-          matTooltip="Play at live speed"
+          matTooltip="Play (slow)"
         >
           <mat-icon>play_arrow</mat-icon>
         </button>
@@ -78,48 +57,60 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
           type="button"
           [class.active]="world.simMode() === 'fast'"
           (click)="world.setSimMode('fast')"
-          matTooltip="Fast forward (8×)"
+          matTooltip="Fast"
         >
           <mat-icon>fast_forward</mat-icon>
         </button>
         <button
           mat-icon-button
           type="button"
+          [class.active]="world.simMode() === 'fastest'"
+          (click)="world.setSimMode('fastest')"
+          matTooltip="Fastest"
+        >
+          <mat-icon>speed</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          type="button"
           [class.active]="world.simMode() === 'sync'"
           (click)="world.setSimMode('sync')"
-          matTooltip="Synchronized: others move when you do. Space waits a turn."
+          matTooltip="Sync · Space waits a turn"
         >
           <mat-icon>sync</mat-icon>
         </button>
       </div>
-      <button mat-stroked-button type="button" (click)="map()?.recenter()" matTooltip="Follow the walker">
-        <mat-icon>my_location</mat-icon>
-        Recenter
-      </button>
-      <button mat-stroked-button type="button" (click)="map()?.zoomBy(1 / 1.55)" matTooltip="Zoom out">
-        <mat-icon>zoom_out</mat-icon>
-      </button>
-      <button mat-stroked-button type="button" (click)="map()?.zoomBy(1.55)" matTooltip="Zoom in">
-        <mat-icon>zoom_in</mat-icon>
-      </button>
+      <div class="nav-group" role="group" aria-label="Camera">
+        <button mat-icon-button type="button" (click)="map()?.recenter()" [matTooltip]="prefs.adventureMode() ? 'Follow walker' : 'Recenter'">
+          <mat-icon>my_location</mat-icon>
+        </button>
+        <button mat-icon-button type="button" (click)="map()?.zoomBy(1 / 1.55)" matTooltip="Zoom out">
+          <mat-icon>zoom_out</mat-icon>
+        </button>
+        <div class="zoom-chip" [matTooltip]="world.location().scaleLabel + ' · ' + world.location().scale.toFixed(2) + '×'">
+          <span class="zoom-chip-band">{{ world.location().scaleLabel }}</span>
+          <span class="zoom-chip-mult tb-mono">{{ world.location().scale.toFixed(2) }}×</span>
+        </div>
+        <button mat-icon-button type="button" (click)="map()?.zoomBy(1.55)" matTooltip="Zoom in">
+          <mat-icon>zoom_in</mat-icon>
+        </button>
+      </div>
       <button
-        mat-stroked-button
+        mat-flat-button
         type="button"
-        (click)="reshuffle()"
-        matTooltip="Generate a new kingdom (keeps this seed's saved places until you clear them)"
+        color="primary"
+        class="adventure-btn"
+        (click)="openAdventure()"
+        matTooltip="Remake the map and dive in at Close (32×)"
       >
-        <mat-icon>restart_alt</mat-icon>
-        New seed
-      </button>
-      <button mat-stroked-button type="button" (click)="clearGenerated()" matTooltip="Forget discovered places and baked detail tiles">
-        <mat-icon>layers_clear</mat-icon>
-        Clear detail
+        <mat-icon>directions_walk</mat-icon>
+        Adventure
       </button>
       <button
         mat-icon-button
         type="button"
-        class="theme-toggle"
-        [class.active]="settingsOpen() || prefs.adventureMode()"
+        class="chrome-btn"
+        [class.active]="settingsOpen()"
         [matTooltip]="settingsOpen() ? 'Close settings' : 'Settings'"
         (click)="toggleSettings()"
       >
@@ -128,8 +119,8 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
       <button
         mat-icon-button
         type="button"
-        class="theme-toggle"
-        [matTooltip]="prefs.isDark() ? 'Switch to light mode' : 'Switch to dark mode'"
+        class="chrome-btn"
+        [matTooltip]="prefs.isDark() ? 'Light mode' : 'Dark mode'"
         (click)="prefs.toggleTheme()"
       >
         <mat-icon>{{ prefs.isDark() ? 'light_mode' : 'dark_mode' }}</mat-icon>
@@ -140,20 +131,27 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
       <app-map-viewport />
       <div class="overlay">
         @if (settingsOpen()) {
-          <app-settings-panel (adventureOff)="map()?.leaveAdventure()" />
+          <app-settings-panel
+            (adventureOff)="map()?.leaveAdventure()"
+            (clearDetail)="clearGenerated()"
+            (newSeed)="reshuffle()"
+          />
         }
         <app-world-setup (rebuilt)="onRebuild($event)" />
         <app-location-panel />
         <p class="hint">
-          Scroll to zoom · drag to pan · WASD to walk · click a traveler to zoom in
-          @if (world.simMode() === 'sync') {
-            · Space waits a turn
-          }
+          Scroll · drag
           @if (prefs.adventureMode()) {
-            · Adventure: walk an edge to generate (same zoom); overworld zoom-in still asks
+            · WASD · Shift sprint
+          }
+          @if (world.simMode() === 'sync') {
+            · Space waits
           }
         </p>
       </div>
+      @if (heroOpen()) {
+        <app-hero-picker (cancel)="heroOpen.set(false)" (embarked)="startAdventure($event)" />
+      }
     </div>
   `,
   styles: `
@@ -166,32 +164,32 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
       position: sticky;
       top: 0;
       z-index: 4;
-      min-height: 4.25rem;
-      padding: 0.65rem 1rem;
+      min-height: 3.35rem;
+      padding: 0.4rem 0.85rem;
       background: color-mix(in srgb, var(--tb-panel) 92%, transparent);
       backdrop-filter: blur(10px);
       border-bottom: 1px solid color-mix(in srgb, var(--tb-ink) 10%, transparent);
       color: var(--tb-ink);
-      gap: 0.45rem;
+      gap: 0.4rem;
       flex-wrap: wrap;
       height: auto;
     }
     .brand {
       display: flex;
       align-items: center;
-      gap: 0.65rem;
-      min-width: 14rem;
+      gap: 0.45rem;
     }
     .brand-icon {
       color: var(--tb-accent-strong);
+      font-size: 1.35rem;
+      width: 1.35rem;
+      height: 1.35rem;
     }
     .title {
       font-weight: 700;
-      line-height: 1.1;
-    }
-    .subtitle {
-      font-size: 0.75rem;
-      color: var(--tb-muted);
+      font-size: 0.98rem;
+      letter-spacing: 0.01em;
+      line-height: 1;
     }
     .spacer {
       flex: 1;
@@ -201,42 +199,75 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
     }
     .topbar button.active {
       background: color-mix(in srgb, var(--tb-accent) 18%, transparent);
-      border-color: var(--tb-accent-strong);
+      color: var(--tb-accent-strong);
     }
-    .time-group {
+    .time-group,
+    .nav-group {
       display: flex;
       align-items: center;
       gap: 0.05rem;
-      padding: 0.1rem 0.2rem;
+      padding: 0.08rem 0.18rem;
       border-radius: 999px;
       border: 1px solid color-mix(in srgb, var(--tb-ink) 10%, transparent);
-      background: color-mix(in srgb, var(--tb-panel) 70%, transparent);
+      background: color-mix(in srgb, var(--tb-bg) 55%, transparent);
     }
-    .time-group button {
+    .time-group button,
+    .nav-group button,
+    .chrome-btn {
       color: var(--tb-ink);
     }
-    .theme-toggle {
-      color: var(--tb-ink);
+    .zoom-chip {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 4.2rem;
+      padding: 0.1rem 0.45rem;
+      line-height: 1.1;
+    }
+    .zoom-chip-band {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--tb-accent-strong);
+    }
+    .zoom-chip-mult {
+      font-size: 0.72rem;
+      color: var(--tb-muted);
+    }
+    .adventure-btn {
+      padding: 0 0.9rem;
+    }
+    .adventure-btn mat-icon {
+      margin-right: 0.15rem;
     }
     .layout {
       position: relative;
+      z-index: 0;
       flex: 1;
       min-height: 0;
-      padding: 1rem;
+      padding: 0.75rem;
       box-sizing: border-box;
     }
     app-map-viewport {
+      position: relative;
+      z-index: 0;
       display: block;
       height: 100%;
     }
     .overlay {
       position: absolute;
-      top: 1.85rem;
-      right: 1.85rem;
+      z-index: 2;
+      top: 1.35rem;
+      right: 1.35rem;
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      gap: 0.75rem;
+      gap: 0.55rem;
+      width: max-content;
+      max-width: min(20rem, calc(100% - 2rem));
+      max-height: calc(100% - 2.5rem);
+      overflow: auto;
       pointer-events: none;
     }
     app-location-panel,
@@ -244,11 +275,17 @@ import { WorldSetupComponent } from '../world-setup/world-setup.component';
     app-settings-panel {
       pointer-events: auto;
     }
+    app-hero-picker {
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      pointer-events: auto;
+    }
     .hint {
       margin: 0;
-      max-width: 18.5rem;
+      max-width: 16rem;
       text-align: right;
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       color: var(--tb-muted);
       text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
     }
@@ -259,9 +296,21 @@ export class ShellComponent {
   readonly world = inject(WorldService);
   readonly map = viewChild(MapViewportComponent);
   readonly settingsOpen = signal(false);
+  readonly heroOpen = signal(false);
 
   toggleSettings(): void {
     this.settingsOpen.update((open) => !open);
+  }
+
+  openAdventure(): void {
+    this.heroOpen.set(true);
+  }
+
+  startAdventure(hero: { name: string; sheet: string; char: number }): void {
+    this.heroOpen.set(false);
+    this.world.applyHero(hero.name, hero.sheet, hero.char);
+    this.prefs.setAdventureMode(true);
+    this.onRebuild({ settings: this.world.settings(), newSeed: true });
   }
 
   reshuffle(): void {

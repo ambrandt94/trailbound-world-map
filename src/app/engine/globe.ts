@@ -1,17 +1,14 @@
 import {
-  TILE,
   clamp,
-  globeMinScaleFor,
-  globeMorphStartFor,
+  globeFillFor,
   globeMorphT,
-  minScaleFor,
   wrapX,
 } from '../models/world.models';
 import {
   GLOBE_FOV,
   GLOBE_TEX_MAX,
-  globeFlatDistance,
-  globeOrbitDistance,
+  globeCameraDistance,
+  globeLookBasis,
   globeRadius,
   lonLatToSphere,
   lonLatToTile,
@@ -35,65 +32,87 @@ export interface GlobeDrawState {
   viewW: number;
   viewH: number;
   markers: GlobeMarker[];
+  zoneTex?: HTMLCanvasElement | null;
+  zoneAmt?: number;
+  cloudTex?: HTMLCanvasElement | null;
+  cloudAmt?: number;
 }
 
-const GRID_U = 128;
-const GRID_V = 64;
+const GRID_U = 288;
+const GRID_V = 144;
 const SPACE = [0.027, 0.043, 0.063] as const;
 
-const P = 'precision mediump float;\n';
-
-const PLANET_VS = P + `
+const PLANET_VS = `precision highp float;
 attribute vec2 aUv;
 uniform mat4 uView;
 uniform mat4 uProj;
-uniform float uMorph;
-uniform float uWidth;
-uniform float uHeight;
 uniform float uRadius;
-uniform float uLookLon;
-uniform float uLookLat;
-uniform float uCamDist;
-varying vec2 vUv;
-varying vec3 vNormal;
-varying float vFacing;
+varying vec3 vSphere;
+varying vec3 vViewN;
 void main() {
-  vUv = aUv;
   float lon = aUv.x * 6.28318530718;
   float lat = 1.57079632679 - aUv.y * 3.14159265359;
   float cl = cos(lat);
   vec3 sphere = vec3(uRadius * cl * cos(lon), uRadius * sin(lat), uRadius * cl * sin(lon));
-  float lookU = uLookLon / 6.28318530718;
-  float lookV = (1.57079632679 - uLookLat) / 3.14159265359;
-  float du = aUv.x - lookU;
-  du -= floor(du + 0.5);
-  float dv = aUv.y - lookV;
-  vec4 sView = uView * vec4(sphere, 1.0);
-  vec3 planeView = vec3(du * uWidth, -dv * uHeight, -(uCamDist - uRadius));
-  vec3 pos = mix(planeView, sView.xyz, uMorph);
-  vec3 nSphere = normalize((uView * vec4(sphere, 0.0)).xyz);
-  vec3 nPlane = vec3(0.0, 0.0, 1.0);
-  vNormal = normalize(mix(nPlane, nSphere, uMorph));
-  vFacing = vNormal.z;
-  gl_Position = uProj * vec4(pos, 1.0);
+  vSphere = sphere;
+  vViewN = normalize((uView * vec4(sphere, 0.0)).xyz);
+  gl_Position = uProj * uView * vec4(sphere, 1.0);
 }
 `;
 
-const PLANET_FS = P + `
+const PLANET_FS = `#extension GL_OES_standard_derivatives : enable
+#extension GL_EXT_shader_texture_lod : enable
+precision highp float;
 uniform sampler2D uAlbedo;
+uniform sampler2D uZones;
+uniform sampler2D uClouds;
 uniform vec3 uLight;
-uniform float uMorph;
-varying vec2 vUv;
-varying vec3 vNormal;
-varying float vFacing;
+uniform float uZonesOn;
+uniform float uZoneAmt;
+uniform float uCloudsOn;
+uniform float uCloudAmt;
+uniform vec2 uAlbedoSize;
+uniform vec2 uCloudSize;
+varying vec3 vSphere;
+varying vec3 vViewN;
+
+vec2 sphereUv(vec3 p) {
+  vec3 n = normalize(p);
+  float lon = atan(n.z, n.x);
+  float lat = asin(clamp(n.y, -1.0, 1.0));
+  float u = lon * 0.15915494309189535;
+  if (u < 0.0) u += 1.0;
+  float v = clamp(0.5 - lat * 0.3183098861837907, 0.0, 1.0);
+  return vec2(u, v);
+}
+
+vec2 snapUv(vec2 uv, vec2 texSize) {
+  vec2 texel = uv * texSize;
+  return (floor(texel) + 0.5) / texSize;
+}
+
 void main() {
-  vec3 albedo = texture2D(uAlbedo, vUv).rgb;
-  float ndotl = max(0.0, dot(normalize(vNormal), normalize(uLight)));
-  float amb = mix(1.0, 0.38, uMorph);
+  vec2 uv = sphereUv(vSphere);
+  vec2 texSize = max(uAlbedoSize, vec2(1.0));
+  vec2 sharpUv = snapUv(uv, texSize);
+  vec3 sharp = texture2DLodEXT(uAlbedo, sharpUv, 0.0).rgb;
+  vec3 albedo = sharp;
+  if (uZonesOn > 0.5) {
+    vec4 z = texture2DLodEXT(uZones, uv, 0.0);
+    albedo = mix(albedo, z.rgb, clamp(z.a * uZoneAmt, 0.0, 1.0));
+  }
+  if (uCloudsOn > 0.5) {
+    vec4 c = texture2DLodEXT(uClouds, uv, 0.0);
+    albedo = mix(albedo, c.rgb, clamp(c.a * uCloudAmt, 0.0, 1.0));
+  }
+  float ndotl = max(0.0, dot(normalize(vViewN), normalize(uLight)));
+  float amb = 0.62;
   vec3 lit = albedo * (amb + (1.0 - amb) * ndotl);
   gl_FragColor = vec4(lit, 1.0);
 }
 `;
+
+const P = 'precision mediump float;\n';
 
 const ATM_VS = P + `
 attribute vec2 aUv;
@@ -140,18 +159,11 @@ void main() {
   float lat = 1.57079632679 - (aTile.y / uHeight) * 3.14159265359;
   float cl = cos(lat);
   vec3 sphere = vec3(uRadius * cl * cos(lon), uRadius * sin(lat), uRadius * cl * sin(lon));
-  float lookU = uLookLon / 6.28318530718;
-  float lookV = (1.57079632679 - uLookLat) / 3.14159265359;
-  float du = aTile.x / uWidth - lookU;
-  du -= floor(du + 0.5);
-  float dv = aTile.y / uHeight - lookV;
   vec4 sView = uView * vec4(sphere, 1.0);
-  vec3 planeView = vec3(du * uWidth, -dv * uHeight, -(uCamDist - uRadius));
-  vec3 pos = mix(planeView, sView.xyz, uMorph);
   vec3 nSphere = normalize((uView * vec4(sphere, 0.0)).xyz);
-  vFacing = mix(1.0, nSphere.z, uMorph);
+  vFacing = nSphere.z;
   vColor = aColor;
-  gl_Position = uProj * vec4(pos, 1.0);
+  gl_Position = uProj * sView;
   float facing = step(0.02, vFacing);
   gl_PointSize = aSize * facing;
 }
@@ -177,6 +189,12 @@ export class GlobeRenderer {
   private markers: Program | null = null;
   private grid: Mesh | null = null;
   private texture: WebGLTexture | null = null;
+  private zonesTex: WebGLTexture | null = null;
+  private cloudsTex: WebGLTexture | null = null;
+  private zonesOn = false;
+  private cloudsOn = false;
+  private albedoSize = [2048, 1024];
+  private cloudSize = [1, 1];
   private markerBuf: WebGLBuffer | null = null;
   private markerCap = 0;
   private view = mat4();
@@ -191,7 +209,7 @@ export class GlobeRenderer {
   constructor(canvas: HTMLCanvasElement) {
     const opts: WebGLContextAttributes = {
       alpha: false,
-      antialias: true,
+      antialias: false,
       depth: true,
       premultipliedAlpha: true,
       failIfMajorPerformanceCaveat: false,
@@ -201,6 +219,8 @@ export class GlobeRenderer {
       (canvas.getContext('experimental-webgl', opts) as WebGLRenderingContext | null);
     if (!gl) return;
     this.gl = gl;
+    gl.getExtension('OES_standard_derivatives');
+    gl.getExtension('EXT_shader_texture_lod');
     this.planet = compile(gl, PLANET_VS, PLANET_FS);
     this.grid = buildGrid(gl, GRID_U, GRID_V);
     if (!this.planet || !this.grid) {
@@ -219,16 +239,62 @@ export class GlobeRenderer {
   setTexture(bake: HTMLCanvasElement | null): void {
     const gl = this.gl;
     if (!gl || !bake) return;
-    const src = downsampleBake(bake, GLOBE_TEX_MAX);
+    const src = equirectBake(bake, GLOBE_TEX_MAX);
+    this.albedoSize = [src.width, src.height];
     if (!this.texture) this.texture = gl.createTexture();
     if (!this.texture) return;
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  }
+
+  setZones(canvas: HTMLCanvasElement | null): void {
+    const gl = this.gl;
+    if (!gl) return;
+    if (!canvas) {
+      this.zonesOn = false;
+      return;
+    }
+    if (!this.zonesTex) this.zonesTex = gl.createTexture();
+    if (!this.zonesTex) {
+      this.zonesOn = false;
+      return;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.zonesTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+    this.zonesOn = true;
+  }
+
+  setClouds(canvas: HTMLCanvasElement | null): void {
+    const gl = this.gl;
+    if (!gl) return;
+    if (!canvas) {
+      this.cloudsOn = false;
+      return;
+    }
+    if (!this.cloudsTex) this.cloudsTex = gl.createTexture();
+    if (!this.cloudsTex) {
+      this.cloudsOn = false;
+      return;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.cloudsTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+    this.cloudSize = [canvas.width, canvas.height];
+    this.cloudsOn = true;
   }
 
   resize(cssW: number, cssH: number, dpr: number): void {
@@ -248,13 +314,11 @@ export class GlobeRenderer {
     const morph = globeMorphT(scale, width);
     const R = globeRadius(width);
     const look = tileToLonLat(cameraX, cameraY, width, height);
-    const camDist = cameraDistance(viewW, viewH, scale, width, R, morph);
-    const eye = cameraEye(look.lon, look.lat, camDist);
-    const up: [number, number, number] =
-      Math.abs(Math.sin(look.lat)) > 0.92 ? [0, 0, 1] : [0, 1, 0];
-    lookAt(this.view, eye, [0, 0, 0], up);
+    const camDist = globeCameraDistance(viewW, viewH, scale, width, R);
+    setGlobeView(this.view, camDist, look.lon, look.lat);
     invert4(this.invView, this.view);
-    perspective(this.proj, GLOBE_FOV, viewW / Math.max(1, viewH), Math.max(0.08, camDist - R * 2.4), camDist + R * 4);
+    const alt = Math.max(0.12, camDist - R);
+    perspective(this.proj, GLOBE_FOV, viewW / Math.max(1, viewH), Math.max(0.05, alt * 0.2), camDist + R * 4);
     this.lastCamDist = camDist;
     this.lastR = R;
     this.lastLook = look;
@@ -274,20 +338,26 @@ export class GlobeRenderer {
     bindAttrib(gl, planet, 'aUv', 2, 8, 0);
     gl.uniformMatrix4fv(uni(planet, 'uView'), false, this.view);
     gl.uniformMatrix4fv(uni(planet, 'uProj'), false, this.proj);
-    gl.uniform1f(uni(planet, 'uMorph'), morph);
-    gl.uniform1f(uni(planet, 'uWidth'), width);
-    gl.uniform1f(uni(planet, 'uHeight'), height);
     gl.uniform1f(uni(planet, 'uRadius'), R);
-    gl.uniform1f(uni(planet, 'uLookLon'), look.lon);
-    gl.uniform1f(uni(planet, 'uLookLat'), look.lat);
-    gl.uniform1f(uni(planet, 'uCamDist'), camDist);
     gl.uniform3f(uni(planet, 'uLight'), 0.42, 0.62, 0.78);
+    gl.uniform2f(uni(planet, 'uAlbedoSize'), this.albedoSize[0], this.albedoSize[1]);
+    gl.uniform1f(uni(planet, 'uZonesOn'), this.zonesOn ? 1 : 0);
+    gl.uniform1f(uni(planet, 'uZoneAmt'), state.zoneAmt ?? 0.7);
+    gl.uniform1f(uni(planet, 'uCloudsOn'), this.cloudsOn ? 1 : 0);
+    gl.uniform1f(uni(planet, 'uCloudAmt'), state.cloudAmt ?? 0.92);
+    gl.uniform2f(uni(planet, 'uCloudSize'), this.cloudSize[0], this.cloudSize[1]);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.uniform1i(uni(planet, 'uAlbedo'), 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.zonesOn && this.zonesTex ? this.zonesTex : this.texture);
+    gl.uniform1i(uni(planet, 'uZones'), 1);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.cloudsOn && this.cloudsTex ? this.cloudsTex : this.texture);
+    gl.uniform1i(uni(planet, 'uClouds'), 2);
     gl.drawElements(gl.TRIANGLES, grid.count, gl.UNSIGNED_SHORT, 0);
 
-    if (this.atmosphere && morph > 0.28) {
+    if (this.atmosphere && camDist > R * 1.08) {
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
       gl.depthMask(false);
@@ -312,14 +382,10 @@ export class GlobeRenderer {
 
   unproject(sx: number, sy: number, state: Pick<GlobeDrawState, 'width' | 'height' | 'cameraX' | 'cameraY' | 'scale' | 'viewW' | 'viewH'>): { x: number; y: number } | null {
     const { width, height, cameraX, cameraY, scale, viewW, viewH } = state;
-    const morph = globeMorphT(scale, width);
     const R = globeRadius(width);
     const look = tileToLonLat(cameraX, cameraY, width, height);
-    const camDist = cameraDistance(viewW, viewH, scale, width, R, morph);
-    const eye = cameraEye(look.lon, look.lat, camDist);
-    const up: [number, number, number] =
-      Math.abs(Math.sin(look.lat)) > 0.92 ? [0, 0, 1] : [0, 1, 0];
-    lookAt(this.view, eye, [0, 0, 0], up);
+    const camDist = globeCameraDistance(viewW, viewH, scale, width, R);
+    setGlobeView(this.view, camDist, look.lon, look.lat);
     invert4(this.invView, this.view);
 
     const aspect = viewW / Math.max(1, viewH);
@@ -330,24 +396,20 @@ export class GlobeRenderer {
     const originWorld = transformPoint(this.invView, [0, 0, 0]);
     const dirWorld = transformDir(this.invView, dirView);
 
-    const plane = unprojectPlane(dirView, camDist, R, cameraX, cameraY, width, height);
-    if (morph < 0.18) return plane;
-
     const hit = intersectSphere(originWorld, dirWorld, R);
-    if (!hit) return morph > 0.72 ? null : plane;
-    const ll = sphereToLonLat(hit[0], hit[1], hit[2]);
-    const tile = lonLatToTile(ll.lon, ll.lat, width, height);
-    if (morph > 0.82) return tile;
-    return {
-      x: wrapX(plane.x + (tile.x - plane.x) * morph, width),
-      y: plane.y + (tile.y - plane.y) * morph,
-    };
+    if (hit) {
+      const ll = sphereToLonLat(hit[0], hit[1], hit[2]);
+      return lonLatToTile(ll.lon, ll.lat, width, height);
+    }
+    return unprojectPlane(dirView, camDist, R, cameraX, cameraY, width, height);
   }
 
   dispose(): void {
     const gl = this.gl;
     if (!gl) return;
     if (this.texture) gl.deleteTexture(this.texture);
+    if (this.zonesTex) gl.deleteTexture(this.zonesTex);
+    if (this.cloudsTex) gl.deleteTexture(this.cloudsTex);
     if (this.markerBuf) gl.deleteBuffer(this.markerBuf);
     if (this.grid) {
       gl.deleteBuffer(this.grid.vbo);
@@ -362,6 +424,8 @@ export class GlobeRenderer {
     this.markers = null;
     this.grid = null;
     this.texture = null;
+    this.zonesTex = null;
+    this.cloudsTex = null;
   }
 
   private drawMarkers(
@@ -524,16 +588,17 @@ function buildGrid(gl: WebGLRenderingContext, segU: number, segV: number): Mesh 
   return { vbo, ibo, count: idx.length };
 }
 
-function downsampleBake(bake: HTMLCanvasElement, max: number): HTMLCanvasElement {
-  const dim = potSize(Math.min(max, Math.max(bake.width, bake.height)));
-  if (bake.width === dim && bake.height === dim) return bake;
+function equirectBake(bake: HTMLCanvasElement, max: number): HTMLCanvasElement {
+  const w = potSize(Math.min(max, Math.max(bake.width, bake.height * 2)));
+  const h = Math.max(64, Math.floor(w / 2));
+  if (bake.width === w && bake.height === h) return bake;
   const canvas = document.createElement('canvas');
-  canvas.width = dim;
-  canvas.height = dim;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) return bake;
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(bake, 0, 0, dim, dim);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(bake, 0, 0, w, h);
   return canvas;
 }
 
@@ -543,30 +608,27 @@ function potSize(n: number): number {
   return Math.max(64, Math.min(GLOBE_TEX_MAX, p));
 }
 
-function cameraDistance(
-  viewW: number,
-  viewH: number,
-  scale: number,
-  width: number,
-  radius: number,
-  morph: number,
-): number {
-  const dFlat = globeFlatDistance(viewH, Math.max(scale, minScaleFor(width)), TILE);
-  const dOrbit = globeOrbitDistance(viewW, viewH, radius);
-  const t = morph * morph * (3 - 2 * morph);
-  let d = dFlat + (dOrbit - dFlat) * t;
-  const start = globeMorphStartFor(width);
-  const lo = globeMinScaleFor(width);
-  if (scale < start) {
-    const u = clamp((start - scale) / Math.max(1e-6, start - lo), 0, 1);
-    d = dOrbit * (1 + 0.42 * u);
-  }
-  return Math.max(radius * 1.18, d);
-}
-
-function cameraEye(lon: number, lat: number, dist: number): [number, number, number] {
-  const p = lonLatToSphere(lon, lat, 1);
-  return [p[0] * dist, p[1] * dist, p[2] * dist];
+function setGlobeView(out: Float32Array, dist: number, lon: number, lat: number): void {
+  const { look, east, north } = globeLookBasis(lon, lat);
+  const ex = look[0] * dist;
+  const ey = look[1] * dist;
+  const ez = look[2] * dist;
+  out[0] = east[0];
+  out[1] = north[0];
+  out[2] = look[0];
+  out[3] = 0;
+  out[4] = east[1];
+  out[5] = north[1];
+  out[6] = look[1];
+  out[7] = 0;
+  out[8] = east[2];
+  out[9] = north[2];
+  out[10] = look[2];
+  out[11] = 0;
+  out[12] = -(east[0] * ex + east[1] * ey + east[2] * ez);
+  out[13] = -(north[0] * ex + north[1] * ey + north[2] * ez);
+  out[14] = -(look[0] * ex + look[1] * ey + look[2] * ez);
+  out[15] = 1;
 }
 
 function unprojectPlane(
@@ -620,45 +682,20 @@ function perspective(out: Float32Array, fovy: number, aspect: number, near: numb
   out[14] = 2 * far * near * nf;
 }
 
-function lookAt(
-  out: Float32Array,
-  eye: [number, number, number],
-  center: [number, number, number],
-  up: [number, number, number],
-): void {
-  const zx = eye[0] - center[0];
-  const zy = eye[1] - center[1];
-  const zz = eye[2] - center[2];
-  const zlen = Math.hypot(zx, zy, zz) || 1;
-  const z0 = zx / zlen;
-  const z1 = zy / zlen;
-  const z2 = zz / zlen;
-  let x0 = up[1] * z2 - up[2] * z1;
-  let x1 = up[2] * z0 - up[0] * z2;
-  let x2 = up[0] * z1 - up[1] * z0;
-  const xlen = Math.hypot(x0, x1, x2) || 1;
-  x0 /= xlen;
-  x1 /= xlen;
-  x2 /= xlen;
-  const y0 = z1 * x2 - z2 * x1;
-  const y1 = z2 * x0 - z0 * x2;
-  const y2 = z0 * x1 - z1 * x0;
-  out[0] = x0;
-  out[1] = y0;
-  out[2] = z0;
-  out[3] = 0;
-  out[4] = x1;
-  out[5] = y1;
-  out[6] = z1;
-  out[7] = 0;
-  out[8] = x2;
-  out[9] = y2;
-  out[10] = z2;
-  out[11] = 0;
-  out[12] = -(x0 * eye[0] + x1 * eye[1] + x2 * eye[2]);
-  out[13] = -(y0 * eye[0] + y1 * eye[1] + y2 * eye[2]);
-  out[14] = -(z0 * eye[0] + z1 * eye[1] + z2 * eye[2]);
-  out[15] = 1;
+/** Grab-the-globe orbit. `planetPx` is the planet's on-screen diameter. */
+export function orbitGlobeLook(
+  cameraX: number,
+  cameraY: number,
+  width: number,
+  height: number,
+  dx: number,
+  dy: number,
+  planetPx: number,
+): { x: number; y: number } {
+  const { lon, lat } = tileToLonLat(cameraX, cameraY, width, height);
+  const k = Math.PI / Math.max(60, planetPx);
+  const maxLat = Math.PI / 2 - 0.05;
+  return lonLatToTile(lon - dx * k, clamp(lat + dy * k, -maxLat, maxLat), width, height);
 }
 
 function invert4(out: Float32Array, a: Float32Array): boolean {
@@ -723,35 +760,23 @@ function norm3(v: [number, number, number]): [number, number, number] {
   return [v[0] / n, v[1] / n, v[2] / n];
 }
 
-function cross3(a: [number, number, number], b: [number, number, number]): [number, number, number] {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-}
-
-function lookBasis(lon: number, lat: number): {
-  look: [number, number, number];
-  east: [number, number, number];
-  north: [number, number, number];
-} {
-  const look = lonLatToSphere(lon, lat, 1);
-  const up: [number, number, number] = Math.abs(look[1]) > 0.92 ? [0, 0, 1] : [0, 1, 0];
-  const east = norm3(cross3(up, look));
-  const north = cross3(look, east);
-  return { look, east, north };
-}
-
 export function canvasGlobeRadiusPx(viewW: number, viewH: number, scale: number, width: number): number {
-  const start = globeMorphStartFor(width);
-  const lo = globeMinScaleFor(width);
-  let fill = 0.64;
-  if (scale < start) {
-    const u = clamp((start - scale) / Math.max(1e-6, start - lo), 0, 1);
-    fill = 0.64 - 0.16 * u;
-  }
+  const fill = globeFillFor(scale, width);
   return (fill * Math.min(viewW, viewH)) / 2;
 }
 
 let bakeCache: { src: HTMLCanvasElement; w: number; h: number; pix: Uint8ClampedArray } | null = null;
+let zoneCache: { src: HTMLCanvasElement; w: number; h: number; pix: Uint8ClampedArray } | null = null;
+let cloudCache: { src: HTMLCanvasElement; w: number; h: number; pix: Uint8ClampedArray } | null = null;
+let equirectCache: { src: HTMLCanvasElement; canvas: HTMLCanvasElement } | null = null;
 let softCanvas: HTMLCanvasElement | null = null;
+
+function globeAlbedo(bake: HTMLCanvasElement): HTMLCanvasElement {
+  if (equirectCache && equirectCache.src === bake) return equirectCache.canvas;
+  const canvas = equirectBake(bake, GLOBE_TEX_MAX);
+  equirectCache = { src: bake, canvas };
+  return canvas;
+}
 
 function bakePixels(bake: HTMLCanvasElement): { w: number; h: number; pix: Uint8ClampedArray } {
   if (bakeCache && bakeCache.src === bake) return bakeCache;
@@ -762,20 +787,41 @@ function bakePixels(bake: HTMLCanvasElement): { w: number; h: number; pix: Uint8
   return bakeCache;
 }
 
+function zonePixels(bake: HTMLCanvasElement): { w: number; h: number; pix: Uint8ClampedArray } {
+  if (zoneCache && zoneCache.src === bake) return zoneCache;
+  const ctx = bake.getContext('2d');
+  if (!ctx) return { w: 1, h: 1, pix: new Uint8ClampedArray(4) };
+  const img = ctx.getImageData(0, 0, bake.width, bake.height);
+  zoneCache = { src: bake, w: bake.width, h: bake.height, pix: img.data };
+  return zoneCache;
+}
+
+function cloudPixels(bake: HTMLCanvasElement): { w: number; h: number; pix: Uint8ClampedArray } {
+  if (cloudCache && cloudCache.src === bake) return cloudCache;
+  const ctx = bake.getContext('2d');
+  if (!ctx) return { w: 1, h: 1, pix: new Uint8ClampedArray(4) };
+  const img = ctx.getImageData(0, 0, bake.width, bake.height);
+  cloudCache = { src: bake, w: bake.width, h: bake.height, pix: img.data };
+  return cloudCache;
+}
+
 /** Software sphere when WebGL is unavailable. */
 export function drawCanvasGlobe(
   ctx: CanvasRenderingContext2D,
   bake: HTMLCanvasElement | null,
   state: GlobeDrawState,
 ): void {
-  const { viewW, viewH, width, height, cameraX, cameraY, scale, markers } = state;
+  const { viewW, viewH, width, height, cameraX, cameraY, scale, markers, zoneTex, zoneAmt, cloudTex, cloudAmt } = state;
   ctx.fillStyle = '#070b10';
   ctx.fillRect(0, 0, viewW, viewH);
   if (!bake) return;
   const radiusPx = canvasGlobeRadiusPx(viewW, viewH, scale, width);
   const look = tileToLonLat(cameraX, cameraY, width, height);
-  const basis = lookBasis(look.lon, look.lat);
-  const src = bakePixels(bake);
+  const basis = globeLookBasis(look.lon, look.lat);
+  const src = bakePixels(globeAlbedo(bake));
+  const zones = zoneTex ? zonePixels(zoneTex) : null;
+  const clouds = cloudTex ? cloudPixels(cloudTex) : null;
+  const zAmt = zoneAmt ?? 0.7;
   const dim = Math.max(48, Math.min(520, Math.round(radiusPx * 2)));
   if (!softCanvas || softCanvas.width !== dim) {
     softCanvas = document.createElement('canvas');
@@ -805,11 +851,36 @@ export function drawCanvasGlobe(
       const sx = Math.floor(u * src.w) % src.w;
       const sy = Math.min(src.h - 1, Math.floor(v * src.h));
       const si = (sy * src.w + sx) * 4;
+      let r = src.pix[si] ?? 20;
+      let g = src.pix[si + 1] ?? 28;
+      let b = src.pix[si + 2] ?? 40;
+      if (zones) {
+        const zx = Math.floor(u * zones.w) % zones.w;
+        const zy = Math.min(zones.h - 1, Math.floor(v * zones.h));
+        const zi = (zy * zones.w + zx) * 4;
+        const za = ((zones.pix[zi + 3] ?? 0) / 255) * zAmt;
+        if (za > 0.01) {
+          r = r + ((zones.pix[zi] ?? r) - r) * za;
+          g = g + ((zones.pix[zi + 1] ?? g) - g) * za;
+          b = b + ((zones.pix[zi + 2] ?? b) - b) * za;
+        }
+      }
+      if (clouds) {
+        const cxp = Math.floor(u * clouds.w) % clouds.w;
+        const cyp = Math.min(clouds.h - 1, Math.floor(v * clouds.h));
+        const ci = (cyp * clouds.w + cxp) * 4;
+        const ca = ((clouds.pix[ci + 3] ?? 0) / 255) * (cloudAmt ?? 0.92);
+        if (ca > 0.01) {
+          r = r + ((clouds.pix[ci] ?? r) - r) * ca;
+          g = g + ((clouds.pix[ci + 1] ?? g) - g) * ca;
+          b = b + ((clouds.pix[ci + 2] ?? b) - b) * ca;
+        }
+      }
       const ndotl = 0.4 + 0.6 * Math.max(0, wx * light[0] + wy * light[1] + wz * light[2]);
       const oi = (py * dim + px) * 4;
-      out[oi] = (src.pix[si] ?? 20) * ndotl;
-      out[oi + 1] = (src.pix[si + 1] ?? 28) * ndotl;
-      out[oi + 2] = (src.pix[si + 2] ?? 40) * ndotl;
+      out[oi] = r * ndotl;
+      out[oi + 1] = g * ndotl;
+      out[oi + 2] = b * ndotl;
       out[oi + 3] = 255;
     }
   }
@@ -820,7 +891,7 @@ export function drawCanvasGlobe(
   ctx.beginPath();
   ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
   ctx.clip();
-  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = false;
   ctx.drawImage(softCanvas, cx - radiusPx, cy - radiusPx, radiusPx * 2, radiusPx * 2);
   ctx.restore();
   ctx.beginPath();
@@ -859,7 +930,7 @@ export function unprojectCanvasGlobe(
   if (r2 > 1) return null;
   const nz = Math.sqrt(1 - r2);
   const look = tileToLonLat(cameraX, cameraY, width, height);
-  const basis = lookBasis(look.lon, look.lat);
+  const basis = globeLookBasis(look.lon, look.lat);
   const wx = basis.east[0] * nx + basis.north[0] * ny + basis.look[0] * nz;
   const wy = basis.east[1] * nx + basis.north[1] * ny + basis.look[1] * nz;
   const wz = basis.east[2] * nx + basis.north[2] * ny + basis.look[2] * nz;

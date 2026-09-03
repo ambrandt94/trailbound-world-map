@@ -58,6 +58,20 @@ export const CHAR_SHEET_URLS: Record<string, string> = {
   animals2: 'assets/characters/animals2.png',
   animals5: 'assets/characters/animals5.png',
   horse1: 'assets/characters/horse1.png',
+  dwarf1: 'assets/characters/dwarf1.png',
+  dwarf2: 'assets/characters/dwarf2.png',
+  elf1: 'assets/characters/elf1.png',
+  elf2: 'assets/characters/elf2.png',
+  townsfolk: 'assets/characters/townsfolk.png',
+  farmer: 'assets/characters/farmer.png',
+  household: 'assets/characters/household.png',
+  elder: 'assets/characters/elder.png',
+  bard: 'assets/characters/bard.png',
+  blacksmith: 'assets/characters/blacksmith.png',
+  children: 'assets/characters/children.png',
+  knights: 'assets/characters/knights.png',
+  knights2: 'assets/characters/knights2.png',
+  executioner: 'assets/characters/executioner.png',
 };
 
 export interface CharSheet {
@@ -110,6 +124,7 @@ export class AssetLibrary {
     for (const [id, sheet] of sheets) {
       this.sheets.set(id, sheet);
     }
+    this.sheets.set('boat', makeBoatSheet());
     this.player = makePlayerSprite();
   }
 
@@ -210,4 +225,113 @@ function makePlayerSprite(): HTMLCanvasElement {
   ctx.strokeStyle = '#1a120c';
   ctx.strokeRect(4.5, 2.5, 7, 16);
   return c;
+}
+
+const BOAT_HULL = '#7a4a28';
+const BOAT_HULL_D = '#4e2c14';
+const BOAT_HULL_L = '#c48a4a';
+const BOAT_MAST = '#2a1810';
+const BOAT_TRIM = '#e8d5b0';
+const BOAT_FOAM = '#d7e6ee';
+
+function makeBoatSheet(): CharSheet {
+  const frameW = 24;
+  const frameH = 16;
+  const charsX = 3;
+  const canvas = document.createElement('canvas');
+  canvas.width = frameW * 3 * charsX;
+  canvas.height = frameH * 4;
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  const sails = ['#7dcea0', '#e0a86a', '#ffb4b4'];
+  for (let char = 0; char < charsX; char++) {
+    for (let facing = 0; facing < 4; facing++) {
+      for (let frame = 0; frame < 3; frame++) {
+        const ox = (char * 3 + frame) * frameW;
+        const oy = facing * frameH;
+        drawBoatFrame(ctx, ox, oy, facing, frame, sails[char]!);
+      }
+    }
+  }
+  return { id: 'boat', canvas, frameW, frameH, charsX, charsY: 1 };
+}
+
+function drawBoatFrame(
+  ctx: CanvasRenderingContext2D,
+  ox: number,
+  oy: number,
+  facing: number,
+  frame: number,
+  sail: string,
+): void {
+  const bob = frame === 1 ? 1 : 0;
+  const foam = frame === 2;
+  const outline = '#1a120c';
+  const put = (x: number, y: number, c: string) => px(ctx, ox + x, oy + y, c);
+  const bar = (x: number, y: number, w: number, h: number, c: string) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(ox + x, oy + y, w, h);
+  };
+  if (facing === 2 || facing === 1) {
+    const mirror = facing === 1;
+    const X = (x: number) => (mirror ? 23 - x : x);
+    const putM = (x: number, y: number, c: string) => put(X(x), y, c);
+    const barM = (x: number, y: number, w: number, h: number, c: string) => {
+      for (let i = 0; i < w; i++) {
+        for (let j = 0; j < h; j++) putM(x + i, y + j, c);
+      }
+    };
+    barM(3, 8 + bob, 18, 5, outline);
+    barM(20, 9 + bob, 3, 3, outline);
+    barM(4, 9 + bob, 16, 1, BOAT_TRIM);
+    barM(4, 10 + bob, 16, 2, BOAT_HULL);
+    barM(4, 12 + bob, 16, 1, BOAT_HULL_D);
+    barM(3, 10 + bob, 1, 2, BOAT_HULL_D);
+    barM(20, 10 + bob, 2, 2, BOAT_HULL);
+    putM(22, 10 + bob, BOAT_HULL_L);
+    putM(22, 11 + bob, BOAT_HULL_L);
+    barM(11, 1 + bob, 1, 9, BOAT_MAST);
+    const billow = frame === 1 ? 1 : 0;
+    for (let row = 0; row < 7; row++) {
+      const w = 6 + Math.min(row, 4) + billow;
+      barM(11 - w, 2 + bob + row, w, 1, sail);
+      putM(11 - w, 2 + bob + row, outline);
+    }
+    if (foam) {
+      putM(1, 12 + bob, BOAT_FOAM);
+      putM(2, 13 + bob, BOAT_FOAM);
+      putM(0, 11 + bob, BOAT_FOAM);
+    }
+    return;
+  }
+  if (facing === 0) {
+    bar(5, 8 + bob, 14, 7, outline);
+    bar(8, 7 + bob, 8, 2, BOAT_HULL_D);
+    bar(6, 9 + bob, 12, 4, BOAT_HULL);
+    bar(7, 13 + bob, 10, 1, BOAT_HULL_L);
+    bar(9, 14 + bob, 6, 1, BOAT_HULL_L);
+    bar(11, 1 + bob, 1, 8, BOAT_MAST);
+    bar(12, 2 + bob, 1, 7, sail);
+    bar(13, 3 + bob, 4 + (frame === 1 ? 1 : 0), 5, sail);
+    bar(6, 9 + bob, 12, 1, BOAT_TRIM);
+    if (foam) {
+      put(8, 15, BOAT_FOAM);
+      put(15, 15, BOAT_FOAM);
+      put(11, 15, BOAT_FOAM);
+    }
+    return;
+  }
+  bar(5, 2 + bob, 14, 11, outline);
+  bar(9, 2 + bob, 6, 1, BOAT_HULL_L);
+  bar(7, 3 + bob, 10, 2, BOAT_HULL);
+  bar(6, 5 + bob, 12, 5, BOAT_HULL);
+  bar(7, 10 + bob, 10, 2, BOAT_HULL_D);
+  bar(11, 3 + bob, 1, 7, BOAT_MAST);
+  bar(8, 4 + bob, 3, 5, sail);
+  bar(4 + (frame === 1 ? -1 : 0), 5 + bob, 7, 4, sail);
+  bar(6, 5 + bob, 12, 1, BOAT_TRIM);
+  if (foam) {
+    put(8, 12, BOAT_FOAM);
+    put(15, 12, BOAT_FOAM);
+  }
 }

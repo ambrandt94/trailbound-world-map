@@ -5,11 +5,15 @@ import {
   NgZone,
   OnDestroy,
   ViewChild,
+  computed,
   inject,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   ADVENTURE_ASK_SCALE,
+  ADVENTURE_POCKET_MAX,
   CameraState,
   ChunkData,
   DETAIL_START,
@@ -17,50 +21,81 @@ import {
   ZOOM_OUT_DISCOVER_COOLDOWN_MS,
   MapNode,
   MAX_SCALE,
+  CLOSE_SCALE,
+  CHUNK_STREAM_PER_FRAME,
   PlayerState,
   SPEED_REF_SCALE,
+  SPRINT_MULT,
   SYNC_TURN_TILES,
   TILE,
   WALK_SPEED,
   clamp,
   chunkKey,
+  biomeAt,
+  capZoneRadius,
   detailAnchor,
+  facingFromDelta,
+  fitScaleForBounds,
   growAdventureRegion,
   connectedPlaceTiles,
   fillEnclosedPockets,
   regionFromTiles,
+  leaveScaleForFit,
+  minScaleFor,
   knownPlaceAt,
-  nodeApproaching,
   nodeContaining,
-  closestOnNode,
   boundsFromTiles,
   clampLatY,
-  globeActive,
+  closestOnTiles,
+  globeFillFor,
   globeMinScaleFor,
   globeMorphT,
   lerpWrapX,
-  pointInNode,
-  placeTouchesTile,
+  pointInTiles,
   presentedFocus,
   startScaleFor,
-  wrapDeltaX,
+  touchingPoiTiles,
   wrapX,
+  wrapDeltaX,
+  zoomProgress,
+  mapScaleBar,
+  zoneRadiusFor,
 } from '../../models/world.models';
 import { AssetLibrary } from '../../engine/assets';
 import { nearestEntity } from '../../engine/entities';
-import { drawCanvasGlobe, GlobeMarker, GlobeRenderer, unprojectCanvasGlobe } from '../../engine/globe';
+import { defaultPlayerState } from '../../engine/hero';
+import { kindForBiome } from '../../engine/names';
+import { Rng } from '../../engine/noise';
+import { drawCanvasGlobe, GlobeMarker, GlobeRenderer, orbitGlobeLook, unprojectCanvasGlobe } from '../../engine/globe';
+import { globeShowsWholePlanet } from '../../engine/projection';
 import { WorldRenderer } from '../../engine/renderer';
 import { PreferencesService } from '../../services/preferences.service';
 import { WorldService } from '../../services/world.service';
 
+/** Mix screen-center zoom (0) and cursor-locked zoom (1). */
+const ZOOM_CURSOR_BIAS = 1;
+const ZOOM_FOLLOW = 14;
+const PAN_FOLLOW = 11;
+/** Instant fraction of a wheel step so scale doesn’t only ease in. */
+const ZOOM_CATCH = 0.18;
+
 @Component({
   selector: 'app-map-viewport',
   standalone: true,
-  imports: [MatButtonModule],
+  imports: [MatButtonModule, MatIconModule, MatTooltipModule],
   template: `
     <div class="stage">
       <canvas #globe class="globe" aria-hidden="true"></canvas>
-      <canvas #canvas class="map" [class.locked]="world.adventurePrompt()"></canvas>
+      <canvas
+        #canvas
+        class="map"
+        [class.locked]="world.adventurePrompt()"
+        [class.dragging]="dragging"
+        (pointerdown)="onPointerDown($event)"
+        (pointermove)="onPointerMove($event)"
+        (pointerup)="onPointerUp($event)"
+        (pointercancel)="onPointerUp($event)"
+      ></canvas>
       @if (!loaded) {
         <div class="boot">Loading tileset…</div>
       } @else if (world.generating()) {
@@ -80,6 +115,53 @@ import { WorldService } from '../../services/world.service';
               <button mat-flat-button type="button" (click)="confirmEnter(true)">Generate</button>
               <button mat-stroked-button type="button" (click)="cancelEnter()">Stay on the map</button>
             </div>
+          </div>
+        </div>
+      }
+      @if (loaded && !world.generating()) {
+        <div class="map-dock">
+          <button
+            mat-icon-button
+            type="button"
+            class="dock-btn"
+            [class.on]="world.showOutlines()"
+            (click)="world.toggleOutlines()"
+            matTooltip="Region outlines"
+          >
+            <mat-icon>{{ world.showOutlines() ? 'grid_on' : 'grid_off' }}</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="dock-btn"
+            [class.on]="world.showPois()"
+            (click)="world.togglePois()"
+            matTooltip="POI author overlay"
+          >
+            <mat-icon>{{ world.showPois() ? 'place' : 'location_off' }}</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="dock-btn"
+            [class.on]="prefs.showWorldMarkers()"
+            (click)="prefs.setShowWorldMarkers(!prefs.showWorldMarkers())"
+            matTooltip="Travelers, caravans & hosts on the map"
+          >
+            <mat-icon>{{ prefs.showWorldMarkers() ? 'groups' : 'visibility_off' }}</mat-icon>
+          </button>
+        </div>
+        <div class="zoom-hud" aria-hidden="true">
+          <div class="zoom-meta">
+            <span class="zoom-band">{{ zoomHud().label }}</span>
+            <span class="zoom-mult tb-mono">{{ zoomHud().mult }}</span>
+          </div>
+          <div class="zoom-track">
+            <div class="zoom-fill" [style.width.%]="zoomHud().t * 100"></div>
+          </div>
+          <div class="zoom-ruler">
+            <span class="zoom-bar" [style.width.px]="zoomHud().barPx"></span>
+            <span class="zoom-bar-label tb-mono">{{ zoomHud().barLabel }}</span>
           </div>
         </div>
       }
@@ -110,6 +192,7 @@ import { WorldService } from '../../services/world.service';
     .globe {
       z-index: 0;
       pointer-events: none;
+      image-rendering: pixelated;
     }
     .map {
       z-index: 1;
@@ -123,6 +206,36 @@ import { WorldService } from '../../services/world.service';
     }
     .map.locked {
       cursor: default;
+    }
+    .map-dock {
+      position: absolute;
+      top: 0.75rem;
+      left: 0.75rem;
+      z-index: 3;
+      display: flex;
+      gap: 0.2rem;
+      padding: 0.2rem;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--tb-panel) 88%, transparent);
+      backdrop-filter: blur(10px);
+      border: 1px solid color-mix(in srgb, var(--tb-ink) 10%, transparent);
+      box-shadow: 0 8px 22px color-mix(in srgb, black 22%, transparent);
+      pointer-events: auto;
+    }
+    .dock-btn {
+      color: var(--tb-muted);
+      width: 2.25rem;
+      height: 2.25rem;
+      padding: 0;
+    }
+    .dock-btn.on {
+      color: var(--tb-accent-strong);
+      background: color-mix(in srgb, var(--tb-accent) 18%, transparent);
+    }
+    .dock-btn mat-icon {
+      font-size: 1.15rem;
+      width: 1.15rem;
+      height: 1.15rem;
     }
     .boot {
       position: absolute;
@@ -181,6 +294,69 @@ import { WorldService } from '../../services/world.service';
       text-transform: none;
       flex: 1;
     }
+    .zoom-hud {
+      position: absolute;
+      left: 0.85rem;
+      bottom: 0.85rem;
+      min-width: 8.8rem;
+      padding: 0.55rem 0.7rem 0.6rem;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--tb-panel) 88%, transparent);
+      backdrop-filter: blur(10px);
+      border: 1px solid color-mix(in srgb, var(--tb-ink) 10%, transparent);
+      box-shadow: 0 8px 22px color-mix(in srgb, black 22%, transparent);
+      pointer-events: none;
+      color: var(--tb-ink);
+    }
+    .zoom-meta {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.65rem;
+      margin-bottom: 0.4rem;
+    }
+    .zoom-band {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--tb-accent-strong);
+    }
+    .zoom-mult {
+      font-size: 0.78rem;
+      color: var(--tb-muted);
+    }
+    .zoom-track {
+      height: 4px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--tb-ink) 12%, transparent);
+      overflow: hidden;
+    }
+    .zoom-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--tb-accent);
+    }
+    .zoom-ruler {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.18rem;
+      margin-top: 0.5rem;
+    }
+    .zoom-bar {
+      display: block;
+      height: 7px;
+      box-sizing: border-box;
+      border: 0 solid var(--tb-ink);
+      border-bottom-width: 2px;
+      border-left-width: 2px;
+      border-right-width: 2px;
+    }
+    .zoom-bar-label {
+      font-size: 0.7rem;
+      color: var(--tb-muted);
+    }
   `,
 })
 export class MapViewportComponent implements AfterViewInit, OnDestroy {
@@ -188,9 +364,23 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   @ViewChild('globe', { static: true }) globeRef!: ElementRef<HTMLCanvasElement>;
 
   loaded = false;
+  dragging = false;
 
   readonly world = inject(WorldService);
-  private readonly prefs = inject(PreferencesService);
+  readonly zoomHud = computed(() => {
+    const loc = this.world.location();
+    const width = this.world.world()?.width ?? 192;
+    const min = this.globeAllowed() ? globeMinScaleFor(width) : minScaleFor(width);
+    const bar = mapScaleBar(loc.scale);
+    return {
+      label: loc.scaleLabel,
+      mult: `${loc.scale.toFixed(loc.scale < 1 ? 2 : loc.scale < 10 ? 1 : 0)}×`,
+      t: zoomProgress(loc.scale, min),
+      barPx: bar.px,
+      barLabel: bar.label,
+    };
+  });
+  readonly prefs = inject(PreferencesService);
   private readonly ngZone = inject(NgZone);
   private readonly assets = new AssetLibrary();
   private renderer: WorldRenderer | null = null;
@@ -200,7 +390,6 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private hudAcc = 0;
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private readonly keys = new Set<string>();
-  private dragging = false;
   private dragMoved = false;
   private lastPtr = { x: 0, y: 0 };
   private viewW = 1;
@@ -208,10 +397,12 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private syncAcc = 0;
   private edgeReturn: { x: number; y: number } | null = null;
   private isolatePlaceId: string | null = null;
-  private entering = false;
+  private leavingIsolation = false;
   private discoverArmed = false;
+  /** Locked dive tile while zooming into uncharted land (avoids sliding into a neighbor place). */
+  private pendingDiscover: { x: number; y: number } | null = null;
   private lastZoomOutAt = Number.NEGATIVE_INFINITY;
-  private readonly player: PlayerState = { x: 80, y: 80 };
+  private readonly player: PlayerState = defaultPlayerState();
   private readonly camera: CameraState = {
     x: 96,
     y: 96,
@@ -219,10 +410,17 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     targetX: 96,
     targetY: 96,
     targetScale: 0.26,
-    followPlayer: true,
+    followPlayer: false,
   };
   private resizeObs: ResizeObserver | null = null;
   private unlisten: Array<() => void> = [];
+  private removeWheel: (() => void) | null = null;
+  private walkerOn = false;
+  private planetOn = true;
+  private zoomPivot: { wx: number; wy: number; sx: number; sy: number } | null = null;
+  private zoneBakeKey = '';
+  private cloudBakeKey = '';
+  private isoTilesCache: { key: string; tiles: { x: number; y: number }[] } | null = null;
 
   async ngAfterViewInit(): Promise<void> {
     await this.assets.load();
@@ -232,24 +430,33 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     });
     await new Promise((r) => setTimeout(r, 40));
     const data = this.world.world() ?? this.world.init();
+    this.world.repairPlaceShapes();
     const start = this.world.player();
-    this.player.x = start.x;
-    this.player.y = start.y;
+    Object.assign(this.player, start);
     this.camera.x = start.x;
     this.camera.y = start.y;
     this.camera.targetX = start.x;
     this.camera.targetY = start.y;
-    this.camera.followPlayer = true;
-    this.fitCameraScale(data.width, true);
+    this.walkerOn = this.prefs.adventureMode();
+    this.planetOn = this.globeAllowed();
+    this.setFollow(this.walkerOn);
     this.renderer = new WorldRenderer(this.assets);
     this.renderer.bakeWorld(data);
+    this.renderer.bakeZones(data);
     this.globe = new GlobeRenderer(this.globeRef.nativeElement);
-    if (this.globe.ready) this.globe.setTexture(this.renderer.worldBake);
+    if (this.globe.ready) {
+      this.globe.setTexture(this.renderer.worldBake);
+      this.globe.setZones(this.renderer.zoneBake);
+    }
+    this.applyStartCamera(data, true);
+    this.renderer.bakeClouds(data, this.world.exploredTileKeys());
+    if (this.globe.ready) this.globe.setClouds(this.renderer.cloudBake);
+    this.cloudBakeKey = this.world.fogKey();
     this.ngZone.run(() => this.world.generating.set(false));
 
-    const canvas = this.canvasRef.nativeElement;
-    this.bind(canvas);
-    this.fit();
+    this.bindKeys();
+    this.observeCanvas();
+    this.scheduleFit();
     this.ngZone.runOutsideAngular(() => {
       this.lastT = performance.now();
       const loop = (t: number) => {
@@ -278,7 +485,9 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     cancelAnimationFrame(this.raf);
     if (this.watchdog) clearInterval(this.watchdog);
     this.resizeObs?.disconnect();
-    for (const u of this.unlisten) u();
+    this.removeWheel?.();
+    this.removeWheel = null;
+    this.unbindKeys();
     this.globe?.dispose();
     this.globe = null;
   }
@@ -286,22 +495,38 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   reloadFromWorld(): void {
     const data = this.world.world();
     const start = this.world.player();
-    this.player.x = start.x;
-    this.player.y = start.y;
+    Object.assign(this.player, start);
     this.camera.x = start.x;
     this.camera.y = start.y;
     this.camera.targetX = start.x;
     this.camera.targetY = start.y;
-    this.camera.followPlayer = true;
+    this.walkerOn = this.prefs.adventureMode();
+    this.planetOn = this.globeAllowed();
+    this.setFollow(this.walkerOn);
     this.world.clearAdventure();
     this.edgeReturn = null;
     this.isolatePlaceId = null;
+    this.leavingIsolation = false;
+    this.zoomPivot = null;
+    this.zoneBakeKey = '';
+    this.cloudBakeKey = '';
+    this.isoTilesCache = null;
     this.discoverArmed = false;
+    this.pendingDiscover = null;
     this.lastZoomOutAt = performance.now();
-    this.fitCameraScale(data?.width ?? 192, true);
     this.renderer?.clearChunks();
     if (data) this.renderer?.bakeWorld(data);
-    if (data && this.globe?.ready) this.globe.setTexture(this.renderer?.worldBake ?? null);
+    if (data) this.renderer?.bakeZones(data);
+    if (data && this.globe?.ready) {
+      this.globe.setTexture(this.renderer?.worldBake ?? null);
+      this.globe.setZones(this.renderer?.zoneBake ?? null);
+    }
+    if (data && this.prefs.adventureMode()) this.applyStartCamera(data, true);
+    else this.fitCameraScale(data?.width ?? 192, true);
+    if (data) this.renderer?.bakeClouds(data, this.world.exploredTileKeys());
+    if (data && this.globe?.ready) this.globe.setClouds(this.renderer?.cloudBake ?? null);
+    this.cloudBakeKey = this.world.fogKey();
+    this.scheduleFit();
   }
 
   clearStreamed(): void {
@@ -310,8 +535,16 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   }
 
   recenter(): void {
-    this.camera.followPlayer = true;
-    this.world.followPlayer.set(true);
+    if (this.usingWalker()) {
+      this.setFollow(true);
+      return;
+    }
+    const world = this.world.world();
+    if (!world) return;
+    this.camera.targetX = world.width / 2;
+    this.camera.targetY = world.height / 2;
+    this.zoomPivot = null;
+    this.fitCameraScale(world.width, false);
   }
 
   zoomBy(factor: number): void {
@@ -327,48 +560,42 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     if (!data) return;
     const wx = Math.floor(this.player.x);
     const wy = Math.floor(this.player.y);
-    const from =
-      !snapZoom && this.edgeReturn
-        ? knownPlaceAt(data.nodes, this.edgeReturn.x, this.edgeReturn.y)
-        : null;
-    const hug =
-      from && placeTouchesTile(from, wx, wy) ? (from.tiles ?? []) : undefined;
-    const expand = !!from && from.origin === 'generated' && !!hug?.length;
+    const seed = data.seed ^ (wx * 73856093) ^ (wy * 19349663);
+    const rng = new Rng(seed >>> 0);
+    const biome = biomeAt(data, wx + 0.5, wy + 0.5);
+    const kind = kindForBiome(biome, rng);
+    const radius = capZoneRadius(
+      zoneRadiusFor(kind, rng.next(), rng.range(0.94, 1.08)),
+      data.width,
+      data.height,
+    );
     const region = growAdventureRegion(
       wx,
       wy,
       data.width,
       data.height,
       this.world.adventureBlocked(),
-      data.seed ^ (wx * 73856093) ^ (wy * 19349663),
-      hug,
+      seed,
+      undefined,
+      radius,
+      kind,
+      data.biomes,
     );
-    const node =
-      expand && from
-        ? this.world.expandAdventurePlace(from, region.tiles)
-        : this.world.registerAdventureInstance(region);
+    const node = this.world.registerAdventureInstance(region, kind);
+    this.world.markVisited(node);
     this.isolatePlaceId = node?.id ?? null;
+    this.leavingIsolation = false;
+    this.pendingDiscover = null;
     this.world.adventurePrompt.set(false);
     const tiles = node ? this.adventureTiles(data.nodes, node) : region.tiles;
     if (node) this.world.claimAdventurePockets(node, tiles);
     this.world.adventureLock.set(regionFromTiles(tiles));
-    this.camera.followPlayer = true;
-    this.world.followPlayer.set(true);
+    this.setFollow(true);
     if (snapZoom) {
-      this.setTargetScale(MAX_SCALE);
-      this.camera.scale = MAX_SCALE;
+      this.setTargetScale(DIVE_SCALE);
+      this.camera.scale = DIVE_SCALE;
     }
     this.fillAndBake(tiles);
-  }
-
-  private autoEnter(): void {
-    if (this.entering) return;
-    this.entering = true;
-    try {
-      this.confirmEnter(false);
-    } finally {
-      this.entering = false;
-    }
   }
 
   cancelEnter(): void {
@@ -381,14 +608,15 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.setTargetScale(Math.min(this.camera.targetScale, this.adventureCap()));
   }
 
-  private bind(canvas: HTMLCanvasElement): void {
+  private bindKeys(): void {
+    this.unbindKeys();
     const onKeyDown = (e: KeyboardEvent) => {
       if (this.isMoveKey(e.code)) {
         e.preventDefault();
         this.keys.add(e.code);
-        this.camera.followPlayer = true;
-        this.world.followPlayer.set(true);
+        if (this.usingWalker()) this.setFollow(true);
       }
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.keys.add(e.code);
       if (e.code === 'Escape' && this.world.adventurePrompt()) {
         e.preventDefault();
         this.ngZone.run(() => this.cancelEnter());
@@ -401,65 +629,78 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const onKeyUp = (e: KeyboardEvent) => {
       this.keys.delete(e.code);
     };
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      if (this.world.adventurePrompt()) return;
-      const before = this.screenToWorld(e.offsetX, e.offsetY);
-      const factor = Math.exp(-e.deltaY * 0.0032);
-      const zoomed = this.applyZoom(this.camera.targetScale * factor);
-      if (zoomed && !this.camera.followPlayer) {
-        const after = this.screenToWorld(e.offsetX, e.offsetY, this.camera.targetScale);
-        const width = this.world.world()?.width ?? 192;
-        const height = this.world.world()?.height ?? 192;
-        this.camera.targetX = wrapX(this.camera.targetX + wrapDeltaX(after.x, before.x, width), width);
-        this.camera.targetY = clampLatY(this.camera.targetY + (before.y - after.y), height);
-      }
-    };
-    const onDown = (e: PointerEvent) => {
-      if (e.button !== 0) return;
-      if (this.world.adventurePrompt()) return;
-      canvas.setPointerCapture(e.pointerId);
-      this.dragging = true;
-      this.dragMoved = false;
-      this.lastPtr = { x: e.offsetX, y: e.offsetY };
-      canvas.classList.add('dragging');
-    };
-    const onMove = (e: PointerEvent) => {
-      this.updateHover(e.offsetX, e.offsetY);
-      if (!this.dragging) return;
-      const dx = e.offsetX - this.lastPtr.x;
-      const dy = e.offsetY - this.lastPtr.y;
-      if (Math.hypot(dx, dy) > 3) this.dragMoved = true;
-      this.lastPtr = { x: e.offsetX, y: e.offsetY };
-      this.camera.followPlayer = false;
-      this.world.followPlayer.set(false);
-      this.panBy(dx, dy);
-      this.confineCameraToIsolation();
-    };
-    const onUp = (e: PointerEvent) => {
-      if (!this.dragging) return;
-      this.dragging = false;
-      canvas.classList.remove('dragging');
-      if (!this.dragMoved) this.onClick(e.offsetX, e.offsetY);
-    };
-    canvas.addEventListener('wheel', onWheel, { passive: false });
-    canvas.addEventListener('pointerdown', onDown);
-    canvas.addEventListener('pointermove', onMove);
-    canvas.addEventListener('pointerup', onUp);
-    canvas.addEventListener('pointercancel', onUp);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     this.unlisten.push(
-      () => canvas.removeEventListener('wheel', onWheel),
-      () => canvas.removeEventListener('pointerdown', onDown),
-      () => canvas.removeEventListener('pointermove', onMove),
-      () => canvas.removeEventListener('pointerup', onUp),
-      () => canvas.removeEventListener('pointercancel', onUp),
       () => window.removeEventListener('keydown', onKeyDown),
       () => window.removeEventListener('keyup', onKeyUp),
     );
+  }
+
+  private unbindKeys(): void {
+    for (const u of this.unlisten) u();
+    this.unlisten = [];
+  }
+
+  private observeCanvas(): void {
+    this.resizeObs?.disconnect();
+    this.removeWheel?.();
+    const canvas = this.canvasRef.nativeElement;
     this.resizeObs = new ResizeObserver(() => this.fit());
     this.resizeObs.observe(canvas);
+    // Wheel must be non-passive so preventDefault can stop page scroll.
+    const onWheel = (e: WheelEvent) => this.onWheel(e);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    this.removeWheel = () => canvas.removeEventListener('wheel', onWheel);
+  }
+
+  private scheduleFit(): void {
+    this.fit();
+    requestAnimationFrame(() => {
+      this.fit();
+      requestAnimationFrame(() => this.fit());
+    });
+  }
+
+  onWheel(e: WheelEvent): void {
+    e.preventDefault();
+    const canvas = this.canvasRef.nativeElement;
+    const rect = canvas.getBoundingClientRect();
+    this.zoomAt(e.clientX - rect.left, e.clientY - rect.top, this.wheelFactor(e));
+  }
+
+  onPointerDown(e: PointerEvent): void {
+    if (e.button !== 0) return;
+    if (this.world.adventurePrompt()) return;
+    const canvas = this.canvasRef.nativeElement;
+    this.dragging = true;
+    this.dragMoved = false;
+    this.lastPtr = { x: e.offsetX, y: e.offsetY };
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore — capture can fail for non-primary / synthetic pointers */
+    }
+  }
+
+  onPointerMove(e: PointerEvent): void {
+    this.updateHover(e.offsetX, e.offsetY);
+    if (!this.dragging) return;
+    const dx = e.offsetX - this.lastPtr.x;
+    const dy = e.offsetY - this.lastPtr.y;
+    if (Math.hypot(dx, dy) > 3) this.dragMoved = true;
+    this.lastPtr = { x: e.offsetX, y: e.offsetY };
+    this.setFollow(false);
+    this.zoomPivot = null;
+    this.panBy(dx, dy);
+    this.confineCameraToIsolation();
+    this.refreshPendingDiscover(true);
+  }
+
+  onPointerUp(e: PointerEvent): void {
+    if (!this.dragging) return;
+    this.dragging = false;
+    if (!this.dragMoved) this.onClick(e.offsetX, e.offsetY);
   }
 
   private onClick(sx: number, sy: number): void {
@@ -468,29 +709,35 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const data = this.world.world();
     if (!data) return;
     const entity = nearestEntity(this.world.liveEntities(), worldPt.x, worldPt.y, this.entityHit());
-    if (entity) {
-      this.camera.followPlayer = false;
-      this.world.followPlayer.set(false);
+    if (entity && (this.prefs.showWorldMarkers() || this.world.tileExplored(entity.x, entity.y))) {
+      this.setFollow(false);
+      this.zoomPivot = null;
       this.camera.targetX = entity.x;
       this.camera.targetY = entity.y;
       this.setTargetScale(Math.max(this.camera.targetScale, 8.4));
       return;
     }
     const node = nodeContaining(data.nodes, worldPt.x, worldPt.y);
-    const poi = this.world.showPois() ? this.hitPoi(data.pois, worldPt.x, worldPt.y) : null;
+    const visible = this.world.visiblePoiIds(this.prefs.adventureMode());
+    const poiPool = data.pois.filter((p) => visible.has(p.id));
+    const poi = poiPool.length ? this.hitPoi(poiPool, worldPt.x, worldPt.y) : null;
     const target = node
       ? { x: node.cx, y: node.cy }
       : poi
         ? { x: poi.x, y: poi.y }
         : null;
     if (!target) return;
-    this.camera.followPlayer = false;
-    this.world.followPlayer.set(false);
+    this.setFollow(false);
+    this.zoomPivot = null;
     this.camera.targetX = target.x;
     this.camera.targetY = target.y;
+    if (node && !this.world.placeExplored(node)) return;
     if (node) {
       this.isolatePlaceId = node.id;
+      this.leavingIsolation = false;
       this.discoverArmed = false;
+      this.pendingDiscover = null;
+      this.world.markVisited(node);
     } else {
       this.armDiscover();
     }
@@ -500,7 +747,10 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private tick(t: number): void {
     const dt = Math.min(0.05, (t - this.lastT) / 1000);
     this.lastT = t;
+    this.syncWalkerMode();
+    this.syncPlanetView();
     this.stepPlayer(dt);
+    this.confinePlayerToIsolation();
     this.stepSim(dt);
     this.stepCamera(dt);
     this.maybeGenerate();
@@ -508,11 +758,19 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.hudAcc += dt;
     if (this.hudAcc > 0.08) {
       this.hudAcc = 0;
+      if (!this.usingWalker()) {
+        this.player.x = this.camera.x;
+        this.player.y = this.camera.y;
+      }
       const px = this.player.x;
       const py = this.player.y;
       const scale = this.camera.scale;
       this.ngZone.run(() => {
-        this.world.setPlayer(px, py);
+        this.world.setPlayer(px, py, {
+          facing: this.player.facing,
+          frame: this.player.frame,
+          anim: this.player.anim,
+        });
         this.world.setScale(scale);
         this.world.bumpSimHud();
       });
@@ -526,17 +784,31 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) my += 1;
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) mx -= 1;
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) mx += 1;
-    if (!mx && !my) return;
+    if (!mx && !my) {
+      if (this.usingWalker()) this.player.frame = 1;
+      return;
+    }
     const len = Math.hypot(mx, my) || 1;
-    const speed = clamp(WALK_SPEED * (SPEED_REF_SCALE / this.camera.scale), 0.38, 92);
-    const ox = this.player.x;
-    const oy = this.player.y;
+    const sprinting = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    const speed =
+      clamp(WALK_SPEED * (SPEED_REF_SCALE / this.camera.scale), 0.12, 92) * (sprinting ? SPRINT_MULT : 1);
     const world = this.world.world();
     const width = world?.width ?? 192;
     const maxY = (world?.height ?? 192) - 0.5;
+    if (!this.usingWalker()) {
+      this.zoomPivot = null;
+      this.camera.targetX = wrapX(this.camera.targetX + (mx / len) * speed * dt, width);
+      this.camera.targetY = clamp(this.camera.targetY + (my / len) * speed * dt, 0.5, maxY);
+      return;
+    }
+    const ox = this.player.x;
+    const oy = this.player.y;
     this.player.x = wrapX(this.player.x + (mx / len) * speed * dt, width);
     this.player.y = clamp(this.player.y + (my / len) * speed * dt, 0.5, maxY);
-    this.confinePlayerToIsolation();
+    this.player.facing = facingFromDelta(mx, my);
+    const moved = Math.hypot(wrapDeltaX(ox, this.player.x, width), this.player.y - oy);
+    this.player.anim += moved * (sprinting ? 4.2 : 3.4);
+    this.player.frame = [0, 1, 2, 1][Math.floor(this.player.anim) % 4]!;
     this.noteAdventureEdge(world);
     if (this.world.simMode() === 'sync') {
       this.syncAcc += Math.hypot(this.player.x - ox, this.player.y - oy);
@@ -556,63 +828,95 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   }
 
   private stepCamera(dt: number): void {
-    if (this.adventureNeedsAsk() && !this.world.adventurePrompt()) {
-      if (this.camera.scale < ADVENTURE_ASK_SCALE && this.camera.targetScale >= ADVENTURE_ASK_SCALE) {
-        this.setTargetScale(this.adventureCap());
-      }
-    }
-    if (!this.adventureNeedsAsk() && this.world.adventurePrompt()) {
-      this.ngZone.run(() => this.world.adventurePrompt.set(false));
-    }
     const world = this.world.world();
     if (this.camera.followPlayer) {
+      this.zoomPivot = null;
       const view = world
         ? presentedFocus(this.player, world.nodes, world.pois, this.camera.scale)
         : this.player;
       this.camera.targetX = view.x;
       this.camera.targetY = view.y;
     }
-    const k = 1 - Math.exp(-dt * 9);
+    const zoomK = 1 - Math.exp(-dt * ZOOM_FOLLOW);
+    const panK = 1 - Math.exp(-dt * PAN_FOLLOW);
+    this.camera.scale += (this.camera.targetScale - this.camera.scale) * zoomK;
+    const scaleEps = Math.max(1e-4, this.camera.targetScale * 0.0015);
+    if (Math.abs(this.camera.scale - this.camera.targetScale) <= scaleEps) {
+      this.camera.scale = this.camera.targetScale;
+    }
     const width = world?.width ?? 192;
     const height = world?.height ?? 192;
-    this.camera.scale += (this.camera.targetScale - this.camera.scale) * k;
     const isolating = !!this.isolatePlaceId && this.camera.scale >= DETAIL_START;
     const viewTilesX = this.viewW / (this.camera.scale * TILE);
-    const wrapLon = !isolating && (globeActive(this.camera.scale, width) || viewTilesX < width * 0.92);
-    if (wrapLon) {
-      this.camera.x = lerpWrapX(this.camera.x, this.camera.targetX, k, width);
+    const wrapLon = !isolating && (this.usingGlobe() || viewTilesX < width * 0.92);
+    if (this.dollyZoom()) this.zoomPivot = null;
+    if (this.zoomPivot && !this.camera.followPlayer) {
+      const p = this.zoomPivot;
+      const held = this.cameraHolding(p.wx, p.wy, p.sx, p.sy, this.camera.scale);
+      this.camera.x = wrapLon ? wrapX(held.x, width) : clamp(held.x, 0, width);
+      this.camera.y = clamp(held.y, 0, height);
+    } else if (wrapLon) {
+      this.camera.x = lerpWrapX(this.camera.x, this.camera.targetX, panK, width);
       this.camera.targetX = wrapX(this.camera.targetX, width);
+      this.camera.y += (this.camera.targetY - this.camera.y) * panK;
     } else {
-      this.camera.x += (this.camera.targetX - this.camera.x) * k;
+      this.camera.x += (this.camera.targetX - this.camera.x) * panK;
+      this.camera.y += (this.camera.targetY - this.camera.y) * panK;
       this.camera.x = clamp(this.camera.x, 0, width);
       this.camera.targetX = clamp(this.camera.targetX, 0, width);
     }
-    this.camera.y += (this.camera.targetY - this.camera.y) * k;
+    const ox = this.camera.x;
+    const oy = this.camera.y;
     this.camera.y = clamp(this.camera.y, 0, height);
     this.camera.targetY = clampLatY(this.camera.targetY, height);
+    this.resyncZoomPivot(ox, oy);
     this.confineCameraToIsolation();
+    if (this.leavingIsolation && this.camera.scale <= this.zoneLeaveScale() + 0.03) {
+      this.leaveInstance();
+    }
   }
 
   private maybeGenerate(): void {
     if (!this.renderer) return;
     const world = this.world.world();
     if (!world) return;
-    if (this.prefs.adventureMode()) {
-      const iso = this.isolationTiles();
-      if (!iso) return;
-      if (this.camera.scale < DETAIL_START && !this.world.adventurePrompt()) return;
-      this.syncIsolationLock(world);
-      this.bakeCreated(this.world.ensureTiles(iso, 32), world);
-      return;
+    const atPlayer = this.prefs.adventureMode() || this.camera.followPlayer;
+    const fx = atPlayer ? this.player.x : this.camera.targetX;
+    const fy = atPlayer ? this.player.y : this.camera.targetY;
+    if (!this.leavingIsolation && this.camera.targetScale >= DETAIL_START) {
+      // Dive uses the locked uncharted focus when set, else the live camera/walker tile.
+      const dive = this.pendingDiscover ?? { x: fx, y: fy };
+      const here = nodeContaining(world.nodes, dive.x, dive.y);
+      if (here) {
+        // Don't steal into a neighbor place after minting / diving elsewhere.
+        if (!this.isolatePlaceId || this.isolatePlaceId === here.id) {
+          this.isolatePlaceId = here.id;
+          this.discoverArmed = false;
+          this.pendingDiscover = null;
+          this.world.markVisited(here);
+          this.world.attachEdgePois(here.id);
+        }
+      } else if (this.canDiscoverPlace()) {
+        const node = this.world.ensureZoneAt(dive.x, dive.y, this.camera.targetScale);
+        this.discoverArmed = false;
+        this.pendingDiscover = null;
+        if (node) {
+          this.isolatePlaceId = node.id;
+          this.world.markVisited(node);
+          this.world.attachEdgePois(node.id);
+        }
+      }
     }
-    if (this.canDiscoverPlace() && this.camera.targetScale >= DETAIL_START) {
-      const node = this.world.ensureZoneAt(this.camera.targetX, this.camera.targetY, this.camera.targetScale);
-      this.discoverArmed = false;
-      if (node) this.isolatePlaceId = node.id;
+    if (
+      this.prefs.adventureMode() &&
+      !this.leavingIsolation &&
+      (this.isolatePlaceId || this.camera.targetScale >= DETAIL_START)
+    ) {
+      this.syncIsolationLock(world);
     }
     const iso = this.isolationTiles();
     if (!iso) return;
-    this.bakeCreated(this.world.ensureTiles(iso, 32), world);
+    this.bakeCreated(this.world.ensureTiles(iso, CHUNK_STREAM_PER_FRAME, { x: fx, y: fy }), world);
     const dropped = this.world.dropChunksNotIn(iso);
     for (const key of dropped) {
       const [sx, sy] = key.split(',');
@@ -623,25 +927,10 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private fillAndBake(tiles: { x: number; y: number }[]): void {
     const world = this.world.world();
     if (!world || !this.renderer) return;
-    for (const t of tiles) this.renderer.forgetChunk(t.x, t.y);
-    this.world.rebuildTiles(tiles);
-    this.rebakeIsolation(tiles, world);
-  }
-
-  private rebakeIsolation(
-    tiles: { x: number; y: number }[],
-    world: NonNullable<ReturnType<WorldService['world']>>,
-  ): void {
-    if (!this.renderer) return;
-    const chunks = this.world.liveChunks();
-    const seen = new Set<string>();
-    for (const t of tiles) {
-      const key = chunkKey(t.x, t.y);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const chunk = chunks.get(key);
-      if (chunk) this.renderer.bakeChunk(chunk, chunks, world);
-    }
+    this.bakeCreated(
+      this.world.ensureTiles(tiles, CHUNK_STREAM_PER_FRAME, { x: this.player.x, y: this.player.y }),
+      world,
+    );
   }
 
   private bakeCreated(created: ChunkData[], world: NonNullable<ReturnType<WorldService['world']>>): void {
@@ -671,39 +960,20 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   }
 
   private applyZoom(next: number): boolean {
-    const lo = this.minZoom();
-    if (this.adventureNeedsAsk()) {
-      const cap = this.adventureCap();
-      if (this.camera.scale >= ADVENTURE_ASK_SCALE) {
-        if (next < ADVENTURE_ASK_SCALE && this.world.adventurePrompt()) {
-          this.ngZone.run(() => this.world.adventurePrompt.set(false));
-        }
-        this.setTargetScale(clamp(next, lo, MAX_SCALE));
-        return true;
-      }
-      if (!this.camera.followPlayer) {
-        this.setTargetScale(clamp(Math.min(next, cap), lo, MAX_SCALE));
-        return true;
-      }
-      if (next < ADVENTURE_ASK_SCALE && this.world.adventurePrompt()) {
-        this.ngZone.run(() => this.world.adventurePrompt.set(false));
-      }
-      if (next >= ADVENTURE_ASK_SCALE) {
-        this.setTargetScale(clamp(cap, lo, MAX_SCALE));
-        if (!this.world.adventurePrompt()) {
-          this.ngZone.run(() => this.world.adventurePrompt.set(true));
-        }
-        return false;
-      }
-    } else if (this.world.adventurePrompt()) {
+    if (this.isolatePlaceId && next < this.zoneLeaveScale()) {
+      this.leavingIsolation = true;
+    } else if (this.isolatePlaceId && next >= this.zoneLeaveScale()) {
+      this.leavingIsolation = false;
+    }
+    if (this.world.adventurePrompt()) {
       this.ngZone.run(() => this.world.adventurePrompt.set(false));
     }
-    this.setTargetScale(clamp(next, lo, MAX_SCALE));
+    this.setTargetScale(next);
     return true;
   }
 
   private setTargetScale(next: number): void {
-    const clamped = clamp(next, this.minZoom(), MAX_SCALE);
+    const clamped = clamp(next, this.minZoom(), this.maxZoom());
     if (clamped + 1e-4 < this.camera.targetScale) this.noteZoomOut();
     else if (clamped > this.camera.targetScale + 1e-4) this.armDiscover();
     this.camera.targetScale = clamped;
@@ -711,10 +981,42 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
 
   private armDiscover(): void {
     this.discoverArmed = true;
+    this.refreshPendingDiscover();
+  }
+
+  private refreshPendingDiscover(force = false): void {
+    if (!this.discoverArmed || this.isolatePlaceId) {
+      this.pendingDiscover = null;
+      return;
+    }
+    const world = this.world.world();
+    if (!world) return;
+    // Keep an existing uncharted lock through the dive so a neighbor city can't steal it.
+    if (
+      !force &&
+      this.pendingDiscover &&
+      !nodeContaining(world.nodes, this.pendingDiscover.x, this.pendingDiscover.y)
+    ) {
+      return;
+    }
+    const focus = this.diveFocus();
+    if (!nodeContaining(world.nodes, focus.x, focus.y)) {
+      this.pendingDiscover = { x: focus.x, y: focus.y };
+    } else {
+      this.pendingDiscover = null;
+    }
+  }
+
+  private diveFocus(): { x: number; y: number } {
+    if (this.prefs.adventureMode() || this.camera.followPlayer) {
+      return { x: this.player.x, y: this.player.y };
+    }
+    return { x: this.camera.targetX, y: this.camera.targetY };
   }
 
   private noteZoomOut(): void {
     this.discoverArmed = false;
+    this.pendingDiscover = null;
     this.lastZoomOutAt = performance.now();
   }
 
@@ -724,14 +1026,6 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     return performance.now() >= this.lastZoomOutAt + ZOOM_OUT_DISCOVER_COOLDOWN_MS;
   }
 
-  private adventureNeedsAsk(): boolean {
-    if (!this.prefs.adventureMode()) return false;
-    const world = this.world.world();
-    if (!world) return true;
-    if (knownPlaceAt(world.nodes, this.player.x, this.player.y)) return false;
-    return true;
-  }
-
   private adventureCap(): number {
     return ADVENTURE_ASK_SCALE - 0.08;
   }
@@ -739,31 +1033,32 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private isolationTiles(): { x: number; y: number }[] | null {
     const world = this.world.world();
     if (!world) return null;
-    const zoomed = this.camera.scale >= DETAIL_START || this.world.adventurePrompt();
-    if (!zoomed) {
-      if (this.camera.targetScale < DETAIL_START) this.isolatePlaceId = null;
-      return null;
-    }
+    const link = this.prefs.adventureLinkNeighbors() ? 1 : 0;
     if (this.isolatePlaceId) {
       const locked = world.nodes.find((n) => n.id === this.isolatePlaceId);
-      if (locked?.tiles?.length) return this.adventureTiles(world.nodes, locked);
-    }
-    const focus = this.camera.followPlayer
-      ? this.player
-      : { x: this.camera.targetX, y: this.camera.targetY };
-    const place =
-      knownPlaceAt(world.nodes, focus.x, focus.y) ??
-      nodeApproaching(world.nodes, focus.x, focus.y) ??
-      knownPlaceAt(world.nodes, this.player.x, this.player.y) ??
-      nodeApproaching(world.nodes, this.player.x, this.player.y);
-    if (place) {
-      this.isolatePlaceId = place.id;
-      return this.adventureTiles(world.nodes, place);
+      if (locked?.tiles?.length) {
+        this.world.attachEdgePois(locked.id);
+        const key = `${locked.id}:${locked.tiles.length}:${world.nodes.length}:${link}`;
+        if (this.isoTilesCache?.key === key) return this.isoTilesCache.tiles;
+        const tiles = this.adventureTiles(world.nodes, locked);
+        this.isoTilesCache = { key, tiles };
+        return tiles;
+      }
+      this.isolatePlaceId = null;
+      this.leavingIsolation = false;
+      this.isoTilesCache = null;
     }
     if (this.prefs.adventureMode()) {
       const lock = this.world.adventureLock();
-      if (this.world.adventurePrompt() && lock?.tiles.length) return fillEnclosedPockets(lock.tiles);
+      if (this.world.adventurePrompt() && lock?.tiles.length) {
+        const key = `lock:${lock.tiles.length}:${link}`;
+        if (this.isoTilesCache?.key === key) return this.isoTilesCache.tiles;
+        const tiles = fillEnclosedPockets(lock.tiles);
+        this.isoTilesCache = { key, tiles };
+        return tiles;
+      }
     }
+    this.isoTilesCache = null;
     return null;
   }
 
@@ -772,7 +1067,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       this.prefs.adventureMode() && this.prefs.adventureLinkNeighbors()
         ? connectedPlaceTiles(nodes, place)
         : [...(place.tiles ?? [])];
-    return fillEnclosedPockets(raw);
+    const walls = new Set(touchingPoiTiles(nodes, place).map((t) => `${t.x},${t.y}`));
+    return fillEnclosedPockets(raw, ADVENTURE_POCKET_MAX, walls);
   }
 
   private isolationPlace(): MapNode | null {
@@ -784,25 +1080,41 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private confineCameraToIsolation(): void {
     if (this.prefs.adventureMode()) return;
     if (this.camera.scale < DETAIL_START && this.camera.targetScale < DETAIL_START) return;
-    const place = this.isolationPlace();
-    if (!place?.tiles?.length) return;
-    const b = boundsFromTiles(place.tiles);
-    const pad = 1.2;
-    this.camera.targetX = clamp(this.camera.targetX, b.x0 - pad, b.x1 + pad);
-    this.camera.targetY = clamp(this.camera.targetY, b.y0 - pad, b.y1 + pad);
-    this.camera.x = clamp(this.camera.x, b.x0 - pad, b.x1 + pad);
-    this.camera.y = clamp(this.camera.y, b.y0 - pad, b.y1 + pad);
+    if (this.isolatePlaceId) this.world.attachEdgePois(this.isolatePlaceId);
+    const tiles = this.isolationTiles();
+    if (!tiles?.length) return;
+    if (!pointInTiles(tiles, this.camera.targetX, this.camera.targetY)) {
+      const edge = closestOnTiles(tiles, this.camera.targetX, this.camera.targetY);
+      this.camera.targetX = edge.x;
+      this.camera.targetY = edge.y;
+    }
+    if (!pointInTiles(tiles, this.camera.x, this.camera.y)) {
+      const edge = closestOnTiles(tiles, this.camera.x, this.camera.y);
+      this.camera.x = edge.x;
+      this.camera.y = edge.y;
+    }
   }
 
   private confinePlayerToIsolation(): void {
     if (this.prefs.adventureMode()) return;
     if (this.camera.scale < DETAIL_START) return;
-    const place = this.isolationPlace();
-    if (!place?.tiles?.length) return;
-    if (pointInNode(place, this.player.x, this.player.y)) return;
-    const edge = closestOnNode(place, this.player.x, this.player.y);
+    const tiles = this.isolationTiles();
+    if (!tiles?.length) return;
+    if (pointInTiles(tiles, this.player.x, this.player.y)) return;
+    const edge = closestOnTiles(tiles, this.player.x, this.player.y);
     this.player.x = edge.x;
     this.player.y = edge.y;
+  }
+
+  private zoneFitScale(): number {
+    const place = this.isolationPlace();
+    if (!place?.tiles?.length) return DETAIL_START;
+    return fitScaleForBounds(boundsFromTiles(place.tiles), this.viewW, this.viewH);
+  }
+
+  private zoneLeaveScale(): number {
+    const framed = Math.min(this.zoneFitScale(), DIVE_SCALE);
+    return Math.max(this.overworldMinZoom(), leaveScaleForFit(framed));
   }
 
   private syncIsolationLock(world: NonNullable<ReturnType<WorldService['world']>>): void {
@@ -816,8 +1128,10 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       tiles.every((t) => lock.keys.has(`${t.x},${t.y}`));
     if (this.isolatePlaceId === place.id && lockMatches) return;
     this.isolatePlaceId = place.id;
+    this.leavingIsolation = false;
     this.world.claimAdventurePockets(place, tiles);
     this.world.adventureLock.set(regionFromTiles(tiles));
+    this.world.markVisited(place);
     this.fillAndBake(tiles);
   }
 
@@ -828,7 +1142,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       this.edgeReturn = { x: this.player.x, y: this.player.y };
       return;
     }
-    this.ngZone.run(() => this.autoEnter());
+    if (!this.isolatePlaceId || this.leavingIsolation) return;
+    this.applyZoom(Math.min(this.zoneLeaveScale() - 0.04, this.adventureCap()));
   }
 
   leaveAdventure(): void {
@@ -838,20 +1153,119 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private exitAdventure(): void {
     this.keys.clear();
     this.edgeReturn = null;
-    this.isolatePlaceId = null;
     this.world.clearAdventure();
-    this.camera.followPlayer = true;
-    this.world.followPlayer.set(true);
-    this.camera.targetX = this.player.x;
-    this.camera.targetY = this.player.y;
-    this.camera.x = this.player.x;
-    this.camera.y = this.player.y;
-    this.fitCameraScale(this.world.world()?.width ?? 192, true);
+    this.setFollow(false);
+  }
+
+  private leaveInstance(): void {
+    this.isolatePlaceId = null;
+    this.leavingIsolation = false;
+    this.isoTilesCache = null;
+    this.zoomPivot = null;
+    this.discoverArmed = false;
+    this.pendingDiscover = null;
+    this.lastZoomOutAt = performance.now();
+    this.world.clearAdventure();
+    this.setFollow(this.usingWalker());
+  }
+
+  private usingWalker(): boolean {
+    return this.prefs.adventureMode();
+  }
+
+  private globeAllowed(): boolean {
+    return this.prefs.planetView() && !this.prefs.adventureMode();
+  }
+
+  private usingGlobe(scale = this.camera.scale): boolean {
+    return this.globeAllowed();
+  }
+
+  /** 3D planet is on screen. Closer in, the view flattens to the 2D map. */
+  private showingGlobe(scale = this.camera.scale): boolean {
+    if (!this.globeAllowed()) return false;
+    return globeShowsWholePlanet(this.viewW, this.viewH, scale, this.world.world()?.width ?? 192);
+  }
+
+  /** Zoom changes distance only — no cursor-lock pan. */
+  private dollyZoom(scale?: number): boolean {
+    // Keep the dive locked on uncharted land next to a city/town instead of sliding into it.
+    if (this.pendingDiscover && !this.isolatePlaceId) return true;
+    const scales = scale == null ? [this.camera.scale, this.camera.targetScale] : [scale];
+    const width = this.world.world()?.width ?? 192;
+    if (scales.some((s) => this.showingGlobe(s))) return true;
+    return scales.some((s) => this.viewW / (Math.max(1e-6, s) * TILE) >= width * 0.92);
+  }
+
+  private setFollow(on: boolean): void {
+    const follow = on && this.usingWalker();
+    this.camera.followPlayer = follow;
+    this.world.followPlayer.set(follow);
+  }
+
+  private syncWalkerMode(): void {
+    const on = this.usingWalker();
+    if (on === this.walkerOn) return;
+    this.walkerOn = on;
+    if (on) {
+      this.player.x = this.camera.targetX;
+      this.player.y = this.camera.targetY;
+      this.setFollow(true);
+      const lo = this.overworldMinZoom();
+      if (this.camera.targetScale < lo) this.setTargetScale(lo);
+      if (this.camera.scale < lo) this.camera.scale = lo;
+      return;
+    }
+    this.leaveAdventure();
+  }
+
+  private syncPlanetView(): void {
+    const on = this.globeAllowed();
+    if (on === this.planetOn) return;
+    this.planetOn = on;
+    if (on) return;
+    const lo = this.overworldMinZoom();
+    if (this.camera.targetScale < lo) this.setTargetScale(lo);
+    if (this.camera.scale < lo) this.camera.scale = lo;
+  }
+
+  private overworldMinZoom(): number {
+    return minScaleFor(this.world.world()?.width ?? 192);
   }
 
   private minZoom(): number {
-    const width = this.world.world()?.width ?? 192;
-    return globeMinScaleFor(width);
+    if (this.isolatePlaceId && !this.leavingIsolation) return this.zoneLeaveScale();
+    if (!this.globeAllowed()) return this.overworldMinZoom();
+    return globeMinScaleFor(this.world.world()?.width ?? 192);
+  }
+
+  private maxZoom(): number {
+    return MAX_SCALE;
+  }
+
+  private applyStartCamera(
+    data: NonNullable<ReturnType<WorldService['world']>>,
+    snap: boolean,
+  ): void {
+    if (!this.prefs.adventureMode()) {
+      this.fitCameraScale(data.width, snap);
+      return;
+    }
+    this.setFollow(true);
+    const place = knownPlaceAt(data.nodes, this.player.x, this.player.y);
+    if (place) {
+      this.world.markVisited(place);
+      this.isolatePlaceId = place.id;
+      this.leavingIsolation = false;
+      const tiles = this.adventureTiles(data.nodes, place);
+      this.world.claimAdventurePockets(place, tiles);
+      this.world.adventureLock.set(regionFromTiles(tiles));
+      this.fillAndBake(tiles);
+    } else {
+      this.confirmEnter(false);
+    }
+    this.setTargetScale(CLOSE_SCALE);
+    if (snap) this.camera.scale = CLOSE_SCALE;
   }
 
   private fitCameraScale(width: number, snap: boolean): void {
@@ -868,7 +1282,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const isolate = this.isolationTiles();
-    const usingGlobe = !isolate && globeActive(this.camera.scale, world.width);
+    this.syncZoneBake(world);
+    this.syncCloudBake(world);
     const globeState = {
       width: world.width,
       height: world.height,
@@ -878,37 +1293,52 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       viewW: this.viewW,
       viewH: this.viewH,
       markers: this.globeMarkers(world),
+      zoneTex: this.renderer.zoneBake,
+      zoneAmt: (this.world.showOutlines() ? 1 : 0.55) * this.prefs.zoneOverlay(),
+      cloudTex: this.renderer.cloudBake,
+      cloudAmt: this.prefs.cloudCover(),
     };
-    if (usingGlobe && this.globe?.ready) {
+    if (this.showingGlobe() && this.globe?.ready) {
       this.setGlobeVisible(true);
       ctx.clearRect(0, 0, this.viewW, this.viewH);
       this.globe.draw(globeState);
       return;
     }
     this.setGlobeVisible(false);
-    if (usingGlobe) {
+    if (this.showingGlobe()) {
       drawCanvasGlobe(ctx, this.renderer.worldBake, globeState);
       return;
     }
     const focus = this.camera.followPlayer ? this.player : { x: this.camera.x, y: this.camera.y };
-    const detail = detailAnchor(world.nodes, world.pois, focus.x, focus.y);
-    const view = presentedFocus(this.player, world.nodes, world.pois, this.camera.scale);
+    const detail = detailAnchor(world, focus.x, focus.y);
     const isolateKeys = isolate ? new Set(isolate.map((t) => chunkKey(t.x, t.y))) : null;
+    const live = this.world.liveEntities();
+    const markersOn = this.prefs.showWorldMarkers();
+    const inIso = (e: (typeof live)[number]) =>
+      !!isolateKeys && isolateKeys.has(chunkKey(Math.floor(e.x), Math.floor(e.y)));
+    const exploredOrMarked = (e: (typeof live)[number]) =>
+      markersOn || this.world.tileExplored(e.x, e.y);
     const entities = isolateKeys
-      ? this.world.liveEntities().filter((e) =>
-          isolateKeys.has(chunkKey(Math.floor(e.x), Math.floor(e.y))),
-        )
-      : this.world.liveEntities();
-    this.renderer.draw(ctx, world, this.camera, view, this.viewW, this.viewH, {
+      ? live.filter((e) => inIso(e))
+      : live.filter(exploredOrMarked);
+    const markerEntities =
+      markersOn && isolateKeys ? live.filter((e) => !inIso(e)) : undefined;
+    this.renderer.draw(ctx, world, this.camera, this.player, this.viewW, this.viewH, {
       showOutlines: this.world.showOutlines(),
       showPois: this.world.showPois(),
+      visiblePoiIds: this.world.visiblePoiIds(this.prefs.adventureMode()),
       hoveredId: this.world.hoveredNodeId(),
       hoveredPoiId: this.world.hoveredPoiId(),
       hoveredEntityId: this.world.hoveredEntityId(),
       detailNode: detail,
       entities,
+      markerEntities,
       chunks: this.world.liveChunks(),
       isolateTiles: isolate,
+      showPlayer: this.usingWalker(),
+      outlineAmt: this.prefs.zoneOverlay(),
+      cloudAmt: this.prefs.cloudCover(),
+      nametagScale: this.prefs.nametagScale(),
     });
   }
 
@@ -917,9 +1347,12 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     if (!world) return;
     const hover = this.screenToWorld(sx, sy);
     const node = nodeContaining(world.nodes, hover.x, hover.y);
-    const poi = this.world.showPois() ? this.hitPoi(world.pois, hover.x, hover.y) : null;
+    const visible = this.world.visiblePoiIds(this.prefs.adventureMode());
+    const poiPool = world.pois.filter((p) => visible.has(p.id));
+    const poi = poiPool.length ? this.hitPoi(poiPool, hover.x, hover.y) : null;
     const entityHit = this.entityHit();
-    const entity = nearestEntity(this.world.liveEntities(), hover.x, hover.y, entityHit);
+    let entity = nearestEntity(this.world.liveEntities(), hover.x, hover.y, entityHit);
+    if (entity && !this.prefs.showWorldMarkers() && !this.world.tileExplored(entity.x, entity.y)) entity = null;
     const entityId = entity?.id ?? null;
     const nodeId = entityId ? null : (node?.id ?? null);
     const poiId =
@@ -959,12 +1392,76 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     return Math.max(1.05, 16 / (this.camera.scale * TILE));
   }
 
+  private zoomAt(sx: number, sy: number, factor: number): void {
+    if (this.world.adventurePrompt()) return;
+    const nextScale = this.camera.targetScale * factor;
+    const dolly = this.dollyZoom(this.camera.scale) || this.dollyZoom(nextScale);
+    const zoomed = this.applyZoom(nextScale);
+    if (!zoomed) return;
+    if (this.camera.followPlayer || dolly) {
+      this.zoomPivot = null;
+      if (dolly) {
+        this.camera.scale += (this.camera.targetScale - this.camera.scale) * ZOOM_CATCH;
+      }
+      return;
+    }
+    const cx = this.viewW / 2;
+    const cy = this.viewH / 2;
+    const ax = cx + (sx - cx) * ZOOM_CURSOR_BIAS;
+    const ay = cy + (sy - cy) * ZOOM_CURSOR_BIAS;
+    const pivot = this.screenToWorld(ax, ay);
+    const dest = this.cameraHolding(pivot.x, pivot.y, ax, ay, this.camera.targetScale);
+    const width = this.world.world()?.width ?? 192;
+    const height = this.world.world()?.height ?? 192;
+    this.camera.targetX = wrapX(dest.x, width);
+    this.camera.targetY = clampLatY(dest.y, height);
+    this.zoomPivot = { wx: pivot.x, wy: pivot.y, sx: ax, sy: ay };
+    this.camera.scale += (this.camera.targetScale - this.camera.scale) * ZOOM_CATCH;
+    const live = this.cameraHolding(pivot.x, pivot.y, ax, ay, this.camera.scale);
+    this.camera.x = wrapX(live.x, width);
+    this.camera.y = clampLatY(live.y, height);
+  }
+
+  private wheelFactor(e: WheelEvent): number {
+    let dy = e.deltaY;
+    if (e.deltaMode === 1) dy *= 16;
+    else if (e.deltaMode === 2) dy *= this.viewH;
+    return Math.exp(-dy * 0.0032);
+  }
+
+  private cameraHolding(
+    wx: number,
+    wy: number,
+    sx: number,
+    sy: number,
+    scale: number,
+  ): { x: number; y: number } {
+    return {
+      x: wx - (sx - this.viewW / 2) / (scale * TILE),
+      y: wy - (sy - this.viewH / 2) / (scale * TILE),
+    };
+  }
+
+  private resyncZoomPivot(ox: number, oy: number): void {
+    const p = this.zoomPivot;
+    if (!p) return;
+    if (this.camera.scale === this.camera.targetScale) {
+      this.zoomPivot = null;
+      return;
+    }
+    if (this.camera.x === ox && this.camera.y === oy) return;
+    p.wx = this.camera.x + (p.sx - this.viewW / 2) / (this.camera.scale * TILE);
+    p.wy = this.camera.y + (p.sy - this.viewH / 2) / (this.camera.scale * TILE);
+    const dest = this.cameraHolding(p.wx, p.wy, p.sx, p.sy, this.camera.targetScale);
+    this.camera.targetX = dest.x;
+    this.camera.targetY = dest.y;
+  }
+
   private screenToWorld(sx: number, sy: number, scale = this.camera.scale): { x: number; y: number } {
     const world = this.world.world();
     const width = world?.width ?? 192;
     const height = world?.height ?? 192;
-    const isolated = this.camera.scale >= DETAIL_START && !!this.isolatePlaceId;
-    if (!isolated && globeActive(scale, width)) {
+    if (this.showingGlobe(scale)) {
       const args = {
         width,
         height,
@@ -987,20 +1484,17 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const world = this.world.world();
     const width = world?.width ?? 192;
     const height = world?.height ?? 192;
-    const t = globeActive(this.camera.scale, width) ? globeMorphT(this.camera.scale, width) : 0;
-    const panX = dx / (this.camera.scale * TILE);
-    const panY = dy / (this.camera.scale * TILE);
-    let mx = panX;
-    let my = panY;
-    if (t > 0.04) {
-      const planetPx = Math.max(80, 0.64 * Math.min(this.viewW, this.viewH));
-      const sphereX = (dx / planetPx) * (width * 0.5);
-      const sphereY = (dy / planetPx) * (height * 0.5);
-      mx = panX + (sphereX - panX) * t;
-      my = panY + (sphereY - panY) * t;
+    if (this.showingGlobe()) {
+      const planetPx = Math.max(80, globeFillFor(this.camera.scale, width) * Math.min(this.viewW, this.viewH));
+      const next = orbitGlobeLook(this.camera.targetX, this.camera.targetY, width, height, dx, dy, planetPx);
+      this.camera.targetX = wrapX(next.x, width);
+      this.camera.targetY = clampLatY(next.y, height);
+      return;
     }
+    const mx = dx / (this.camera.scale * TILE);
+    const my = dy / (this.camera.scale * TILE);
     const viewTilesX = this.viewW / (this.camera.scale * TILE);
-    const wrapLon = globeActive(this.camera.scale, width) || viewTilesX < width * 0.92;
+    const wrapLon = viewTilesX < width * 0.92;
     this.camera.targetX = wrapLon
       ? wrapX(this.camera.targetX - mx, width)
       : clamp(this.camera.targetX - mx, 0, width);
@@ -1011,20 +1505,9 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const marks: GlobeMarker[] = [];
     const t = globeMorphT(this.camera.scale, world.width);
     const base = 5.5 + t * 3.5;
-    if (this.world.showOutlines()) {
-      for (const node of world.nodes) {
-        const authored = node.origin === 'authored';
-        const city = node.kind === 'city' || node.kind === 'town';
-        marks.push({
-          x: node.cx,
-          y: node.cy,
-          color: authored ? [0.88, 0.66, 0.42] : [0.49, 0.81, 0.63],
-          size: base + (city ? 3 : authored ? 1.5 : 0),
-        });
-      }
-    }
-    if (this.world.showPois()) {
+    if (this.world.showPois() || this.prefs.adventureMode()) {
       for (const poi of world.pois) {
+        if (!this.world.poiRevealed(poi, this.prefs.adventureMode())) continue;
         marks.push({
           x: poi.x,
           y: poi.y,
@@ -1033,6 +1516,17 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
         });
       }
     }
+    for (const ent of this.world.liveEntities()) {
+      if (!this.prefs.showWorldMarkers() && !this.world.tileExplored(ent.x, ent.y)) continue;
+      const city = ent.kind === 'army';
+      const caravan = ent.kind === 'caravan';
+      marks.push({
+        x: ent.x,
+        y: ent.y,
+        color: city ? [1, 0.71, 0.71] : caravan ? [0.88, 0.66, 0.42] : [0.49, 0.81, 0.63],
+        size: base - (city ? 0.2 : 1.1),
+      });
+    }
     marks.push({
       x: this.player.x,
       y: this.player.y,
@@ -1040,6 +1534,23 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       size: base + 2.5,
     });
     return marks;
+  }
+
+  private syncZoneBake(world: NonNullable<ReturnType<WorldService['world']>>): void {
+    const last = world.nodes[world.nodes.length - 1];
+    const key = `${world.seed}:${world.nodes.length}:${last?.id ?? ''}`;
+    if (key === this.zoneBakeKey && this.renderer?.zoneBake) return;
+    this.zoneBakeKey = key;
+    const canvas = this.renderer?.bakeZones(world) ?? null;
+    this.globe?.setZones(canvas);
+  }
+
+  private syncCloudBake(world: NonNullable<ReturnType<WorldService['world']>>): void {
+    const key = `${this.world.fogKey()}:fog`;
+    if (key === this.cloudBakeKey && this.renderer?.cloudBake) return;
+    this.cloudBakeKey = key;
+    const canvas = this.renderer?.bakeClouds(world, this.world.exploredTileKeys()) ?? null;
+    this.globe?.setClouds(canvas);
   }
 
   private setGlobeVisible(on: boolean): void {

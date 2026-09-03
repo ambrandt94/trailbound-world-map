@@ -59,17 +59,22 @@ export function kindForBiome(biome: Biome, rng: Rng): NodeKind {
       return rng.chance(0.4) ? 'hamlet' : 'grove';
     case Biome.Plains:
     case Biome.Meadow:
-      return rng.chance(0.28) ? 'hamlet' : 'meadow';
+      if (rng.chance(0.04)) return 'city';
+      if (rng.chance(0.1)) return 'town';
+      if (rng.chance(0.32)) return 'hamlet';
+      return 'meadow';
     case Biome.Forest:
     case Biome.DarkForest:
-      return 'grove';
+      return rng.chance(0.12) ? 'hamlet' : 'grove';
     case Biome.Hills:
     case Biome.Heath:
-      return rng.chance(0.3) ? 'hamlet' : 'meadow';
+      if (rng.chance(0.03)) return 'town';
+      if (rng.chance(0.28)) return 'hamlet';
+      return 'meadow';
     case Biome.Mountain:
     case Biome.Snow:
     case Biome.Taiga:
-      return 'pass';
+      return rng.chance(0.18) ? 'camp' : 'pass';
     default:
       return 'meadow';
   }

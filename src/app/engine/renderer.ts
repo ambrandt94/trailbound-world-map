@@ -14,8 +14,7 @@ import {
   ZONE_SCALE,
   BIOME_COUNT,
   biomeAt,
-  boundsFromRadius,
-  boundsFromTiles,
+  clamp,
   chunkKey,
   isInstancedZone,
   lerp,
@@ -23,8 +22,105 @@ import {
   smoothstep,
 } from '../models/world.models';
 import { AssetLibrary, drawCharFrame } from './assets';
-import { kindColor } from './entities';
+import { armyVisibleFollowers, boatChar, kindColor } from './entities';
+import { hash2 } from './noise';
 import { biomeSeason, blobLocal, decoFor, FLOORS, GROUPS, overlayGroup, tileSrc } from './tileset';
+
+const PIXEL_FONT = 'Tiny5, "Press Start 2P", ui-monospace, monospace';
+
+type TagBox = { x: number; y: number; w: number; h: number };
+
+function boxesOverlap(a: TagBox, b: TagBox, pad = 0): boolean {
+  return a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
+}
+
+const NAMETAG_BASE_PX = 10;
+
+function applyPoint(tr: DOMMatrix, x: number, y: number): { x: number; y: number } {
+  return { x: tr.a * x + tr.c * y + tr.e, y: tr.b * x + tr.d * y + tr.f };
+}
+
+function applyBox(tr: DOMMatrix, b: TagBox): TagBox {
+  const p = applyPoint(tr, b.x, b.y);
+  const q = applyPoint(tr, b.x + b.w, b.y + b.h);
+  return { x: Math.min(p.x, q.x), y: Math.min(p.y, q.y), w: Math.abs(q.x - p.x), h: Math.abs(q.y - p.y) };
+}
+
+function drawNametag(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  scale: number,
+  opts?: { clearAbove?: number; clearBelow?: number; avoid?: TagBox[]; taken?: TagBox[]; screenPx?: number },
+): TagBox | null {
+  const raw = text.trim();
+  if (!raw) return null;
+  const tr = ctx.getTransform();
+  const dpr = Math.max(0.5, Math.hypot(tr.a, tr.b) / Math.max(0.001, scale));
+  const screenPx = opts?.screenPx ?? NAMETAG_BASE_PX * 1.5;
+  const fontPx = Math.max(8, screenPx * dpr);
+  const origin = applyPoint(tr, x, y);
+  const uy = Math.hypot(tr.c, tr.d) || dpr * scale;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.font = `${fontPx}px ${PIXEL_FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const maxW = 13.2 * screenPx * dpr;
+  let label = raw;
+  while (ctx.measureText(label).width > maxW && label.length > 5) label = label.slice(0, -1);
+  if (label !== raw) label = `${label.slice(0, -1)}…`;
+  const tw = ctx.measureText(label).width;
+  const padX = 4.2 * dpr;
+  const padY = 2.1 * dpr;
+  const boxW = tw + padX * 2;
+  const boxH = fontPx + padY * 2;
+  const gap = 3.2 * dpr;
+  const clearA = (opts?.clearAbove ?? 0) * uy;
+  const clearB = (opts?.clearBelow ?? 0) * uy;
+  const aboveY = origin.y - clearA - gap - boxH / 2;
+  const belowY = origin.y + clearB + gap + boxH / 2;
+  const candidates: Array<{ cx: number; cy: number }> = [
+    { cx: origin.x, cy: aboveY },
+    { cx: origin.x, cy: belowY },
+    { cx: origin.x + boxW * 0.62, cy: aboveY },
+    { cx: origin.x - boxW * 0.62, cy: aboveY },
+    { cx: origin.x + boxW * 0.62, cy: belowY },
+    { cx: origin.x - boxW * 0.62, cy: belowY },
+  ];
+  const avoid = (opts?.avoid ?? []).map((b) => applyBox(tr, b));
+  const taken = opts?.taken ?? [];
+  let best: TagBox | null = null;
+  for (const c of candidates) {
+    const box: TagBox = { x: c.cx - boxW / 2, y: c.cy - boxH / 2, w: boxW, h: boxH };
+    const hitsSprite = avoid.some((s) => boxesOverlap(box, s, 1.2 * dpr));
+    const hitsTag = taken.some((s) => boxesOverlap(box, s, 2 * dpr));
+    if (!hitsSprite && !hitsTag) {
+      best = box;
+      break;
+    }
+    if (!best && !hitsSprite) best = box;
+  }
+  if (!best) {
+    best = { x: origin.x - boxW / 2, y: aboveY - boxH / 2, w: boxW, h: boxH };
+  }
+  const r = 2.2 * dpr;
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') ctx.roundRect(best.x, best.y, best.w, best.h, r);
+  else ctx.rect(best.x, best.y, best.w, best.h);
+  ctx.fillStyle = 'rgba(14, 11, 9, 0.82)';
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, dpr);
+  ctx.strokeStyle = 'rgba(228, 196, 138, 0.35)';
+  ctx.stroke();
+  ctx.fillStyle = '#f3ead6';
+  ctx.fillText(label, best.x + best.w / 2, best.y + best.h / 2 + 0.4 * dpr);
+  ctx.restore();
+  taken.push(best);
+  return best;
+}
 
 function drawTile(
   ctx: CanvasRenderingContext2D,
@@ -45,6 +141,11 @@ function spriteWorldScale(img: HTMLImageElement): number {
   return Math.min(targetH / img.height, targetW / img.width);
 }
 
+/** One sprite pixel matches one inner-zone tile pixel. */
+function characterWorldH(pxH: number): number {
+  return pxH / ZONE_SCALE;
+}
+
 function grassSrc(biome: Biome): { sx: number; sy: number } {
   return tileSrc(GROUPS.plateau, biomeSeason(biome === Biome.Water ? Biome.Plains : biome), 1, 1);
 }
@@ -53,7 +154,7 @@ function pathSeason(biome: Biome): number {
   return biomeSeason(biome);
 }
 
-/** Overworld bake budget: 384 cells × 16px ≈ 6k canvas, enough for 4-tile cells at 8×. */
+/** Overworld bake budget: 384 cells × 16px ≈ 6k canvas (8-tile cells at 16×). */
 const WORLD_BAKE_MAX_CELLS = 384;
 
 function worldBakeStep(width: number, maxCells: number): number {
@@ -72,30 +173,61 @@ function worldWrapShifts(cameraX: number, halfW: number, width: number, viewTile
   return shifts;
 }
 
-function fogIdentity(tiles: Array<{ x: number; y: number }>): string {
-  let minX = 1e9;
-  let minY = 1e9;
-  let maxX = -1e9;
-  let maxY = -1e9;
-  let sum = 0;
-  for (const t of tiles) {
-    minX = Math.min(minX, t.x);
-    minY = Math.min(minY, t.y);
-    maxX = Math.max(maxX, t.x);
-    maxY = Math.max(maxY, t.y);
-    sum = (sum + t.x * 734287 + t.y * 912991) | 0;
-  }
-  return `${tiles.length}:${minX},${minY},${maxX},${maxY}:${sum}:fog4`;
+function drawBoatMarker(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  color: string,
+  facing: number,
+  kind: MapEntity['kind'],
+): void {
+  const s = (kind === 'army' ? 14 : kind === 'caravan' ? 12 : 10) / scale;
+  ctx.save();
+  ctx.translate(x * TILE, y * TILE);
+  const rot = [Math.PI, -Math.PI / 2, Math.PI / 2, 0][facing & 3]!;
+  ctx.rotate(rot);
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -s * 0.95);
+  ctx.lineTo(s * 0.38, s * 0.22);
+  ctx.lineTo(s * 0.22, s * 0.55);
+  ctx.lineTo(-s * 0.22, s * 0.55);
+  ctx.lineTo(-s * 0.38, s * 0.22);
+  ctx.closePath();
+  ctx.fillStyle = '#6b3d18';
+  ctx.fill();
+  ctx.lineWidth = 1.2 / scale;
+  ctx.strokeStyle = '#1a120c';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, s * 0.28);
+  ctx.lineTo(0, -s * 1.05);
+  ctx.strokeStyle = '#2a1810';
+  ctx.lineWidth = 1.4 / scale;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0.4 / scale, -s * 0.98);
+  ctx.lineTo(s * 0.72, -s * 0.12);
+  ctx.lineTo(0.4 / scale, s * 0.2);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = '#f3efe6';
+  ctx.lineWidth = 0.9 / scale;
+  ctx.stroke();
+  ctx.restore();
 }
+
 
 export class WorldRenderer {
   worldBake: HTMLCanvasElement | null = null;
+  zoneBake: HTMLCanvasElement | null = null;
+  cloudBake: HTMLCanvasElement | null = null;
   private readonly chunkBakes = new Map<string, HTMLCanvasElement>();
   private isoLayer: HTMLCanvasElement | null = null;
-  private fogCanvas: HTMLCanvasElement | null = null;
-  private fogOx = 0;
-  private fogOy = 0;
-  private fogKey = '';
+  private fogLayer: HTMLCanvasElement | null = null;
+  private tagScreenPx = NAMETAG_BASE_PX * 1.5;
 
   constructor(private readonly assets: AssetLibrary) {}
 
@@ -213,6 +345,102 @@ export class WorldRenderer {
     this.worldBake = canvas;
   }
 
+  bakeZones(world: WorldData): HTMLCanvasElement | null {
+    const nodes = world.nodes;
+    const w = Math.max(1, Math.min(2048, world.width));
+    const h = Math.max(1, Math.min(2048, world.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      this.zoneBake = canvas;
+      return canvas;
+    }
+    ctx.clearRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = false;
+    const sx = w / world.width;
+    const sy = h / world.height;
+    const paint = (node: MapNode) => {
+      const tiles = node.tiles;
+      const rgb = countyRgb(node);
+      const fill = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${node.poiKind ? 0.88 : 0.72})`;
+      if (!tiles?.length) {
+        const b = nodeBounds(node);
+        ctx.fillStyle = fill;
+        ctx.fillRect(b.x0 * sx, b.y0 * sy, Math.max(1, (b.x1 - b.x0) * sx), Math.max(1, (b.y1 - b.y0) * sy));
+        return;
+      }
+      ctx.fillStyle = fill;
+      for (const t of tiles) {
+        ctx.fillRect(t.x * sx, t.y * sy, Math.max(1, sx), Math.max(1, sy));
+      }
+    };
+    for (const node of nodes) {
+      if (node.poiKind) continue;
+      paint(node);
+    }
+    for (const node of nodes) {
+      if (!node.poiKind) continue;
+      paint(node);
+    }
+    this.zoneBake = canvas;
+    return canvas;
+  }
+
+  bakeClouds(world: WorldData, explored: Set<string>): HTMLCanvasElement | null {
+    const span = Math.max(world.width, world.height);
+    const cell = Math.max(1, Math.ceil(span / 640));
+    const w = Math.max(1, Math.ceil(world.width / cell));
+    const h = Math.max(1, Math.ceil(world.height / cell));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      this.cloudBake = canvas;
+      return canvas;
+    }
+    const img = ctx.createImageData(w, h);
+    const pix = img.data;
+    const seed = world.seed ^ 0xf09;
+    const clear = new Uint8Array(w * h);
+    for (let py = 0; py < h; py++) {
+      const wy = Math.min(world.height - 1, Math.floor(py * cell + cell * 0.5));
+      for (let px = 0; px < w; px++) {
+        const wx = Math.min(world.width - 1, Math.floor(px * cell + cell * 0.5));
+        const water = world.biomes[wx + wy * world.width] === Biome.Water;
+        if (water || explored.has(`${wx},${wy}`)) clear[px + py * w] = 1;
+      }
+    }
+    const rim = (px: number, py: number): boolean => {
+      if (px > 0 && clear[px - 1 + py * w]) return true;
+      if (px + 1 < w && clear[px + 1 + py * w]) return true;
+      if (py > 0 && clear[px + (py - 1) * w]) return true;
+      if (py + 1 < h && clear[px + (py + 1) * w]) return true;
+      return false;
+    };
+    for (let py = 0; py < h; py++) {
+      for (let px = 0; px < w; px++) {
+        const i = px + py * w;
+        const oi = i * 4;
+        if (clear[i]) {
+          pix[oi + 3] = 0;
+          continue;
+        }
+        const n = hash2(px, py, seed);
+        const shade = rim(px, py) ? 12 : 20 + n * 10;
+        pix[oi] = shade;
+        pix[oi + 1] = shade + 4;
+        pix[oi + 2] = shade + 8;
+        pix[oi + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    this.cloudBake = canvas;
+    return canvas;
+  }
+
   bakeChunk(chunk: ChunkData, neighbors: Map<string, ChunkData>, world: WorldData): void {
     const canvas = document.createElement('canvas');
     canvas.width = chunk.size * TILE;
@@ -324,18 +552,27 @@ export class WorldRenderer {
     opts: {
       showOutlines: boolean;
       showPois: boolean;
+      visiblePoiIds?: Set<string> | null;
       hoveredId: string | null;
       hoveredPoiId: string | null;
       hoveredEntityId: string | null;
       detailNode: MapNode | null;
       entities: MapEntity[];
+      /** Drawn as pins on the unmasked canvas (e.g. travelers outside isolation). */
+      markerEntities?: MapEntity[];
       chunks?: Map<string, ChunkData>;
       isolateChunk?: { wx: number; wy: number } | null;
       isolateTiles?: Array<{ x: number; y: number }> | null;
+      showPlayer?: boolean;
+      outlineAmt?: number;
+      cloudAmt?: number;
+      /** Multiplier on the original 10px nametag (1.5 = default). */
+      nametagScale?: number;
     },
   ): void {
+    this.tagScreenPx = NAMETAG_BASE_PX * clamp(opts.nametagScale ?? 1.5, 0.5, 2.5);
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#0b1014';
+    ctx.fillStyle = '#151b22';
     ctx.fillRect(0, 0, viewW, viewH);
 
     const isolated = opts.isolateTiles?.length
@@ -346,9 +583,48 @@ export class WorldRenderer {
 
     if (isolated) {
       const isoKeys = new Set(isolated.map((t) => chunkKey(t.x, t.y)));
+      const contextNodes: MapNode[] = [];
+      const isoNodes: MapNode[] = [];
+      for (const node of world.nodes) {
+        if (this.nodeInIsolation(node, isoKeys)) isoNodes.push(node);
+        else contextNodes.push(node);
+      }
+      ctx.save();
+      ctx.translate(viewW / 2, viewH / 2);
+      ctx.scale(camera.scale, camera.scale);
+      ctx.translate(-camera.x * TILE, -camera.y * TILE);
+      if (this.worldBake) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = 0.34;
+        ctx.drawImage(this.worldBake, 0, 0, world.width * TILE, world.height * TILE);
+        ctx.globalAlpha = 1;
+      }
+      this.drawOutlines(
+        ctx,
+        contextNodes,
+        camera.scale,
+        opts.showOutlines,
+        opts.hoveredId,
+        0,
+        opts.detailNode,
+        opts.outlineAmt ?? 0.7,
+        true,
+      );
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      for (const t of isolated) {
+        ctx.rect(t.x * TILE, t.y * TILE, TILE, TILE);
+      }
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.restore();
+      ctx.restore();
+
       const layer = this.ensureIsoLayer(viewW, viewH);
       const lctx = layer.getContext('2d');
       if (!lctx) return;
+      const detailT = smoothstep(DETAIL_START, DETAIL_END, camera.scale);
       lctx.setTransform(1, 0, 0, 1, 0, 0);
       lctx.clearRect(0, 0, viewW, viewH);
       lctx.imageSmoothingEnabled = false;
@@ -358,11 +634,36 @@ export class WorldRenderer {
       lctx.translate(-camera.x * TILE, -camera.y * TILE);
       this.drawVisibleChunks(lctx, camera, viewW, viewH, world, 1, isoKeys);
       this.drawChunkSprites(lctx, camera, viewW, viewH, world, 1, opts.chunks, isoKeys);
-      this.drawEntities(lctx, opts.entities, camera, viewW, viewH, player, opts.hoveredEntityId);
-      this.applyFogMask(lctx, isolated);
+      this.drawOutlines(
+        lctx,
+        isoNodes,
+        camera.scale,
+        opts.showOutlines,
+        opts.hoveredId,
+        detailT,
+        opts.detailNode,
+        opts.outlineAmt ?? 0.7,
+      );
+      this.drawEntities(lctx, opts.entities, camera, viewW, viewH, player, opts.hoveredEntityId, 0, !!opts.showPlayer);
+      lctx.restore();
+      this.applyScreenFog(lctx, isolated, camera, viewW, viewH);
+      lctx.save();
+      lctx.translate(viewW / 2, viewH / 2);
+      lctx.scale(camera.scale, camera.scale);
+      lctx.translate(-camera.x * TILE, -camera.y * TILE);
+      this.drawPois(lctx, world, camera.scale, opts.showPois, opts.hoveredPoiId, opts.detailNode, opts.visiblePoiIds);
       lctx.restore();
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(layer, 0, 0);
+      const remote = opts.markerEntities;
+      if (remote?.length) {
+        ctx.save();
+        ctx.translate(viewW / 2, viewH / 2);
+        ctx.scale(camera.scale, camera.scale);
+        ctx.translate(-camera.x * TILE, -camera.y * TILE);
+        this.drawEntityPins(ctx, remote, camera, viewW, viewH, opts.hoveredEntityId);
+        ctx.restore();
+      }
       return;
     }
 
@@ -408,88 +709,98 @@ export class WorldRenderer {
     for (const shift of wrapShifts) {
       ctx.save();
       ctx.translate(shift * TILE, 0);
-      this.drawOutlines(ctx, world.nodes, camera.scale, opts.showOutlines, opts.hoveredId, detailT, opts.detailNode);
-      this.drawPois(ctx, world, camera.scale, opts.showPois, opts.hoveredPoiId, opts.detailNode);
-      this.drawEntities(ctx, opts.entities, camera, viewW, viewH, player, opts.hoveredEntityId, shift);
+      this.drawOutlines(
+        ctx,
+        world.nodes,
+        camera.scale,
+        opts.showOutlines,
+        opts.hoveredId,
+        detailT,
+        opts.detailNode,
+        opts.outlineAmt ?? 0.7,
+      );
+      ctx.restore();
+    }
+
+    const cloudAmt = clamp(opts.cloudAmt ?? 0.92, 0, 1);
+    if (this.cloudBake && cloudAmt > 0.01) {
+      const wpx = world.width * TILE;
+      const hpx = world.height * TILE;
+      const smooth = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = true;
+      ctx.globalAlpha = cloudAmt;
+      for (const shift of wrapShifts) {
+        ctx.save();
+        ctx.translate(shift * TILE, 0);
+        ctx.drawImage(this.cloudBake, 0, 0, wpx, hpx);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+      ctx.imageSmoothingEnabled = smooth;
+    }
+
+    for (const shift of wrapShifts) {
+      ctx.save();
+      ctx.translate(shift * TILE, 0);
+      this.drawEntities(ctx, opts.entities, camera, viewW, viewH, player, opts.hoveredEntityId, shift, !!opts.showPlayer);
+      this.drawPois(ctx, world, camera.scale, opts.showPois, opts.hoveredPoiId, opts.detailNode, opts.visiblePoiIds);
       ctx.restore();
     }
     ctx.restore();
   }
 
-  private ensureIsoLayer(viewW: number, viewH: number): HTMLCanvasElement {
+  private ensureLayer(current: HTMLCanvasElement | null, viewW: number, viewH: number): HTMLCanvasElement {
     const w = Math.max(1, Math.ceil(viewW));
     const h = Math.max(1, Math.ceil(viewH));
-    if (!this.isoLayer || this.isoLayer.width !== w || this.isoLayer.height !== h) {
-      this.isoLayer = document.createElement('canvas');
-      this.isoLayer.width = w;
-      this.isoLayer.height = h;
+    if (!current || current.width !== w || current.height !== h) {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      return canvas;
     }
+    return current;
+  }
+
+  private ensureIsoLayer(viewW: number, viewH: number): HTMLCanvasElement {
+    this.isoLayer = this.ensureLayer(this.isoLayer, viewW, viewH);
     return this.isoLayer;
   }
 
-  private applyFogMask(ctx: CanvasRenderingContext2D, tiles: Array<{ x: number; y: number }>): void {
-    const mask = this.fogFor(tiles);
-    if (!mask) return;
+  private applyScreenFog(
+    ctx: CanvasRenderingContext2D,
+    tiles: Array<{ x: number; y: number }>,
+    camera: CameraState,
+    viewW: number,
+    viewH: number,
+  ): void {
+    this.fogLayer = this.ensureLayer(this.fogLayer, viewW, viewH);
+    const mask = this.fogLayer;
+    const mctx = mask.getContext('2d');
+    if (!mctx) return;
+    mctx.setTransform(1, 0, 0, 1, 0, 0);
+    mctx.clearRect(0, 0, mask.width, mask.height);
+    mctx.fillStyle = '#fff';
+    mctx.save();
+    mctx.translate(viewW / 2, viewH / 2);
+    mctx.scale(camera.scale, camera.scale);
+    mctx.translate(-camera.x * TILE, -camera.y * TILE);
+    const halfW = viewW / (2 * camera.scale) / TILE + 2;
+    const halfH = viewH / (2 * camera.scale) / TILE + 2;
+    const x0 = camera.x - halfW;
+    const x1 = camera.x + halfW;
+    const y0 = camera.y - halfH;
+    const y1 = camera.y + halfH;
+    for (const t of tiles) {
+      if (t.x + 1 < x0 || t.x > x1 || t.y + 1 < y0 || t.y > y1) continue;
+      mctx.fillRect(t.x * TILE, t.y * TILE, TILE, TILE);
+    }
+    mctx.restore();
     ctx.save();
     ctx.imageSmoothingEnabled = true;
+    ctx.filter = 'blur(22px)';
     ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(mask.canvas, mask.ox, mask.oy);
+    ctx.drawImage(mask, 0, 0);
     ctx.restore();
-  }
-
-  private fogFor(
-    tiles: Array<{ x: number; y: number }>,
-  ): { canvas: HTMLCanvasElement; ox: number; oy: number } | null {
-    if (!tiles.length) return null;
-    const key = fogIdentity(tiles);
-    if (this.fogCanvas && this.fogKey === key) {
-      return { canvas: this.fogCanvas, ox: this.fogOx, oy: this.fogOy };
-    }
-    const bounds = boundsFromTiles(tiles);
-    const pad = TILE * 2.4;
-    const ox = bounds.x0 * TILE - pad;
-    const oy = bounds.y0 * TILE - pad;
-    const width = Math.max(1, Math.ceil((bounds.x1 - bounds.x0 + 1) * TILE + pad * 2));
-    const height = Math.max(1, Math.ceil((bounds.y1 - bounds.y0 + 1) * TILE + pad * 2));
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const mctx = canvas.getContext('2d');
-    if (!mctx) return null;
-    const stamp = document.createElement('canvas');
-    stamp.width = width;
-    stamp.height = height;
-    const sctx = stamp.getContext('2d');
-    if (!sctx) return null;
-    sctx.fillStyle = '#fff';
-    const set = new Set(tiles.map((t) => `${t.x},${t.y}`));
-    const inset = TILE * 0.4;
-    const rad = TILE * 0.48;
-    for (const t of tiles) {
-      const n = set.has(`${t.x},${t.y - 1}`);
-      const e = set.has(`${t.x + 1},${t.y}`);
-      const s = set.has(`${t.x},${t.y + 1}`);
-      const w = set.has(`${t.x - 1},${t.y}`);
-      const x0 = t.x * TILE - ox + (w ? 0 : inset);
-      const y0 = t.y * TILE - oy + (n ? 0 : inset);
-      const x1 = (t.x + 1) * TILE - ox - (e ? 0 : inset);
-      const y1 = (t.y + 1) * TILE - oy - (s ? 0 : inset);
-      const ww = Math.max(2, x1 - x0);
-      const hh = Math.max(2, y1 - y0);
-      sctx.beginPath();
-      sctx.roundRect(x0, y0, ww, hh, Math.min(rad, ww / 2, hh / 2));
-      sctx.fill();
-    }
-    mctx.clearRect(0, 0, width, height);
-    mctx.filter = 'blur(6px)';
-    mctx.imageSmoothingEnabled = true;
-    mctx.drawImage(stamp, 0, 0);
-    mctx.filter = 'none';
-    this.fogCanvas = canvas;
-    this.fogKey = key;
-    this.fogOx = ox;
-    this.fogOy = oy;
-    return { canvas, ox, oy };
   }
 
   forgetChunk(wx: number, wy: number): void {
@@ -622,6 +933,15 @@ export class WorldRenderer {
     }
   }
 
+  private nodeInIsolation(node: MapNode, isoKeys: Set<string>): boolean {
+    const tiles = node.tiles;
+    if (!tiles?.length) return false;
+    for (const t of tiles) {
+      if (isoKeys.has(chunkKey(t.x, t.y))) return true;
+    }
+    return false;
+  }
+
   private drawOutlines(
     ctx: CanvasRenderingContext2D,
     nodes: MapNode[],
@@ -630,43 +950,56 @@ export class WorldRenderer {
     hoveredId: string | null,
     detailT: number,
     detailNode: MapNode | null,
+    amt: number,
+    context = false,
   ): void {
+    const overlay = clamp(amt, 0, 1);
+    if (overlay < 0.01 && !hoveredId && detailT < 0.35 && !context) return;
+    const political = smoothstep(0.28, 1, overlay);
     for (const node of nodes) {
       const hovered = node.id === hoveredId;
       const isActive = detailNode?.id === node.id;
-      const authored = node.origin === 'authored';
       const city = node.kind === 'city' || node.kind === 'town';
       const instanced = isInstancedZone(node);
       const mapped = city || instanced;
-      if (!show && !hovered && !(isActive && detailT > 0.35) && !mapped) continue;
+      if (overlay < 0.06 && !show && !hovered && !(isActive && detailT > 0.35) && !mapped && !context) continue;
       ctx.save();
-      if (hovered || instanced) {
+      const rgb = countyRgb(node);
+      const streetFade = context ? 1 : 1 - smoothstep(0.45, 1, detailT) * 0.82;
+      const fillA = overlay * streetFade * (hovered ? 0.28 + political * 0.62 : 0.16 + political * 0.72);
+      if (hovered || instanced || overlay > 0.04 || context) {
         ctx.beginPath();
         this.addNodeTiles(ctx, node);
-        ctx.fillStyle = instanced ? 'rgba(125, 206, 160, 0.16)' : authored ? 'rgba(212, 146, 79, 0.12)' : 'rgba(125, 206, 160, 0.1)';
+        ctx.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${fillA})`;
         ctx.fill();
       }
       this.traceNode(ctx, node);
-      ctx.strokeStyle =
-        hovered || isActive
-          ? authored
-            ? 'rgba(224, 168, 106, 0.95)'
-            : 'rgba(125, 206, 160, 0.95)'
-          : instanced
-            ? 'rgba(125, 206, 160, 0.72)'
-            : authored
-              ? 'rgba(212, 146, 79, 0.55)'
-              : 'rgba(125, 206, 160, 0.4)';
-      ctx.lineWidth = (hovered || isActive ? 2.2 : mapped ? 1.7 : 1.2) / scale;
-      ctx.setLineDash(hovered || isActive || mapped ? [] : [5 / scale, 4 / scale]);
+      const strokeA = 0.12 + overlay * 0.88;
+      ctx.lineJoin = 'miter';
+      ctx.miterLimit = 2.4;
+      ctx.setLineDash(hovered || isActive || mapped || political > 0.45 || context ? [] : [5 / scale, 4 / scale]);
+      ctx.strokeStyle = `rgba(16, 12, 8, ${strokeA})`;
+      ctx.lineWidth = (1.6 + overlay * 3.2 + (hovered || isActive ? 0.8 : 0)) / scale;
       ctx.stroke();
-      if (hovered || (mapped && scale < 1.35)) {
+      if (political > 0.4) {
+        ctx.strokeStyle = `rgba(${Math.max(0, rgb[0] - 28)}, ${Math.max(0, rgb[1] - 28)}, ${Math.max(0, rgb[2] - 28)}, ${0.55 + overlay * 0.4})`;
+        ctx.lineWidth = (1.05 + overlay * 1.4) / scale;
+        ctx.stroke();
+      }
+      const showName =
+        !node.poiKind &&
+        (hovered ||
+          isActive ||
+          (overlay > 0.38 && scale < 4.2) ||
+          (mapped && scale < 1.45) ||
+          (context && overlay > 0.2 && scale < 10));
+      if (showName) {
         const b = nodeBounds(node);
         ctx.setLineDash([]);
-        ctx.fillStyle = '#f3efe6';
-        ctx.font = `${Math.max(10, 11 / scale)}px Poppins, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText(node.name, node.cx * TILE, b.y0 * TILE - 5 / scale);
+        const lx = node.cx * TILE;
+        const ly = (b.y0 + (b.y1 - b.y0) * 0.42) * TILE;
+        const label = node.poiKind ? `${node.name} · ${POI_LABELS[node.poiKind]}` : node.name;
+        drawNametag(ctx, label, lx, ly, scale, { screenPx: this.tagScreenPx });
       }
       ctx.restore();
     }
@@ -710,46 +1043,85 @@ export class WorldRenderer {
     show: boolean,
     hoveredPoiId: string | null,
     detailNode: MapNode | null,
+    visibleIds?: Set<string> | null,
   ): void {
-    if (!show && !hoveredPoiId) return;
+    if (!show && !hoveredPoiId && !visibleIds?.size) return;
     for (const poi of world.pois) {
       const hovered = poi.id === hoveredPoiId;
       const isActive = detailNode?.id === poi.id;
-      if (!show && !hovered && !isActive) continue;
-      if (isActive && scale >= DETAIL_START) continue;
+      const revealed = !!visibleIds?.has(poi.id);
+      const instanced = world.nodes.some((n) => n.id === poi.id);
+      if (!show && !revealed && !hovered && !isActive) continue;
       const px = poi.x * TILE;
       const py = poi.y * TILE;
       const color = poiColor(poi.kind);
-      const s = Math.max(4.5, 9 / scale);
+      const s = 15 / scale;
       ctx.save();
-      if (hovered || isActive) {
-        const b = boundsFromRadius(poi.x, poi.y, poi.radius);
-        ctx.beginPath();
-        ctx.rect(b.x0 * TILE, b.y0 * TILE, (b.x1 - b.x0) * TILE, (b.y1 - b.y0) * TILE);
-        ctx.strokeStyle = color.replace('1)', '0.55)');
-        ctx.lineWidth = 1.4 / scale;
-        ctx.setLineDash([4 / scale, 3 / scale]);
-        ctx.stroke();
-      }
+      ctx.beginPath();
+      ctx.arc(px, py, s * 1.15, 0, Math.PI * 2);
+      ctx.fillStyle = instanced ? 'rgba(18, 14, 10, 0.42)' : 'rgba(18, 14, 10, 0.28)';
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.4 / scale;
+      ctx.stroke();
       ctx.translate(px, py);
       ctx.rotate(Math.PI / 4);
       ctx.fillStyle = color;
       ctx.strokeStyle = '#1a120c';
-      ctx.lineWidth = 1.4 / scale;
+      ctx.lineWidth = 1.5 / scale;
       ctx.fillRect(-s / 2, -s / 2, s, s);
       ctx.strokeRect(-s / 2, -s / 2, s, s);
       ctx.restore();
-      if (hovered || isActive || scale >= 0.85) {
-        ctx.fillStyle = '#f3efe6';
-        ctx.font = `${Math.max(9, 10 / scale)}px Poppins, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText(poi.name, px, py - s - 6 / scale);
-        if (hovered || scale >= 1.4) {
-          ctx.fillStyle = 'rgba(195, 155, 211, 0.95)';
-          ctx.font = `${Math.max(8, 8.5 / scale)}px Poppins, sans-serif`;
-          ctx.fillText(POI_LABELS[poi.kind], px, py - s - 16 / scale);
-        }
+      const pin = { x: px - s * 1.2, y: py - s * 1.2, w: s * 2.4, h: s * 2.4 };
+      const label =
+        hovered || isActive || scale >= 0.7 || instanced ? `${poi.name} · ${POI_LABELS[poi.kind]}` : poi.name;
+      drawNametag(ctx, label, px, py, scale, { clearAbove: s * 1.35, avoid: [pin], screenPx: this.tagScreenPx });
+    }
+  }
+
+  /** Map pins only — used for groups outside the isolated place / fog mask. */
+  private drawEntityPins(
+    ctx: CanvasRenderingContext2D,
+    entities: MapEntity[],
+    camera: CameraState,
+    viewW: number,
+    viewH: number,
+    hoveredId: string | null,
+    shift = 0,
+  ): void {
+    const halfW = viewW / (2 * camera.scale) / TILE;
+    const halfH = viewH / (2 * camera.scale) / TILE;
+    const pad = 4;
+    const x0 = camera.x - shift - halfW - pad;
+    const x1 = camera.x - shift + halfW + pad;
+    const y0 = camera.y - halfH - pad;
+    const y1 = camera.y + halfH + pad;
+    for (const e of entities) {
+      if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
+      const mx = e.x;
+      const my = e.y;
+      ctx.save();
+      if (e.afloat) {
+        drawBoatMarker(ctx, mx, my, camera.scale, kindColor(e.kind), e.facing, e.kind);
+      } else {
+        const r = (e.kind === 'army' ? 11 : e.kind === 'caravan' ? 9.5 : 7.5) / camera.scale;
+        ctx.beginPath();
+        ctx.arc(mx * TILE, my * TILE, r, 0, Math.PI * 2);
+        ctx.fillStyle = kindColor(e.kind);
+        ctx.fill();
+        ctx.lineWidth = 1.4 / camera.scale;
+        ctx.strokeStyle = '#1a120c';
+        ctx.stroke();
       }
+      if (e.id === hoveredId) {
+        const r = (e.kind === 'army' ? 11 : e.kind === 'caravan' ? 9.5 : 7.5) / camera.scale;
+        drawNametag(ctx, e.name, mx * TILE, my * TILE, camera.scale, {
+          clearAbove: r + 4 / camera.scale,
+          avoid: [{ x: mx * TILE - r, y: my * TILE - r, w: r * 2, h: r * 2 }],
+          screenPx: this.tagScreenPx,
+        });
+      }
+      ctx.restore();
     }
   }
 
@@ -762,6 +1134,7 @@ export class WorldRenderer {
     player: PlayerState,
     hoveredId: string | null,
     shift = 0,
+    showPlayer = true,
   ): void {
     const halfW = viewW / (2 * camera.scale) / TILE;
     const halfH = viewH / (2 * camera.scale) / TILE;
@@ -772,63 +1145,139 @@ export class WorldRenderer {
     const y1 = camera.y + halfH + pad;
     const pinT = 1 - smoothstep(0.4, 1.65, camera.scale);
     const spriteT = smoothstep(0.55, 3.4, camera.scale);
-    type Mark = { y: number; kind: 'player' | 'actor'; e?: MapEntity; mx?: number; my?: number; sheet?: string; char?: number; facing?: number; frame?: number };
-    const marks: Mark[] = [{ y: player.y, kind: 'player' }];
+    type Mark = {
+      y: number;
+      kind: 'player' | 'actor';
+      e?: MapEntity;
+      mx?: number;
+      my?: number;
+      sheet?: string;
+      char?: number;
+      facing?: number;
+      frame?: number;
+      lead?: boolean;
+    };
+    const marks: Mark[] = showPlayer ? [{ y: player.y, kind: 'player' }] : [];
     for (const e of entities) {
       if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) {
-        const vis = e.members.some((m) => m.x >= x0 && m.x <= x1 && m.y >= y0 && m.y <= y1);
+        const vis = !e.afloat && e.members.some((m) => m.x >= x0 && m.x <= x1 && m.y >= y0 && m.y <= y1);
         if (!vis) continue;
       }
-      marks.push({ y: e.y, kind: 'actor', e, mx: e.x, my: e.y, sheet: e.sheet, char: e.char, facing: e.facing, frame: e.frame });
-      for (const m of e.members) {
-        marks.push({ y: m.y, kind: 'actor', e, mx: m.x, my: m.y, sheet: m.sheet, char: m.char, facing: m.facing, frame: m.frame });
+      if (e.afloat) {
+        marks.push({
+          y: e.y,
+          kind: 'actor',
+          e,
+          mx: e.x,
+          my: e.y,
+          sheet: 'boat',
+          char: boatChar(e.kind),
+          facing: e.facing,
+          frame: e.frame,
+          lead: true,
+        });
+        continue;
+      }
+      marks.push({ y: e.y, kind: 'actor', e, mx: e.x, my: e.y, sheet: e.sheet, char: e.char, facing: e.facing, frame: e.frame, lead: true });
+      const followers =
+        e.kind === 'army' ? armyVisibleFollowers(camera.scale, e.members.length) : e.members.length;
+      for (let i = 0; i < followers; i++) {
+        const m = e.members[i]!;
+        marks.push({ y: m.y, kind: 'actor', e, mx: m.x, my: m.y, sheet: m.sheet, char: m.char, facing: m.facing, frame: m.frame, lead: false });
       }
     }
     marks.sort((a, b) => a.y - b.y);
+    const occupied: TagBox[] = [];
+    const pending: Array<{ text: string; x: number; y: number; clearAbove: number; clearBelow: number }> = [];
+    const scale = camera.scale;
     for (const mark of marks) {
       if (mark.kind === 'player') {
-        this.drawPlayer(ctx, player, camera.scale);
+        const spr = this.drawPlayer(ctx, player, scale);
+        if (spr) occupied.push(spr);
+        if (player.name && scale >= 2.8) {
+          pending.push({
+            text: player.name,
+            x: player.x * TILE,
+            y: player.y * TILE,
+            clearAbove: spr ? player.y * TILE - spr.y : 12 / scale,
+            clearBelow: spr ? spr.y + spr.h - player.y * TILE : 4 / scale,
+          });
+        }
         continue;
       }
       const e = mark.e!;
       const mx = mark.mx!;
       const my = mark.my!;
       const hovered = e.id === hoveredId;
-      if (pinT > 0.05 && mark.sheet === e.sheet && mark.char === e.char) {
+      const actorPinT = e.afloat ? 1 - smoothstep(0.08, 0.55, scale) : pinT;
+      const actorSpriteT = e.afloat ? Math.max(spriteT, smoothstep(0.14, 1.6, scale)) : spriteT;
+      let sprite: TagBox | null = null;
+      if (actorPinT > 0.05 && mark.lead) {
         ctx.save();
-        ctx.globalAlpha = pinT;
-        const r = (e.kind === 'army' ? 11 : e.kind === 'caravan' ? 9.5 : 7.5) / camera.scale;
-        ctx.beginPath();
-        ctx.arc(mx * TILE, my * TILE, r, 0, Math.PI * 2);
-        ctx.fillStyle = kindColor(e.kind);
-        ctx.fill();
-        ctx.lineWidth = 1.4 / camera.scale;
-        ctx.strokeStyle = '#1a120c';
-        ctx.stroke();
+        ctx.globalAlpha = actorPinT;
+        if (e.afloat) {
+          drawBoatMarker(ctx, mx, my, scale, kindColor(e.kind), e.facing, e.kind);
+        } else {
+          const r = (e.kind === 'army' ? 11 : e.kind === 'caravan' ? 9.5 : 7.5) / scale;
+          ctx.beginPath();
+          ctx.arc(mx * TILE, my * TILE, r, 0, Math.PI * 2);
+          ctx.fillStyle = kindColor(e.kind);
+          ctx.fill();
+          ctx.lineWidth = 1.4 / scale;
+          ctx.strokeStyle = '#1a120c';
+          ctx.stroke();
+          sprite = { x: mx * TILE - r, y: my * TILE - r, w: r * 2, h: r * 2 };
+        }
         ctx.restore();
       }
-      if (spriteT > 0.04) {
+      if (actorSpriteT > 0.04) {
         const sheet = this.assets.sheet(mark.sheet!);
         if (sheet) {
-          const screenH = lerp(12, e.kind === 'caravan' || e.kind === 'army' ? 34 : 28, spriteT);
-          const h = screenH / camera.scale;
+          const worldH = characterWorldH(sheet.frameH);
+          const close = e.afloat
+            ? e.kind === 'wanderer'
+              ? 36
+              : 46
+            : e.kind === 'caravan' || e.kind === 'army'
+              ? 34
+              : 28;
+          const minScreen = lerp(e.afloat ? 16 : 12, close, actorSpriteT);
+          const screenH = Math.max(minScreen, worldH * scale);
+          const h = screenH / scale;
           const w = (sheet.frameW / sheet.frameH) * h;
+          const dx = mx * TILE - w / 2;
+          const dy = my * TILE - h + 2 / scale;
           ctx.save();
-          ctx.globalAlpha = Math.max(spriteT, 0.35);
-          drawCharFrame(ctx, sheet, mark.char!, mark.facing ?? 0, mark.frame ?? 1, mx * TILE - w / 2, my * TILE - h + 2 / camera.scale, w, h);
+          ctx.globalAlpha = Math.max(actorSpriteT, 0.4);
+          drawCharFrame(ctx, sheet, mark.char!, mark.facing ?? 0, mark.frame ?? 1, dx, dy, w, h);
           ctx.restore();
+          sprite = { x: dx, y: dy, w, h };
         }
       }
-      if (hovered && mark.sheet === e.sheet && mark.char === e.char) {
-        ctx.fillStyle = '#f3efe6';
-        ctx.font = `${Math.max(9, 10 / camera.scale)}px Poppins, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText(e.name, mx * TILE, my * TILE - 10 / camera.scale);
+      if (sprite) occupied.push(sprite);
+      if (hovered && mark.lead) {
+        pending.push({
+          text: e.name,
+          x: mx * TILE,
+          y: my * TILE,
+          clearAbove: sprite ? my * TILE - sprite.y : 12 / scale,
+          clearBelow: sprite ? sprite.y + sprite.h - my * TILE : 4 / scale,
+        });
       }
+    }
+    const taken: TagBox[] = [];
+    for (const tag of pending) {
+      drawNametag(ctx, tag.text, tag.x, tag.y, scale, {
+        clearAbove: tag.clearAbove,
+        clearBelow: tag.clearBelow,
+        avoid: occupied,
+        taken,
+        screenPx: this.tagScreenPx,
+      });
     }
   }
 
-  private drawPlayer(ctx: CanvasRenderingContext2D, player: PlayerState, scale: number): void {
+  private drawPlayer(ctx: CanvasRenderingContext2D, player: PlayerState, scale: number): TagBox | null {
     const px = player.x * TILE;
     const py = player.y * TILE;
     const pinT = 1 - smoothstep(0.45, 2.4, scale);
@@ -852,17 +1301,68 @@ export class WorldRenderer {
       ctx.restore();
     }
     const spriteT = smoothstep(1.6, 5.5, scale);
-    if (spriteT > 0.04) {
+    if (spriteT <= 0.04) return null;
+    const sheet = this.assets.sheet(player.sheet) ?? this.assets.sheet('townsfolk');
+    ctx.save();
+    ctx.globalAlpha = Math.max(spriteT, 1 - pinT);
+    let box: TagBox | null = null;
+    if (sheet) {
+      const worldH = characterWorldH(sheet.frameH);
+      const minScreen = lerp(16, 28, spriteT);
+      const screenH = Math.max(minScreen, worldH * scale);
+      const h = screenH / scale;
+      const w = (sheet.frameW / sheet.frameH) * h;
+      const dx = px - w / 2;
+      const dy = py - h + 2 / scale;
+      drawCharFrame(ctx, sheet, player.char, player.facing, player.frame, dx, dy, w, h);
+      box = { x: dx, y: dy, w, h };
+    } else {
       const spr = this.assets.player;
-      const screenH = lerp(16, 28, spriteT);
+      const worldH = characterWorldH(spr.height);
+      const minScreen = lerp(16, 28, spriteT);
+      const screenH = Math.max(minScreen, worldH * scale);
       const h = screenH / scale;
       const w = (spr.width / spr.height) * h;
-      ctx.save();
-      ctx.globalAlpha = Math.max(spriteT, 1 - pinT);
-      ctx.drawImage(spr, px - w / 2, py - h + 2 / scale, w, h);
-      ctx.restore();
+      const dx = px - w / 2;
+      const dy = py - h + 2 / scale;
+      ctx.drawImage(spr, dx, dy, w, h);
+      box = { x: dx, y: dy, w, h };
     }
+    ctx.restore();
+    return box;
   }
+}
+
+function countyRgb(node: MapNode): [number, number, number] {
+  const palette: Array<[number, number, number]> = [
+    [232, 118, 96],
+    [86, 186, 142],
+    [236, 186, 82],
+    [110, 148, 214],
+    [214, 128, 176],
+    [176, 196, 86],
+    [240, 148, 92],
+    [72, 188, 182],
+    [204, 112, 98],
+    [138, 178, 96],
+    [222, 168, 104],
+    [104, 156, 188],
+    [196, 108, 148],
+    [128, 188, 148],
+  ];
+  let h = 2166136261;
+  const key = node.id + node.name;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  const i = (h >>> 0) % palette.length;
+  const rgb = palette[i]!;
+  if (node.origin === 'authored' && (node.kind === 'city' || node.kind === 'town')) {
+    return [
+      Math.round(rgb[0] * 0.45 + 212 * 0.55),
+      Math.round(rgb[1] * 0.45 + 146 * 0.55),
+      Math.round(rgb[2] * 0.45 + 79 * 0.55),
+    ];
+  }
+  return rgb;
 }
 
 function poiColor(kind: PoiKind): string {
