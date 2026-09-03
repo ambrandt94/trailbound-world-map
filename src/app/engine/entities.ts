@@ -199,7 +199,7 @@ export function stepEntities(world: WorldData, entities: MapEntity[], dt: number
     const wasAfloat = e.afloat;
     e.afloat = waterAt(world, e.x, e.y);
     if (moved > 0.002) {
-      e.anim += moved * (e.afloat ? 2.2 : 3.4);
+      e.anim += moved * (e.afloat ? 5.5 : 8.5);
       e.frame = [0, 1, 2, 1][Math.floor(e.anim) % 4]!;
       if (e.afloat) {
         for (const m of e.members) {

@@ -450,7 +450,6 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     }
     this.applyStartCamera(data, true);
     this.renderer.bakeClouds(data, this.world.exploredTileKeys());
-    if (this.globe.ready) this.globe.setClouds(this.renderer.cloudBake);
     this.cloudBakeKey = this.world.fogKey();
     this.ngZone.run(() => this.world.generating.set(false));
 
@@ -524,7 +523,6 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     if (data && this.prefs.adventureMode()) this.applyStartCamera(data, true);
     else this.fitCameraScale(data?.width ?? 192, true);
     if (data) this.renderer?.bakeClouds(data, this.world.exploredTileKeys());
-    if (data && this.globe?.ready) this.globe.setClouds(this.renderer?.cloudBake ?? null);
     this.cloudBakeKey = this.world.fogKey();
     this.scheduleFit();
   }
@@ -807,7 +805,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.player.y = clamp(this.player.y + (my / len) * speed * dt, 0.5, maxY);
     this.player.facing = facingFromDelta(mx, my);
     const moved = Math.hypot(wrapDeltaX(ox, this.player.x, width), this.player.y - oy);
-    this.player.anim += moved * (sprinting ? 4.2 : 3.4);
+    this.player.anim += moved * (sprinting ? 10.5 : 8.5);
     this.player.frame = [0, 1, 2, 1][Math.floor(this.player.anim) % 4]!;
     this.noteAdventureEdge(world);
     if (this.world.simMode() === 'sync') {
@@ -1295,8 +1293,6 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       markers: this.globeMarkers(world),
       zoneTex: this.renderer.zoneBake,
       zoneAmt: (this.world.showOutlines() ? 1 : 0.55) * this.prefs.zoneOverlay(),
-      cloudTex: this.renderer.cloudBake,
-      cloudAmt: this.prefs.cloudCover(),
     };
     if (this.showingGlobe() && this.globe?.ready) {
       this.setGlobeVisible(true);
@@ -1549,8 +1545,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const key = `${this.world.fogKey()}:fog`;
     if (key === this.cloudBakeKey && this.renderer?.cloudBake) return;
     this.cloudBakeKey = key;
-    const canvas = this.renderer?.bakeClouds(world, this.world.exploredTileKeys()) ?? null;
-    this.globe?.setClouds(canvas);
+    this.renderer?.bakeClouds(world, this.world.exploredTileKeys());
   }
 
   private setGlobeVisible(on: boolean): void {

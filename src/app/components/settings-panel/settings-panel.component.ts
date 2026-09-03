@@ -74,7 +74,7 @@ import { WorldService } from '../../services/world.service';
         </div>
         <div class="slider-row">
           <span>Tags</span>
-          <mat-slider min="50" max="250" step="5" discrete class="overlay-slider">
+          <mat-slider min="50" max="450" step="5" discrete class="overlay-slider">
             <input matSliderThumb [value]="tagPct()" (valueChange)="onTags($event)" />
           </mat-slider>
         </div>

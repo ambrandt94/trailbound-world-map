@@ -101,14 +101,7 @@ void main() {
     vec4 z = texture2DLodEXT(uZones, uv, 0.0);
     albedo = mix(albedo, z.rgb, clamp(z.a * uZoneAmt, 0.0, 1.0));
   }
-  if (uCloudsOn > 0.5) {
-    vec4 c = texture2DLodEXT(uClouds, uv, 0.0);
-    albedo = mix(albedo, c.rgb, clamp(c.a * uCloudAmt, 0.0, 1.0));
-  }
-  float ndotl = max(0.0, dot(normalize(vViewN), normalize(uLight)));
-  float amb = 0.62;
-  vec3 lit = albedo * (amb + (1.0 - amb) * ndotl);
-  gl_FragColor = vec4(lit, 1.0);
+  gl_FragColor = vec4(albedo, 1.0);
 }
 `;
 
@@ -767,7 +760,6 @@ export function canvasGlobeRadiusPx(viewW: number, viewH: number, scale: number,
 
 let bakeCache: { src: HTMLCanvasElement; w: number; h: number; pix: Uint8ClampedArray } | null = null;
 let zoneCache: { src: HTMLCanvasElement; w: number; h: number; pix: Uint8ClampedArray } | null = null;
-let cloudCache: { src: HTMLCanvasElement; w: number; h: number; pix: Uint8ClampedArray } | null = null;
 let equirectCache: { src: HTMLCanvasElement; canvas: HTMLCanvasElement } | null = null;
 let softCanvas: HTMLCanvasElement | null = null;
 
@@ -796,22 +788,13 @@ function zonePixels(bake: HTMLCanvasElement): { w: number; h: number; pix: Uint8
   return zoneCache;
 }
 
-function cloudPixels(bake: HTMLCanvasElement): { w: number; h: number; pix: Uint8ClampedArray } {
-  if (cloudCache && cloudCache.src === bake) return cloudCache;
-  const ctx = bake.getContext('2d');
-  if (!ctx) return { w: 1, h: 1, pix: new Uint8ClampedArray(4) };
-  const img = ctx.getImageData(0, 0, bake.width, bake.height);
-  cloudCache = { src: bake, w: bake.width, h: bake.height, pix: img.data };
-  return cloudCache;
-}
-
 /** Software sphere when WebGL is unavailable. */
 export function drawCanvasGlobe(
   ctx: CanvasRenderingContext2D,
   bake: HTMLCanvasElement | null,
   state: GlobeDrawState,
 ): void {
-  const { viewW, viewH, width, height, cameraX, cameraY, scale, markers, zoneTex, zoneAmt, cloudTex, cloudAmt } = state;
+  const { viewW, viewH, width, height, cameraX, cameraY, scale, markers, zoneTex, zoneAmt } = state;
   ctx.fillStyle = '#070b10';
   ctx.fillRect(0, 0, viewW, viewH);
   if (!bake) return;
@@ -820,7 +803,6 @@ export function drawCanvasGlobe(
   const basis = globeLookBasis(look.lon, look.lat);
   const src = bakePixels(globeAlbedo(bake));
   const zones = zoneTex ? zonePixels(zoneTex) : null;
-  const clouds = cloudTex ? cloudPixels(cloudTex) : null;
   const zAmt = zoneAmt ?? 0.7;
   const dim = Math.max(48, Math.min(520, Math.round(radiusPx * 2)));
   if (!softCanvas || softCanvas.width !== dim) {
@@ -832,7 +814,6 @@ export function drawCanvasGlobe(
   if (!tctx) return;
   const img = tctx.createImageData(dim, dim);
   const out = img.data;
-  const light = norm3([0.42, 0.62, 0.78]);
   for (let py = 0; py < dim; py++) {
     for (let px = 0; px < dim; px++) {
       const nx = ((px + 0.5) / dim) * 2 - 1;
@@ -865,22 +846,10 @@ export function drawCanvasGlobe(
           b = b + ((zones.pix[zi + 2] ?? b) - b) * za;
         }
       }
-      if (clouds) {
-        const cxp = Math.floor(u * clouds.w) % clouds.w;
-        const cyp = Math.min(clouds.h - 1, Math.floor(v * clouds.h));
-        const ci = (cyp * clouds.w + cxp) * 4;
-        const ca = ((clouds.pix[ci + 3] ?? 0) / 255) * (cloudAmt ?? 0.92);
-        if (ca > 0.01) {
-          r = r + ((clouds.pix[ci] ?? r) - r) * ca;
-          g = g + ((clouds.pix[ci + 1] ?? g) - g) * ca;
-          b = b + ((clouds.pix[ci + 2] ?? b) - b) * ca;
-        }
-      }
-      const ndotl = 0.4 + 0.6 * Math.max(0, wx * light[0] + wy * light[1] + wz * light[2]);
       const oi = (py * dim + px) * 4;
-      out[oi] = r * ndotl;
-      out[oi + 1] = g * ndotl;
-      out[oi + 2] = b * ndotl;
+      out[oi] = r;
+      out[oi + 1] = g;
+      out[oi + 2] = b;
       out[oi + 3] = 255;
     }
   }

@@ -58,7 +58,7 @@ function drawNametag(
   if (!raw) return null;
   const tr = ctx.getTransform();
   const dpr = Math.max(0.5, Math.hypot(tr.a, tr.b) / Math.max(0.001, scale));
-  const screenPx = opts?.screenPx ?? NAMETAG_BASE_PX * 1.5;
+  const screenPx = opts?.screenPx ?? NAMETAG_BASE_PX * 2.5;
   const fontPx = Math.max(8, screenPx * dpr);
   const origin = applyPoint(tr, x, y);
   const uy = Math.hypot(tr.c, tr.d) || dpr * scale;
@@ -227,7 +227,7 @@ export class WorldRenderer {
   private readonly chunkBakes = new Map<string, HTMLCanvasElement>();
   private isoLayer: HTMLCanvasElement | null = null;
   private fogLayer: HTMLCanvasElement | null = null;
-  private tagScreenPx = NAMETAG_BASE_PX * 1.5;
+  private tagScreenPx = NAMETAG_BASE_PX * 2.5;
 
   constructor(private readonly assets: AssetLibrary) {}
 
@@ -566,11 +566,11 @@ export class WorldRenderer {
       showPlayer?: boolean;
       outlineAmt?: number;
       cloudAmt?: number;
-      /** Multiplier on the original 10px nametag (1.5 = default). */
+      /** Multiplier on the original 10px nametag (2.5 = default / slider middle). */
       nametagScale?: number;
     },
   ): void {
-    this.tagScreenPx = NAMETAG_BASE_PX * clamp(opts.nametagScale ?? 1.5, 0.5, 2.5);
+    this.tagScreenPx = NAMETAG_BASE_PX * clamp(opts.nametagScale ?? 2.5, 0.5, 4.5);
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#151b22';
     ctx.fillRect(0, 0, viewW, viewH);

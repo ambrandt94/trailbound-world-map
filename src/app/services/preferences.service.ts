@@ -124,7 +124,7 @@ export class PreferencesService {
   }
 
   setNametagScale(amt: number): void {
-    this.nametagScale.set(Math.min(2.5, Math.max(0.5, amt)));
+    this.nametagScale.set(Math.min(4.5, Math.max(0.5, amt)));
   }
 
   setHero(name: string, sheet: string, char: number): void {
@@ -178,8 +178,9 @@ export class PreferencesService {
   private readNametagScale(): number {
     migrateWorldMapPrefs();
     const raw = Number(localStorage.getItem(NAMETAG_KEY));
-    if (!Number.isFinite(raw)) return 1.5;
-    return Math.min(2.5, Math.max(0.5, raw));
+    // Prior default was 1.5; treat that as unset so the new middle (2.5) takes over.
+    if (!Number.isFinite(raw) || raw === 1.5) return 2.5;
+    return Math.min(4.5, Math.max(0.5, raw));
   }
 
   private readHeroName(): string {
