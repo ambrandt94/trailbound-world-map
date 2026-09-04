@@ -35,11 +35,65 @@ const WANDER_NAMES = [
   'Fox',
   'Dusk',
   'Thorn',
+  'Elara',
+  'Kael',
+  'Borin',
+  'Sylva',
+  'Gareth',
+  'Mira',
+  'Torin',
+  'Nyx',
+  'Aldric',
+  'Vera',
+  'Grim',
+  'Liora',
 ];
 
-const ARMY_NAMES = ['Thorn Host', 'Pike Company', 'Crow Banner', 'Ashfen Levy', 'Watch Riders'];
+const WANDER_ROLES = [
+  'Ranger',
+  'Mage',
+  'Paladin',
+  'Rogue',
+  'Pilgrim',
+  'Merchant',
+  'Scout',
+  'Bard',
+  'Cleric',
+  'Druid',
+  'Warlock',
+  'Knight-Errant',
+  'Monster Hunter',
+  'Cartographer',
+  'Herald',
+];
 
-/** People sheets from Time Fantasy NPC + dwarf/elf packs (plus a few animals). */
+const CARAVAN_KINDS = [
+  'spice caravan',
+  'mule train',
+  'circus wagons',
+  'pilgrim procession',
+  'dwarf ore train',
+  'silk caravan',
+  'mercenary convoy',
+  'relic wagons',
+];
+
+const ARMY_NAMES = [
+  'Thorn Host',
+  'Pike Company',
+  'Crow Banner',
+  'Ashfen Levy',
+  'Watch Riders',
+  'Orc Warband',
+  'Order of the Spire',
+  'Beast Tribe Host',
+  'Bone Column',
+  'Sunmarch Legion',
+  'Jadewild Raiders',
+  'Ironkeep Free Company',
+];
+
+/** People / adventurer sheets. */
 const PEOPLE_SHEETS = [
   'townsfolk',
   'farmer',
@@ -52,11 +106,72 @@ const PEOPLE_SHEETS = [
   'dwarf2',
   'elf1',
   'elf2',
+  'chara2',
+  'chara3',
+  'chara4',
+  'chara5',
+  'chara6',
+  'chara7',
+  'chara8',
+  'npc1',
+  'npc2',
+  'npc3',
+  'npc4',
+  'npc5',
+  'npc6',
+  'bonus1',
+  'wizard',
   'animals1',
   'animals2',
 ] as const;
 
-const ARMY_SHEETS = ['knights', 'knights2', 'dwarf1', 'dwarf2', 'executioner', 'animals5'] as const;
+const MONSTER_SHEETS = [
+  'monster1',
+  'monster2',
+  'monster3',
+  'monster4',
+  'monster_wolf1',
+  'monster_boar',
+  'monster_bird1',
+  'monster_lizardman1',
+  'monster_treant',
+  'monster_golem1',
+  'monster_lich',
+  'monster_minotaur',
+  'monster_raptor1',
+  'monster_elk',
+  'monster_cacto',
+  'monster_phoenix',
+  'monster_dknight1',
+  'orc1',
+  'orc2',
+  'elemental',
+  'beast-tribe-1',
+  'beast-tribe-2',
+  'beast-tribe-3',
+  'beast-hero-1',
+  'beast-hero-2',
+] as const;
+
+const ARMY_SHEETS = [
+  'knights',
+  'knights2',
+  'dwarf1',
+  'dwarf2',
+  'executioner',
+  'animals5',
+  'military1',
+  'military2',
+  'military3',
+  'orc1',
+  'orc2',
+  'monster_dknight1',
+  'monster_lizardman1',
+  'beast-tribe-1',
+  'beast-tribe-4',
+  'beast-hero-3',
+  'chara6',
+] as const;
 
 const ARMY_COLS = 5;
 /** Far-zoom marker / trail size. Close zoom draws the full roster. */
@@ -75,10 +190,14 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
     const spot = findLand(world, rng, landMarks);
     if (!spot) continue;
     const dest = wanderDest(world, rng, cities);
-    const look = pickPerson(rng);
+    const monstrous = rng.chance(0.22);
+    const look = monstrous ? pickMonster(rng) : pickPerson(rng);
+    const role = monstrous
+      ? rng.pick(['Scout', 'Raider', 'Beast', 'Warband Runner', 'Harbinger'])
+      : rng.pick(WANDER_ROLES);
     entities.push({
       id: `wanderer-${i}`,
-      name: `${rng.pick(WANDER_NAMES)} ${rng.pick(['Walker', 'Scout', 'Peddler', 'Messenger', 'Pilgrim'])}`,
+      name: `${rng.pick(WANDER_NAMES)} ${role}`,
       kind: 'wanderer',
       x: spot.x,
       y: spot.y,
@@ -102,12 +221,13 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
       const start = edgeOf(from, rng);
       const packed = 4 + (i % 4);
       const escort = pickPerson(rng);
+      const mount = rng.chance(0.35) ? 'mount1' : 'horse1';
       const members = [
         {
           x: start.x,
           y: start.y + 0.4,
-          sheet: 'horse1',
-          char: 4 + ((i + 1) % 4),
+          sheet: mount,
+          char: mount === 'horse1' ? 4 + ((i + 1) % 4) : rng.int(0, 3),
           facing: 0 as Facing,
           frame: 1,
         },
@@ -122,7 +242,7 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
       ];
       entities.push({
         id: `caravan-${i}`,
-        name: `${from.name}–${to.name} caravan`,
+        name: `${from.name} ${rng.pick(CARAVAN_KINDS)}`,
         kind: 'caravan',
         x: start.x,
         y: start.y,
@@ -130,8 +250,8 @@ export function spawnEntities(world: WorldData, seed: number): MapEntity[] {
         frame: 1,
         anim: 0,
         speed: rng.range(0.95, 1.25),
-        sheet: 'horse1',
-        char: packed,
+        sheet: mount,
+        char: packed % 8,
         destX: to.cx,
         destY: to.cy,
         members,
@@ -229,6 +349,11 @@ function pickPerson(rng: Rng): { sheet: string; char: number } {
   return { sheet, char: rng.int(0, 7) };
 }
 
+function pickMonster(rng: Rng): { sheet: string; char: number } {
+  const sheet = rng.pick([...MONSTER_SHEETS]);
+  return { sheet, char: rng.int(0, 7) };
+}
+
 function pickSoldier(rng: Rng): { sheet: string; char: number } {
   const sheet = rng.pick([...ARMY_SHEETS]);
   if (sheet === 'animals5') return { sheet, char: rng.pick([4, 5, 6, 7]) };
@@ -251,7 +376,8 @@ function retarget(world: WorldData, e: MapEntity, rng: Rng): void {
     e.destX = next.cx + rng.range(-1.2, 1.2);
     e.destY = next.cy + rng.range(-1.2, 1.2);
     const other = cities.find((c) => Math.hypot(c.cx - e.x, c.cy - e.y) > 4) ?? next;
-    e.name = `${nearestCityName(cities, e.x, e.y)}–${other.name} caravan`;
+    e.name = `${nearestCityName(cities, e.x, e.y)} ${rng.pick(CARAVAN_KINDS)}`;
+    void other;
     return;
   }
   if (e.kind === 'army') {
@@ -297,8 +423,10 @@ function moveToward(world: WorldData, e: MapEntity, dist: number): number {
       score += e.kind === 'wanderer' ? 0.28 : 0.55;
     }
     const biome = biomeAt(world, nx, ny);
-    if (e.kind === 'caravan' && (biome === Biome.Mountain || biome === Biome.Marsh)) score -= 0.35;
-    if (e.kind === 'army' && biome === Biome.DarkForest) score += 0.12;
+    if (e.kind === 'caravan' && (biome === Biome.Mountain || biome === Biome.Marsh || biome === Biome.Ashlands)) {
+      score -= 0.35;
+    }
+    if (e.kind === 'army' && (biome === Biome.DarkForest || biome === Biome.Ashlands)) score += 0.12;
     if (score > bestScore) {
       bestScore = score;
       bestX = nx;
@@ -359,7 +487,17 @@ function wanderDest(world: WorldData, rng: Rng, cities: MapNode[]): { x: number;
 }
 
 function armyDest(world: WorldData, rng: Rng): { x: number; y: number } {
-  const camps = world.pois.filter((p) => p.kind === 'military-camp' || p.kind === 'battlefield' || p.kind === 'ruins');
+  const camps = world.pois.filter(
+    (p) =>
+      p.kind === 'military-camp' ||
+      p.kind === 'battlefield' ||
+      p.kind === 'ruins' ||
+      p.kind === 'orc-fort' ||
+      p.kind === 'watchtower' ||
+      p.kind === 'dragon-lair' ||
+      p.kind === 'bandit-camp' ||
+      p.kind === 'ancient-gate',
+  );
   if (camps.length && rng.chance(0.7)) {
     const p = rng.pick(camps);
     return { x: p.x, y: p.y };
@@ -383,7 +521,7 @@ function findLand(
     const y = rng.range(pad, world.height - pad);
     if (!walkableAt(world, x, y)) continue;
     const b = biomeAt(world, x, y);
-    if (b === Biome.Mountain || b === Biome.Snow) continue;
+    if (b === Biome.Mountain || b === Biome.Snow || b === Biome.Ashlands) continue;
     const blocked = avoid.some((n) => Math.hypot(n.cx - x, n.cy - y) < n.radius * 0.6);
     if (blocked) continue;
     return { x, y };

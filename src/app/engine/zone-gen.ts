@@ -61,9 +61,12 @@ function treePool(biome: Biome): string[] {
   switch (biome) {
     case Biome.DarkForest:
     case Biome.Marsh:
+    case Biome.Jungle:
       return ['forest-1', 'forest-2', 'forest-6', 'forest-8'];
     case Biome.Hills:
     case Biome.Heath:
+    case Biome.Desert:
+    case Biome.Ashlands:
       return ['autumn-1', 'autumn-8', 'autumn-11', 'summer-10'];
     case Biome.Snow:
     case Biome.Taiga:
@@ -76,7 +79,7 @@ function treePool(biome: Biome): string[] {
 }
 
 function cityBuildings(kind: NodeKind, rng: Rng): string[] {
-  const houses = ['house-1', 'house-2', 'house-3', 'house-5', 'house-7', 'house-8'];
+  const houses = ['house-1', 'house-2', 'house-3', 'house-5', 'house-7', 'house-8', 'cottage-1', 'cottage-2', 'cottage-3'];
   if (kind === 'city') {
     return [
       'town-hall',
@@ -239,9 +242,12 @@ export function generateZone(world: WorldData, node: MapNode): ZoneData {
       if (rng.chance(0.5)) sprites.push({ sprite: 'reed', x, y });
       continue;
     }
-    if (node.biome === Biome.Marsh) sprites.push({ sprite: rng.pick(['reed', 'mushroom-dark', 'plant-1']), x, y });
-    else if (node.biome === Biome.Heath || node.biome === Biome.Hills) {
+    if (node.biome === Biome.Marsh || node.biome === Biome.Jungle) {
+      sprites.push({ sprite: rng.pick(['reed', 'mushroom-dark', 'plant-1']), x, y });
+    } else if (node.biome === Biome.Heath || node.biome === Biome.Hills || node.biome === Biome.Desert) {
       sprites.push({ sprite: rng.pick(['rock-1', 'rock-3', 'flower-autumn', 'rock-4']), x, y });
+    } else if (node.biome === Biome.Ashlands) {
+      sprites.push({ sprite: rng.pick(['rock-4', 'rock-3', 'rock-1', 'chest']), x, y });
     } else if (node.biome === Biome.Snow || node.biome === Biome.Taiga) {
       sprites.push({ sprite: rng.pick(['rock-snow', 'winter-6', 'rock-3']), x, y });
     } else if (rng.chance(0.35)) sprites.push({ sprite: rng.pick(['rock-1', 'rock-3', 'rock-4']), x, y });
@@ -332,6 +338,79 @@ function stampPoi(
       sprites.push({ sprite: 'farm', x: mid, y: mid - 3 });
       sprites.push({ sprite: 'house-7', x: mid + size * 0.1, y: mid + 2 });
       scatter(['lantern', 'chest', 'bench', 'fence'], 12, size * 0.14);
+      break;
+    case 'tower':
+    case 'watchtower':
+      sprites.push({ sprite: 'town-hall', x: mid, y: mid - 2 });
+      scatter(['lantern', 'rock-1', 'fence'], 8, size * 0.12);
+      break;
+    case 'wizard-tower':
+      sprites.push({ sprite: 'inn-2', x: mid, y: mid });
+      sprites.push({ sprite: 'lantern', x: mid - 5, y: mid + 2 });
+      scatter(['chest', 'plant-1', 'flower-1'], 10, size * 0.14);
+      break;
+    case 'dragon-lair':
+      stampDisk(tiles, size, mid, mid, 10, Biome.Ashlands);
+      sprites.push({ sprite: 'rock-4', x: mid, y: mid });
+      scatter(['rock-4', 'rock-3', 'chest', 'rock-1'], 16, size * 0.2);
+      break;
+    case 'mine':
+      stampDisk(tiles, size, mid, mid, 7, Biome.Mountain);
+      sprites.push({ sprite: 'rock-4', x: mid - 2, y: mid });
+      sprites.push({ sprite: 'chest', x: mid + 4, y: mid + 2 });
+      scatter(['rock-3', 'rock-1', 'lantern'], 12, 11);
+      break;
+    case 'temple':
+      sprites.push({ sprite: 'church', x: mid, y: mid - 2 });
+      sprites.push({ sprite: 'well', x: mid + size * 0.1, y: mid + 4 });
+      scatter(['lantern', 'flower-1', 'bench', 'fence'], 12, size * 0.16);
+      break;
+    case 'monastery':
+      sprites.push({ sprite: 'church', x: mid, y: mid });
+      sprites.push({ sprite: 'house-8', x: mid + size * 0.1, y: mid + 3 });
+      scatter(['bench', 'lantern', 'plant-1'], 10, size * 0.14);
+      break;
+    case 'port':
+      stampDisk(tiles, size, mid, mid + size * 0.2, 10, Biome.Water);
+      stampDisk(tiles, size, mid, mid - 2, 8, Biome.Sand);
+      sprites.push({ sprite: 'bridge', x: mid, y: mid + 4 });
+      sprites.push({ sprite: 'shop', x: mid - 4, y: mid - 3 });
+      scatter(['lantern', 'chest', 'bench'], 8, 10);
+      break;
+    case 'bridge-keep':
+      stampLine(paths, size, 3, mid, size - 4, mid, 1.4);
+      sprites.push({ sprite: 'town-hall', x: mid, y: mid - 3 });
+      sprites.push({ sprite: 'bridge', x: mid, y: mid + 2 });
+      scatter(['lantern', 'fence', 'chest'], 8, 10);
+      break;
+    case 'fey-circle':
+      stampDisk(tiles, size, mid, mid, 6, Biome.Meadow);
+      scatter(['flower-1', 'flower-7', 'plant-1', 'lantern', 'summer-11'], 18, size * 0.16);
+      break;
+    case 'orc-fort':
+      stampDisk(cobble, size, mid, mid, size * 0.12, 2);
+      sprites.push({ sprite: 'farm', x: mid, y: mid });
+      sprites.push({ sprite: 'house-7', x: mid + 6, y: mid + 2 });
+      scatter(['chest', 'rock-3', 'lantern', 'fence'], 12, size * 0.15);
+      break;
+    case 'crypt':
+      sprites.push({ sprite: 'church', x: mid, y: mid - 1 });
+      scatter(['fence', 'rock-1', 'chest', 'flower-1'], 14, size * 0.14);
+      break;
+    case 'trading-post':
+      sprites.push({ sprite: 'shop', x: mid, y: mid });
+      sprites.push({ sprite: 'market', x: mid + 5, y: mid + 2 });
+      scatter(['bench', 'lantern', 'chest', 'fence'], 10, 11);
+      break;
+    case 'bandit-camp':
+      sprites.push({ sprite: 'farm', x: mid - 2, y: mid });
+      sprites.push({ sprite: 'chest', x: mid + 4, y: mid + 1 });
+      scatter(['lantern', 'fence', 'rock-1'], 9, 10);
+      break;
+    case 'ancient-gate':
+      sprites.push({ sprite: 'town-hall', x: mid - 4, y: mid });
+      sprites.push({ sprite: 'church', x: mid + 5, y: mid });
+      scatter(['rock-4', 'rock-3', 'lantern', 'chest'], 12, size * 0.16);
       break;
   }
 }

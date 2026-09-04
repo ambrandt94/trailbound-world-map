@@ -55,9 +55,12 @@ export function biomeSeason(biome: Biome): number {
       return SEASON.winter;
     case Biome.Hills:
     case Biome.Heath:
+    case Biome.Desert:
+    case Biome.Ashlands:
       return SEASON.autumn;
     case Biome.DarkForest:
     case Biome.Marsh:
+    case Biome.Jungle:
       return SEASON.lush;
     default:
       return SEASON.summer;
@@ -69,12 +72,15 @@ export function overlayGroup(biome: Biome): number | null {
     case Biome.Water:
       return GROUPS.water;
     case Biome.Sand:
+    case Biome.Desert:
       return GROUPS.path;
     case Biome.Heath:
+    case Biome.Ashlands:
       return GROUPS.path;
     case Biome.Forest:
     case Biome.DarkForest:
     case Biome.Taiga:
+    case Biome.Jungle:
       return GROUPS.forest;
     case Biome.Hills:
       return GROUPS.plateau;

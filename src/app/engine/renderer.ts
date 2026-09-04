@@ -21,6 +21,7 @@ import {
   nodeBounds,
   smoothstep,
 } from '../models/world.models';
+import { ChatBubble } from '../models/room.models';
 import { AssetLibrary, drawCharFrame } from './assets';
 import { armyVisibleFollowers, boatChar, kindColor } from './entities';
 import { hash2 } from './noise';
@@ -54,11 +55,41 @@ function drawNametag(
   scale: number,
   opts?: { clearAbove?: number; clearBelow?: number; avoid?: TagBox[]; taken?: TagBox[]; screenPx?: number },
 ): TagBox | null {
+  return drawTagLabel(ctx, text, x, y, scale, { ...opts, kind: 'name' });
+}
+
+function drawSpeechBubble(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  scale: number,
+  opts?: { clearAbove?: number; clearBelow?: number; avoid?: TagBox[]; taken?: TagBox[]; screenPx?: number },
+): TagBox | null {
+  return drawTagLabel(ctx, text, x, y, scale, { ...opts, kind: 'speech' });
+}
+
+function drawTagLabel(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  scale: number,
+  opts?: {
+    clearAbove?: number;
+    clearBelow?: number;
+    avoid?: TagBox[];
+    taken?: TagBox[];
+    screenPx?: number;
+    kind?: 'name' | 'speech';
+  },
+): TagBox | null {
   const raw = text.trim();
   if (!raw) return null;
+  const kind = opts?.kind ?? 'name';
   const tr = ctx.getTransform();
   const dpr = Math.max(0.5, Math.hypot(tr.a, tr.b) / Math.max(0.001, scale));
-  const screenPx = opts?.screenPx ?? NAMETAG_BASE_PX * 2.5;
+  const screenPx = opts?.screenPx ?? NAMETAG_BASE_PX * (kind === 'speech' ? 2.8 : 2.5);
   const fontPx = Math.max(8, screenPx * dpr);
   const origin = applyPoint(tr, x, y);
   const uy = Math.hypot(tr.c, tr.d) || dpr * scale;
@@ -68,58 +99,93 @@ function drawNametag(
   ctx.font = `${fontPx}px ${PIXEL_FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const maxW = 13.2 * screenPx * dpr;
+  const maxW = (kind === 'speech' ? 16 : 13.2) * screenPx * dpr;
   let label = raw;
   while (ctx.measureText(label).width > maxW && label.length > 5) label = label.slice(0, -1);
   if (label !== raw) label = `${label.slice(0, -1)}…`;
   const tw = ctx.measureText(label).width;
-  const padX = 4.2 * dpr;
-  const padY = 2.1 * dpr;
+  const padX = (kind === 'speech' ? 7.2 : 4.2) * dpr;
+  const padY = (kind === 'speech' ? 4.2 : 2.1) * dpr;
+  const tail = kind === 'speech' ? 5.5 * dpr : 0;
   const boxW = tw + padX * 2;
   const boxH = fontPx + padY * 2;
-  const gap = 3.2 * dpr;
+  const gap = (kind === 'speech' ? 5.5 : 3.2) * dpr;
   const clearA = (opts?.clearAbove ?? 0) * uy;
   const clearB = (opts?.clearBelow ?? 0) * uy;
-  const aboveY = origin.y - clearA - gap - boxH / 2;
-  const belowY = origin.y + clearB + gap + boxH / 2;
-  const candidates: Array<{ cx: number; cy: number }> = [
-    { cx: origin.x, cy: aboveY },
-    { cx: origin.x, cy: belowY },
-    { cx: origin.x + boxW * 0.62, cy: aboveY },
-    { cx: origin.x - boxW * 0.62, cy: aboveY },
-    { cx: origin.x + boxW * 0.62, cy: belowY },
-    { cx: origin.x - boxW * 0.62, cy: belowY },
+  const aboveY = origin.y - clearA - gap - boxH / 2 - (kind === 'speech' ? tail * 0.35 : 0);
+  const belowY = origin.y + clearB + gap + boxH / 2 + (kind === 'speech' ? tail * 0.35 : 0);
+  const candidates: Array<{ cx: number; cy: number; flip: boolean }> = [
+    { cx: origin.x, cy: aboveY, flip: false },
+    { cx: origin.x, cy: belowY, flip: true },
+    { cx: origin.x + boxW * 0.55, cy: aboveY, flip: false },
+    { cx: origin.x - boxW * 0.55, cy: aboveY, flip: false },
   ];
   const avoid = (opts?.avoid ?? []).map((b) => applyBox(tr, b));
   const taken = opts?.taken ?? [];
   let best: TagBox | null = null;
+  let flip = false;
   for (const c of candidates) {
-    const box: TagBox = { x: c.cx - boxW / 2, y: c.cy - boxH / 2, w: boxW, h: boxH };
+    const box: TagBox = { x: c.cx - boxW / 2, y: c.cy - boxH / 2, w: boxW, h: boxH + (kind === 'speech' ? tail : 0) };
     const hitsSprite = avoid.some((s) => boxesOverlap(box, s, 1.2 * dpr));
     const hitsTag = taken.some((s) => boxesOverlap(box, s, 2 * dpr));
     if (!hitsSprite && !hitsTag) {
-      best = box;
+      best = { x: c.cx - boxW / 2, y: c.cy - boxH / 2, w: boxW, h: boxH };
+      flip = c.flip;
       break;
     }
-    if (!best && !hitsSprite) best = box;
+    if (!best && !hitsSprite) {
+      best = { x: c.cx - boxW / 2, y: c.cy - boxH / 2, w: boxW, h: boxH };
+      flip = c.flip;
+    }
   }
   if (!best) {
     best = { x: origin.x - boxW / 2, y: aboveY - boxH / 2, w: boxW, h: boxH };
   }
-  const r = 2.2 * dpr;
+  const r = (kind === 'speech' ? 8 : 2.2) * dpr;
   ctx.beginPath();
   if (typeof ctx.roundRect === 'function') ctx.roundRect(best.x, best.y, best.w, best.h, r);
   else ctx.rect(best.x, best.y, best.w, best.h);
-  ctx.fillStyle = 'rgba(14, 11, 9, 0.82)';
-  ctx.fill();
-  ctx.lineWidth = Math.max(1, dpr);
-  ctx.strokeStyle = 'rgba(228, 196, 138, 0.35)';
-  ctx.stroke();
-  ctx.fillStyle = '#f3ead6';
+  if (kind === 'speech') {
+    ctx.fillStyle = 'rgba(248, 241, 226, 0.96)';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.5, 1.6 * dpr);
+    ctx.strokeStyle = 'rgba(42, 28, 16, 0.78)';
+    ctx.stroke();
+    const midX = best.x + best.w / 2;
+    ctx.beginPath();
+    if (!flip) {
+      ctx.moveTo(midX - 5 * dpr, best.y + best.h - 0.5);
+      ctx.lineTo(midX, best.y + best.h + tail);
+      ctx.lineTo(midX + 5 * dpr, best.y + best.h - 0.5);
+    } else {
+      ctx.moveTo(midX - 5 * dpr, best.y + 0.5);
+      ctx.lineTo(midX, best.y - tail);
+      ctx.lineTo(midX + 5 * dpr, best.y + 0.5);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(248, 241, 226, 0.96)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(42, 28, 16, 0.78)';
+    ctx.stroke();
+    ctx.fillStyle = '#2a1c12';
+  } else {
+    ctx.fillStyle = 'rgba(14, 11, 9, 0.82)';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.strokeStyle = 'rgba(228, 196, 138, 0.35)';
+    ctx.stroke();
+    ctx.fillStyle = '#f3ead6';
+  }
   ctx.fillText(label, best.x + best.w / 2, best.y + best.h / 2 + 0.4 * dpr);
   ctx.restore();
-  taken.push(best);
-  return best;
+  const occupied: TagBox = {
+    x: best.x,
+    y: flip && kind === 'speech' ? best.y - tail : best.y,
+    w: best.w,
+    h: best.h + (kind === 'speech' ? tail : 0),
+  };
+  taken.push(occupied);
+  return occupied;
 }
 
 function drawTile(
@@ -329,13 +395,13 @@ export class WorldRenderer {
         } else if (biome === Biome.Meadow && deco === 4) {
           const d = decoFor(biome, 'leaf');
           stampTile(d.sx, d.sy, cx, cy);
-        } else if ((biome === Biome.Hills || biome === Biome.Heath) && deco === 2) {
+        } else if ((biome === Biome.Hills || biome === Biome.Heath || biome === Biome.Desert) && deco === 2) {
           const d = decoFor(biome, 'pebble');
           stampTile(d.sx, d.sy, cx, cy);
         } else if (biome === Biome.Water && deco === 5) {
           const d = decoFor(biome, 'ripple');
           stampTile(d.sx, d.sy, cx, cy);
-        } else if (biome === Biome.Marsh && deco === 6) {
+        } else if ((biome === Biome.Marsh || biome === Biome.Jungle) && deco === 6) {
           const d = decoFor(biome, 'lily');
           stampTile(d.sx, d.sy, cx, cy);
         }
@@ -568,6 +634,11 @@ export class WorldRenderer {
       cloudAmt?: number;
       /** Multiplier on the original 10px nametag (2.5 = default / slider middle). */
       nametagScale?: number;
+      /** Other players in an online room. */
+      remotePlayers?: PlayerState[];
+      /** peerId of the local walker for speech-bubble anchoring. */
+      localPeerId?: string | null;
+      speechBubbles?: ChatBubble[];
     },
   ): void {
     this.tagScreenPx = NAMETAG_BASE_PX * clamp(opts.nametagScale ?? 2.5, 0.5, 4.5);
@@ -644,7 +715,20 @@ export class WorldRenderer {
         opts.detailNode,
         opts.outlineAmt ?? 0.7,
       );
-      this.drawEntities(lctx, opts.entities, camera, viewW, viewH, player, opts.hoveredEntityId, 0, !!opts.showPlayer);
+      this.drawEntities(
+        lctx,
+        opts.entities,
+        camera,
+        viewW,
+        viewH,
+        player,
+        opts.hoveredEntityId,
+        0,
+        !!opts.showPlayer,
+        opts.remotePlayers,
+        opts.speechBubbles,
+        opts.localPeerId,
+      );
       lctx.restore();
       this.applyScreenFog(lctx, isolated, camera, viewW, viewH);
       lctx.save();
@@ -742,7 +826,20 @@ export class WorldRenderer {
     for (const shift of wrapShifts) {
       ctx.save();
       ctx.translate(shift * TILE, 0);
-      this.drawEntities(ctx, opts.entities, camera, viewW, viewH, player, opts.hoveredEntityId, shift, !!opts.showPlayer);
+      this.drawEntities(
+        ctx,
+        opts.entities,
+        camera,
+        viewW,
+        viewH,
+        player,
+        opts.hoveredEntityId,
+        shift,
+        !!opts.showPlayer,
+        opts.remotePlayers,
+        opts.speechBubbles,
+        opts.localPeerId,
+      );
       this.drawPois(ctx, world, camera.scale, opts.showPois, opts.hoveredPoiId, opts.detailNode, opts.visiblePoiIds);
       ctx.restore();
     }
@@ -805,6 +902,10 @@ export class WorldRenderer {
 
   forgetChunk(wx: number, wy: number): void {
     this.chunkBakes.delete(chunkKey(wx, wy));
+  }
+
+  hasChunkBake(wx: number, wy: number): boolean {
+    return this.chunkBakes.has(chunkKey(wx, wy));
   }
 
   private drawVisibleChunks(
@@ -1135,6 +1236,9 @@ export class WorldRenderer {
     hoveredId: string | null,
     shift = 0,
     showPlayer = true,
+    remotePlayers: PlayerState[] = [],
+    speechBubbles: ChatBubble[] = [],
+    localPeerId: string | null = null,
   ): void {
     const halfW = viewW / (2 * camera.scale) / TILE;
     const halfH = viewH / (2 * camera.scale) / TILE;
@@ -1147,8 +1251,9 @@ export class WorldRenderer {
     const spriteT = smoothstep(0.55, 3.4, camera.scale);
     type Mark = {
       y: number;
-      kind: 'player' | 'actor';
+      kind: 'player' | 'guest' | 'actor';
       e?: MapEntity;
+      guest?: PlayerState;
       mx?: number;
       my?: number;
       sheet?: string;
@@ -1158,6 +1263,10 @@ export class WorldRenderer {
       lead?: boolean;
     };
     const marks: Mark[] = showPlayer ? [{ y: player.y, kind: 'player' }] : [];
+    for (const guest of remotePlayers) {
+      if (guest.x < x0 || guest.x > x1 || guest.y < y0 || guest.y > y1) continue;
+      marks.push({ y: guest.y, kind: 'guest', guest });
+    }
     for (const e of entities) {
       if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) {
         const vis = !e.afloat && e.members.some((m) => m.x >= x0 && m.x <= x1 && m.y >= y0 && m.y <= y1);
@@ -1189,20 +1298,55 @@ export class WorldRenderer {
     marks.sort((a, b) => a.y - b.y);
     const occupied: TagBox[] = [];
     const pending: Array<{ text: string; x: number; y: number; clearAbove: number; clearBelow: number }> = [];
+    const bubblePending: Array<{ text: string; x: number; y: number; clearAbove: number; clearBelow: number }> = [];
     const scale = camera.scale;
+    const anchorByPeer = new Map<string, { x: number; y: number; clearAbove: number; clearBelow: number }>();
     for (const mark of marks) {
       if (mark.kind === 'player') {
         const spr = this.drawPlayer(ctx, player, scale);
         if (spr) occupied.push(spr);
+        const clearAbove = spr ? player.y * TILE - spr.y : 12 / scale;
+        const clearBelow = spr ? spr.y + spr.h - player.y * TILE : 4 / scale;
         if (player.name && scale >= 2.8) {
           pending.push({
             text: player.name,
             x: player.x * TILE,
             y: player.y * TILE,
-            clearAbove: spr ? player.y * TILE - spr.y : 12 / scale,
-            clearBelow: spr ? spr.y + spr.h - player.y * TILE : 4 / scale,
+            clearAbove,
+            clearBelow,
           });
         }
+        if (localPeerId) {
+          anchorByPeer.set(localPeerId, {
+            x: player.x * TILE,
+            y: player.y * TILE,
+            clearAbove: clearAbove + 10 / scale,
+            clearBelow,
+          });
+        }
+        continue;
+      }
+      if (mark.kind === 'guest' && mark.guest) {
+        const g = mark.guest;
+        const spr = this.drawPlayer(ctx, g, scale);
+        if (spr) occupied.push(spr);
+        const clearAbove = spr ? g.y * TILE - spr.y : 12 / scale;
+        const clearBelow = spr ? spr.y + spr.h - g.y * TILE : 4 / scale;
+        if (g.name && scale >= 2.8) {
+          pending.push({
+            text: g.name,
+            x: g.x * TILE,
+            y: g.y * TILE,
+            clearAbove,
+            clearBelow,
+          });
+        }
+        anchorByPeer.set(g.id, {
+          x: g.x * TILE,
+          y: g.y * TILE,
+          clearAbove: clearAbove + 10 / scale,
+          clearBelow,
+        });
         continue;
       }
       const e = mark.e!;
@@ -1273,6 +1417,26 @@ export class WorldRenderer {
         avoid: occupied,
         taken,
         screenPx: this.tagScreenPx,
+      });
+    }
+    for (const bubble of speechBubbles) {
+      const anchor = anchorByPeer.get(bubble.peerId);
+      if (!anchor) continue;
+      bubblePending.push({
+        text: bubble.text,
+        x: anchor.x,
+        y: anchor.y,
+        clearAbove: anchor.clearAbove,
+        clearBelow: anchor.clearBelow,
+      });
+    }
+    for (const tag of bubblePending) {
+      drawSpeechBubble(ctx, tag.text, tag.x, tag.y, scale, {
+        clearAbove: tag.clearAbove,
+        clearBelow: tag.clearBelow,
+        avoid: occupied,
+        taken,
+        screenPx: this.tagScreenPx * 1.05,
       });
     }
   }
@@ -1370,19 +1534,34 @@ function poiColor(kind: PoiKind): string {
     case 'ruins':
     case 'graves':
     case 'battlefield':
+    case 'crypt':
+    case 'ancient-gate':
       return 'rgba(196, 154, 108, 1)';
     case 'mansion':
+    case 'wizard-tower':
       return 'rgba(176, 137, 196, 1)';
     case 'shrine':
     case 'treehouse':
+    case 'fey-circle':
+    case 'temple':
+    case 'monastery':
       return 'rgba(125, 206, 160, 1)';
     case 'cave':
     case 'hideout':
+    case 'mine':
+    case 'dragon-lair':
       return 'rgba(154, 171, 159, 1)';
     case 'homestead':
+    case 'trading-post':
+    case 'port':
       return 'rgba(224, 168, 106, 1)';
     case 'abandoned-camp':
     case 'military-camp':
+    case 'bandit-camp':
+    case 'orc-fort':
+    case 'watchtower':
+    case 'tower':
+    case 'bridge-keep':
       return 'rgba(232, 145, 90, 1)';
     default:
       return 'rgba(195, 155, 211, 1)';

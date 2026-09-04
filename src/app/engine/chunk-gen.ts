@@ -568,6 +568,62 @@ function stampPoiIntoChunk(
       put('farm', lx, ly - 2);
       put('house-7', lx + 3, ly);
       break;
+    case 'tower':
+    case 'watchtower':
+      put('town-hall', lx, ly - 1);
+      put('lantern', lx + 3, ly);
+      break;
+    case 'wizard-tower':
+      put('inn-2', lx, ly);
+      put('chest', lx + 3, ly + 1);
+      break;
+    case 'dragon-lair':
+      stampDisk(tiles, size, lx, ly, 5, Biome.Ashlands);
+      put('rock-4', lx, ly);
+      put('chest', lx + 3, ly + 2);
+      break;
+    case 'mine':
+      stampDisk(tiles, size, lx, ly, 4, Biome.Mountain);
+      put('rock-4', lx, ly);
+      put('lantern', lx + 2, ly);
+      break;
+    case 'temple':
+    case 'monastery':
+      put('church', lx, ly - 1);
+      put('well', lx + 3, ly + 2);
+      break;
+    case 'port':
+      put('bridge', lx, ly + 2);
+      put('shop', lx - 2, ly - 1);
+      break;
+    case 'bridge-keep':
+      put('town-hall', lx, ly - 1);
+      put('bridge', lx, ly + 2);
+      break;
+    case 'fey-circle':
+      put('well', lx, ly);
+      put('lantern', lx + 2, ly - 1);
+      break;
+    case 'orc-fort':
+      put('farm', lx, ly);
+      put('house-7', lx + 3, ly + 1);
+      break;
+    case 'crypt':
+      put('church', lx, ly - 1);
+      put('fence', lx + 2, ly);
+      break;
+    case 'trading-post':
+      put('shop', lx, ly);
+      put('market', lx + 3, ly + 1);
+      break;
+    case 'bandit-camp':
+      put('farm', lx, ly);
+      put('chest', lx + 2, ly);
+      break;
+    case 'ancient-gate':
+      put('town-hall', lx - 2, ly);
+      put('church', lx + 3, ly);
+      break;
   }
 }
 

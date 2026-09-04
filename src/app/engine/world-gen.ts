@@ -20,10 +20,12 @@ const AUTHORED: Array<Omit<MapNode, 'cx' | 'cy' | 'biome' | 'x0' | 'y0' | 'x1' |
   { id: 'ashfen', name: 'Ashfen', origin: 'authored', kind: 'city', radius: 11.4, seed: 1101, want: Biome.Plains },
   { id: 'goldmere', name: 'Goldmere', origin: 'authored', kind: 'city', radius: 9.6, seed: 1105, want: Biome.Meadow },
   { id: 'saltgate', name: 'Saltgate', origin: 'authored', kind: 'city', radius: 8.8, seed: 1103, want: Biome.Sand },
-  { id: 'veldcross', name: 'Veldcross', origin: 'authored', kind: 'town', radius: 6.4, seed: 1107, want: Biome.Hills },
-  { id: 'hollowmere', name: 'Hollowmere', origin: 'authored', kind: 'grove', radius: 3.5, seed: 1102, want: Biome.Forest },
+  { id: 'veldcross', name: 'Ironmarch', origin: 'authored', kind: 'town', radius: 6.4, seed: 1107, want: Biome.Hills },
+  { id: 'hollowmere', name: 'Shadowglen', origin: 'authored', kind: 'grove', radius: 3.5, seed: 1102, want: Biome.Forest },
   { id: 'dunharrow', name: 'Dunharrow', origin: 'authored', kind: 'camp', radius: 3.3, seed: 1104, want: Biome.Mountain },
-  { id: 'rowancopse', name: 'Rowan Copse', origin: 'authored', kind: 'grove', radius: 3.2, seed: 1106, want: Biome.DarkForest },
+  { id: 'rowancopse', name: 'Mythwood', origin: 'authored', kind: 'grove', radius: 3.2, seed: 1106, want: Biome.DarkForest },
+  { id: 'sunspire', name: 'Sunspire', origin: 'authored', kind: 'town', radius: 5.8, seed: 1108, want: Biome.Desert },
+  { id: 'jadewild', name: 'Jadewild', origin: 'authored', kind: 'grove', radius: 3.6, seed: 1109, want: Biome.Jungle },
 ];
 
 function idx(x: number, y: number, w: number): number {
@@ -39,9 +41,12 @@ function classify(height: number, moist: number, temp: number, river: number): B
   if (height < 0.375) return Biome.Sand;
   if (height < 0.46 && moist > 0.68) return Biome.Marsh;
   if (height > 0.86 || (temp < 0.22 && height > 0.7)) return Biome.Snow;
+  if (height > 0.78 && moist < 0.28 && temp > 0.55) return Biome.Ashlands;
   if (height > 0.76) return Biome.Mountain;
   if (temp < 0.3 && moist > 0.45) return Biome.Taiga;
   if (temp < 0.32) return Biome.Snow;
+  if (temp > 0.78 && moist < 0.32 && height > 0.42) return Biome.Desert;
+  if (temp > 0.72 && moist > 0.62 && height < 0.68) return Biome.Jungle;
   if (height > 0.64 && moist < 0.5) return Biome.Hills;
   if (temp > 0.7 && moist < 0.42 && height > 0.45) return Biome.Heath;
   if (moist > 0.7 && temp < 0.55) return Biome.DarkForest;
@@ -137,6 +142,30 @@ function styleMask(nx: number, ny: number, style: MapStyle, seed: number): numbe
       const edge = Math.max(0, 1 - Math.pow(Math.hypot((nx - 0.5) * 1.88, (ny - 0.5) * 1.88), 7.4));
       return 0.6 + edge * 0.28;
     }
+    case 'fjords': {
+      const spine = Math.exp(-Math.abs(nx - 0.48 - (fbm(ny * 3, nx, seed + 3, 2) - 0.5) * 0.08) * 7.5);
+      const fingers =
+        Math.sin(ny * Math.PI * 7 + fbm(nx * 4, ny * 4, seed + 9, 2) * 2) * 0.5 + 0.5;
+      const edge = Math.max(0, 1 - Math.hypot((nx - 0.5) * 1.7, (ny - 0.5) * 2.05));
+      return Math.max(0, spine * 0.55 + fingers * edge * 0.5) * 0.92;
+    }
+    case 'desert': {
+      const bowl = Math.pow(Math.max(0, 1 - Math.hypot((nx - 0.5) * 1.95, (ny - 0.52) * 2.05)), 0.7);
+      const dunes = fbm(nx * 6.2, ny * 5.8, seed + 14, 3);
+      return bowl * 0.72 + dunes * 0.22 + 0.08;
+    }
+    case 'shattered': {
+      let m = 0;
+      for (let i = 0; i < 11; i++) {
+        const px = 0.12 + ((i * 37) % 80) / 100;
+        const py = 0.14 + ((i * 53) % 75) / 100;
+        const jx = px + (fbm(px * 5, py * 5, seed + 30 + i, 2) - 0.5) * 0.08;
+        const jy = py + (fbm(py * 5, px * 5, seed + 50 + i, 2) - 0.5) * 0.08;
+        const s = 6.5 + (i % 3) * 0.8;
+        m = Math.max(m, bump(nx, ny, jx, jy, s, s * 1.05));
+      }
+      return m * 0.78 + fbm(nx * 4.2, ny * 4.2, seed + 19, 3) * 0.16;
+    }
     case 'custom':
       return 0;
   }
@@ -155,6 +184,12 @@ function styleFreq(style: MapStyle, geo: number): number {
       return 3.15 * g;
     case 'highlands':
       return 3.5 * g;
+    case 'fjords':
+      return 3.8 * g;
+    case 'desert':
+      return 2.6 * g;
+    case 'shattered':
+      return 5.8 * g;
     case 'custom':
       return 2.35 * g;
   }
@@ -173,14 +208,18 @@ function findSite(
     want === Biome.Sand
       ? [Biome.Sand, Biome.Plains, Biome.Meadow]
       : want === Biome.Mountain
-        ? [Biome.Mountain, Biome.Hills, Biome.Snow, Biome.Heath]
+        ? [Biome.Mountain, Biome.Hills, Biome.Snow, Biome.Heath, Biome.Ashlands]
         : want === Biome.Forest
-          ? [Biome.Forest, Biome.Meadow, Biome.Plains]
+          ? [Biome.Forest, Biome.Meadow, Biome.Plains, Biome.Jungle]
           : want === Biome.DarkForest
-            ? [Biome.DarkForest, Biome.Forest, Biome.Marsh]
+            ? [Biome.DarkForest, Biome.Forest, Biome.Marsh, Biome.Jungle]
             : want === Biome.Meadow
               ? [Biome.Meadow, Biome.Plains, Biome.Hills]
-              : [want, Biome.Plains, Biome.Meadow, Biome.Hills];
+              : want === Biome.Desert
+                ? [Biome.Desert, Biome.Sand, Biome.Heath, Biome.Plains]
+                : want === Biome.Jungle
+                  ? [Biome.Jungle, Biome.Forest, Biome.Marsh, Biome.Meadow]
+                  : [want, Biome.Plains, Biome.Meadow, Biome.Hills];
 
   for (let attempt = 0; attempt < 4000; attempt++) {
     const x = rng.int(16, w - 17);
@@ -263,9 +302,13 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
     ? 0.28
     : style === 'continent' || style === 'isthmus'
       ? 0.4
-      : style === 'archipelago'
+      : style === 'archipelago' || style === 'shattered'
         ? 0.58
-        : 0.44;
+        : style === 'desert'
+          ? 0.36
+          : style === 'fjords'
+            ? 0.48
+            : 0.44;
   const maskW = 1 - noiseW;
 
   for (let y = 0; y < h; y++) {
@@ -279,11 +322,16 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
       const river = ridged(nx * (freq * 1.54), ny * (freq * 1.54), seed + 31);
       let biome = classify(height, moist, temp, river);
       if (style === 'custom' && mask < 0.12) biome = Biome.Water;
-      else if (mask < 0.07 && style !== 'highlands') biome = Biome.Water;
+      else if (mask < 0.07 && style !== 'highlands' && style !== 'desert') biome = Biome.Water;
       if (style === 'lakes' && river > 0.8 && height < 0.78 && biome !== Biome.Water && mask > 0.2) {
         biome = Biome.Water;
       }
       if (style === 'archipelago' && height < 0.38) biome = Biome.Water;
+      if (style === 'shattered' && height < 0.4) biome = Biome.Water;
+      if (style === 'desert' && biome !== Biome.Water && biome !== Biome.Mountain && biome !== Biome.Sand) {
+        if (moist < 0.45 || temp > 0.55) biome = height > 0.7 ? Biome.Ashlands : Biome.Desert;
+      }
+      if (style === 'fjords' && biome === Biome.Plains && moist > 0.5) biome = Biome.Forest;
       biomes[idx(x, y, w)] = biome;
     }
   }

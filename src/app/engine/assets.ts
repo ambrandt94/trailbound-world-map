@@ -1,6 +1,7 @@
 export const TILESET_URLS = {
   grasslands: 'assets/tilesets/grasslands.png',
   floors: 'assets/tilesets/floors.png',
+  levelMap: 'assets/tilesets/level-map.png',
 } as const;
 
 export const SPRITE_URLS: Record<string, string> = {
@@ -51,6 +52,47 @@ export const SPRITE_URLS: Record<string, string> = {
   church: 'assets/sprites/buildings/church.png',
   'town-hall': 'assets/sprites/buildings/town-hall.png',
   farm: 'assets/sprites/buildings/farm.png',
+  'cottage-1': 'assets/sprites/buildings/cottage-1.png',
+  'cottage-2': 'assets/sprites/buildings/cottage-2.png',
+  'cottage-3': 'assets/sprites/buildings/cottage-3.png',
+  'map-house-1': 'assets/sprites/map/house-1.png',
+  'map-house-2': 'assets/sprites/map/house-2.png',
+  'map-house-3': 'assets/sprites/map/house-3.png',
+  'map-house-4': 'assets/sprites/map/house-4.png',
+  'map-house-5': 'assets/sprites/map/house-5.png',
+  'map-house-6': 'assets/sprites/map/house-6.png',
+  'map-house-7': 'assets/sprites/map/house-7.png',
+  'map-house-8': 'assets/sprites/map/house-8.png',
+  'map-house-9': 'assets/sprites/map/house-9.png',
+  'map-tree-1': 'assets/sprites/map/tree-1.png',
+  'map-tree-2': 'assets/sprites/map/tree-2.png',
+  'map-tree-3': 'assets/sprites/map/tree-3.png',
+  'map-tree-4': 'assets/sprites/map/tree-4.png',
+  'map-tree-5': 'assets/sprites/map/tree-5.png',
+  'map-tree-6': 'assets/sprites/map/tree-6.png',
+  'map-tree-7': 'assets/sprites/map/tree-7.png',
+  'map-tree-8': 'assets/sprites/map/tree-8.png',
+  'map-tree-9': 'assets/sprites/map/tree-9.png',
+  'map-tree-10': 'assets/sprites/map/tree-10.png',
+  'map-tree-11': 'assets/sprites/map/tree-11.png',
+  'map-tree-12': 'assets/sprites/map/tree-12.png',
+  'map-tree-13': 'assets/sprites/map/tree-13.png',
+  'map-tree-14': 'assets/sprites/map/tree-14.png',
+  'map-tree-15': 'assets/sprites/map/tree-15.png',
+  'map-rock-1': 'assets/sprites/map/rock-1.png',
+  'map-rock-2': 'assets/sprites/map/rock-2.png',
+  'map-rock-3': 'assets/sprites/map/rock-3.png',
+  'map-rock-4': 'assets/sprites/map/rock-4.png',
+  'map-rock-5': 'assets/sprites/map/rock-5.png',
+  'map-rock-6': 'assets/sprites/map/rock-6.png',
+  'map-rock-7': 'assets/sprites/map/rock-7.png',
+  'map-rock-8': 'assets/sprites/map/rock-8.png',
+  'map-rock-9': 'assets/sprites/map/rock-9.png',
+  'map-rock-10': 'assets/sprites/map/rock-10.png',
+  'map-rock-11': 'assets/sprites/map/rock-11.png',
+  'map-rock-12': 'assets/sprites/map/rock-12.png',
+  'map-pyramid-1': 'assets/sprites/map/pyramid-1.png',
+  'map-pyramid-2': 'assets/sprites/map/pyramid-2.png',
 };
 
 export const CHAR_SHEET_URLS: Record<string, string> = {
@@ -72,6 +114,57 @@ export const CHAR_SHEET_URLS: Record<string, string> = {
   knights: 'assets/characters/knights.png',
   knights2: 'assets/characters/knights2.png',
   executioner: 'assets/characters/executioner.png',
+  chara2: 'assets/characters/chara2.png',
+  chara3: 'assets/characters/chara3.png',
+  chara4: 'assets/characters/chara4.png',
+  chara5: 'assets/characters/chara5.png',
+  chara6: 'assets/characters/chara6.png',
+  chara7: 'assets/characters/chara7.png',
+  chara8: 'assets/characters/chara8.png',
+  npc1: 'assets/characters/npc1.png',
+  npc2: 'assets/characters/npc2.png',
+  npc3: 'assets/characters/npc3.png',
+  npc4: 'assets/characters/npc4.png',
+  npc5: 'assets/characters/npc5.png',
+  npc6: 'assets/characters/npc6.png',
+  military1: 'assets/characters/military1.png',
+  military2: 'assets/characters/military2.png',
+  military3: 'assets/characters/military3.png',
+  bonus1: 'assets/characters/bonus1.png',
+  wizard: 'assets/characters/wizard.png',
+  elemental: 'assets/characters/elemental.png',
+  orc1: 'assets/characters/orc1.png',
+  orc2: 'assets/characters/orc2.png',
+  monster1: 'assets/characters/monster1.png',
+  monster2: 'assets/characters/monster2.png',
+  monster3: 'assets/characters/monster3.png',
+  monster4: 'assets/characters/monster4.png',
+  monster_bird1: 'assets/characters/monster_bird1.png',
+  monster_bird2: 'assets/characters/monster_bird2.png',
+  monster_boar: 'assets/characters/monster_boar.png',
+  monster_cacto: 'assets/characters/monster_cacto.png',
+  monster_dknight1: 'assets/characters/monster_dknight1.png',
+  monster_elk: 'assets/characters/monster_elk.png',
+  monster_golem1: 'assets/characters/monster_golem1.png',
+  monster_lich: 'assets/characters/monster_lich.png',
+  monster_lizardman1: 'assets/characters/monster_lizardman1.png',
+  monster_minotaur: 'assets/characters/monster_minotaur.png',
+  monster_phoenix: 'assets/characters/monster_phoenix.png',
+  monster_raptor1: 'assets/characters/monster_raptor1.png',
+  monster_treant: 'assets/characters/monster_treant.png',
+  monster_wolf1: 'assets/characters/monster_wolf1.png',
+  mount1: 'assets/characters/mount1.png',
+  mount2: 'assets/characters/mount2.png',
+  'beast-tribe-1': 'assets/characters/beast-tribe-1.png',
+  'beast-tribe-2': 'assets/characters/beast-tribe-2.png',
+  'beast-tribe-3': 'assets/characters/beast-tribe-3.png',
+  'beast-tribe-4': 'assets/characters/beast-tribe-4.png',
+  'beast-tribe-5': 'assets/characters/beast-tribe-5.png',
+  'beast-hero-1': 'assets/characters/beast-hero-1.png',
+  'beast-hero-2': 'assets/characters/beast-hero-2.png',
+  'beast-hero-3': 'assets/characters/beast-hero-3.png',
+  'beast-hero-4': 'assets/characters/beast-hero-4.png',
+  'beast-hero-5': 'assets/characters/beast-hero-5.png',
 };
 
 export interface CharSheet {
@@ -95,17 +188,20 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export class AssetLibrary {
   grasslands!: HTMLImageElement;
   floors!: HTMLImageElement;
+  levelMap!: HTMLImageElement;
   sprites = new Map<string, HTMLImageElement>();
   sheets = new Map<string, CharSheet>();
   player!: HTMLCanvasElement;
 
   async load(): Promise<void> {
-    const [grasslands, floors] = await Promise.all([
+    const [grasslands, floors, levelMap] = await Promise.all([
       loadImage(TILESET_URLS.grasslands),
       loadImage(TILESET_URLS.floors),
+      loadImage(TILESET_URLS.levelMap),
     ]);
     this.grasslands = grasslands;
     this.floors = floors;
+    this.levelMap = levelMap;
     const entries = await Promise.all(
       Object.entries(SPRITE_URLS).map(async ([key, url]) => {
         const img = await loadImage(url);

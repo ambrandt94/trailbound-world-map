@@ -66,9 +66,22 @@ export const ADVENTURE_POCKET_MAX = 16;
 export const MIN_ZONE_TILES = 8;
 export const FADE_START = 1.2;
 export const FADE_END = 3.9;
-export const WALK_SPEED = 3.2;
+/** Street / isolated-place walk speed (world tiles per second). Constant vs zoom. */
+export const WALK_SPEED_ISO = 0.48;
+/** Continent / overworld walk speed when not in an instance. */
+export const WALK_SPEED_OVERWORLD = 7.2;
+/** Globe / space pan speed (map view; adventure does not use globe yet). */
+export const WALK_SPEED_GLOBE = 28;
+/** Sprint multiplier applied to every band. */
 export const SPRINT_MULT = 2.6;
-export const SPEED_REF_SCALE = 2.2;
+
+export type MoveSpeedBand = 'iso' | 'overworld' | 'globe';
+
+export function moveSpeed(band: MoveSpeedBand, sprinting: boolean): number {
+  const base =
+    band === 'iso' ? WALK_SPEED_ISO : band === 'globe' ? WALK_SPEED_GLOBE : WALK_SPEED_OVERWORLD;
+  return base * (sprinting ? SPRINT_MULT : 1);
+}
 export const GAME_HOURS_PER_REAL_SEC = 8 / 60;
 export const PLAY_RATE = 0.125;
 export const FAST_RATE = 1;
@@ -90,7 +103,17 @@ export interface WorldSettings {
 /** Side length of `WorldSettings.landSketch`. */
 export const LAND_SKETCH_SIZE = 40;
 
-export const MAP_STYLES = ['continent', 'archipelago', 'isthmus', 'lakes', 'highlands', 'custom'] as const;
+export const MAP_STYLES = [
+  'continent',
+  'archipelago',
+  'isthmus',
+  'lakes',
+  'highlands',
+  'fjords',
+  'desert',
+  'shattered',
+  'custom',
+] as const;
 export type MapStyle = (typeof MAP_STYLES)[number];
 
 export const MAP_STYLE_LABELS: Record<MapStyle, string> = {
@@ -99,16 +122,19 @@ export const MAP_STYLE_LABELS: Record<MapStyle, string> = {
   isthmus: 'Isthmus',
   lakes: 'Lakes',
   highlands: 'Highlands',
+  fjords: 'Fjords',
+  desert: 'Desert basin',
+  shattered: 'Shattered isles',
   custom: 'Custom',
 };
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   worldScale: 8,
   mapStyle: 'continent',
-  poiCount: 48,
-  wanderers: 32,
-  caravans: 8,
-  armies: 4,
+  poiCount: 72,
+  wanderers: 40,
+  caravans: 10,
+  armies: 5,
   landSketch: null,
 };
 
@@ -360,9 +386,12 @@ export enum Biome {
   Mountain = 9,
   Snow = 10,
   Taiga = 11,
+  Desert = 12,
+  Jungle = 13,
+  Ashlands = 14,
 }
 
-export const BIOME_COUNT = 12;
+export const BIOME_COUNT = 15;
 
 export type NodeKind = 'city' | 'town' | 'hamlet' | 'grove' | 'camp' | 'shore' | 'meadow' | 'pass';
 export type NodeOrigin = 'authored' | 'generated';
@@ -378,7 +407,22 @@ export type PoiKind =
   | 'hideout'
   | 'treehouse'
   | 'battlefield'
-  | 'military-camp';
+  | 'military-camp'
+  | 'tower'
+  | 'wizard-tower'
+  | 'dragon-lair'
+  | 'mine'
+  | 'temple'
+  | 'monastery'
+  | 'port'
+  | 'bridge-keep'
+  | 'fey-circle'
+  | 'orc-fort'
+  | 'crypt'
+  | 'watchtower'
+  | 'trading-post'
+  | 'bandit-camp'
+  | 'ancient-gate';
 
 export interface Vec2 {
   x: number;
@@ -592,18 +636,21 @@ export interface LocationInfo {
 }
 
 export const BIOME_LABELS: Record<Biome, string> = {
-  [Biome.Water]: 'Open water',
-  [Biome.Sand]: 'Shore',
+  [Biome.Water]: 'Open sea',
+  [Biome.Sand]: 'Coast',
   [Biome.Plains]: 'Grassland',
-  [Biome.Meadow]: 'Flower meadow',
+  [Biome.Meadow]: 'Wildflower meadow',
   [Biome.Forest]: 'Woodland',
-  [Biome.DarkForest]: 'Old forest',
-  [Biome.Hills]: 'Hills',
-  [Biome.Heath]: 'Heath',
-  [Biome.Marsh]: 'Marsh',
-  [Biome.Mountain]: 'Highlands',
-  [Biome.Snow]: 'Snowpack',
-  [Biome.Taiga]: 'Taiga',
+  [Biome.DarkForest]: 'Shadowwood',
+  [Biome.Hills]: 'Rolling hills',
+  [Biome.Heath]: 'Badlands',
+  [Biome.Marsh]: 'Mire',
+  [Biome.Mountain]: 'High peaks',
+  [Biome.Snow]: 'Frostfell',
+  [Biome.Taiga]: 'Boreal forest',
+  [Biome.Desert]: 'Desert',
+  [Biome.Jungle]: 'Jungle',
+  [Biome.Ashlands]: 'Ashlands',
 };
 
 export const KIND_LABELS: Record<NodeKind, string> = {
@@ -618,17 +665,32 @@ export const KIND_LABELS: Record<NodeKind, string> = {
 };
 
 export const POI_LABELS: Record<PoiKind, string> = {
-  ruins: 'ruins',
-  mansion: 'abandoned mansion',
+  ruins: 'ancient ruins',
+  mansion: 'abandoned manor',
   'abandoned-camp': 'abandoned camp',
-  shrine: 'forest shrine',
-  cave: 'cave entrance',
-  graves: 'graves',
+  shrine: 'wayside shrine',
+  cave: 'cave mouth',
+  graves: 'barrow field',
   homestead: 'homestead',
-  hideout: 'hideout',
-  treehouse: 'treehouse settlement',
-  battlefield: 'battlefield',
-  'military-camp': 'military camp',
+  hideout: 'bandit hideout',
+  treehouse: 'canopy hold',
+  battlefield: 'old battlefield',
+  'military-camp': 'war camp',
+  tower: 'ruined tower',
+  'wizard-tower': 'wizard tower',
+  'dragon-lair': 'dragon lair',
+  mine: 'deep mine',
+  temple: 'forgotten temple',
+  monastery: 'monastery',
+  port: 'harbor quay',
+  'bridge-keep': 'bridge keep',
+  'fey-circle': 'fey circle',
+  'orc-fort': 'orc fort',
+  crypt: 'crypt',
+  watchtower: 'watchtower',
+  'trading-post': 'trading post',
+  'bandit-camp': 'bandit camp',
+  'ancient-gate': 'ancient gate',
 };
 
 export function biomeAt(world: WorldData, x: number, y: number): Biome {
@@ -1766,7 +1828,13 @@ export function poiOnTile(pois: PointOfInterest[], x: number, y: number): PointO
 
 /** World-tile radius of a POI's pre-defined site (mansion ≈ 3×3, battlefield ≈ 5×5 disk). */
 export function poiSiteReach(kind: PoiKind): number {
-  return kind === 'battlefield' || kind === 'ruins' ? 2 : 1;
+  return kind === 'battlefield' ||
+    kind === 'ruins' ||
+    kind === 'dragon-lair' ||
+    kind === 'orc-fort' ||
+    kind === 'ancient-gate'
+    ? 2
+    : 1;
 }
 
 /** Compact land tiles centered on the POI so layouts are never clipped to a blob edge. */
@@ -1958,14 +2026,30 @@ export function presentedFocus(overworld: Vec2, _nodes: MapNode[], _pois: PointO
 export function poiKindToNodeKind(kind: PoiKind): NodeKind {
   switch (kind) {
     case 'homestead':
+    case 'trading-post':
       return 'hamlet';
     case 'treehouse':
     case 'shrine':
     case 'hideout':
+    case 'fey-circle':
+    case 'temple':
+    case 'monastery':
       return 'grove';
     case 'military-camp':
     case 'abandoned-camp':
+    case 'bandit-camp':
+    case 'orc-fort':
+    case 'watchtower':
       return 'camp';
+    case 'port':
+    case 'bridge-keep':
+      return 'shore';
+    case 'mine':
+    case 'cave':
+    case 'dragon-lair':
+    case 'tower':
+    case 'wizard-tower':
+      return 'pass';
     default:
       return 'meadow';
   }

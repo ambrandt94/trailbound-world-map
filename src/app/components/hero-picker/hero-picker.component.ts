@@ -1,4 +1,4 @@
-import { Component, inject, output, signal } from '@angular/core';
+import { Component, inject, input, output, signal } from '@angular/core';
 import { NgStyle } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -20,11 +20,17 @@ import { PreferencesService } from '../../services/preferences.service';
   standalone: true,
   imports: [NgStyle, FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule],
   template: `
-    <div class="veil" (click)="cancel.emit()">
+    <div class="veil" (click)="onVeil()">
       <aside class="panel" (click)="$event.stopPropagation()">
-        <div class="eyebrow">Adventure</div>
+        <div class="eyebrow">{{ mode() === 'room' ? 'Room' : 'Adventure' }}</div>
         <h2>Who are you?</h2>
-        <p class="lede">Pick a look and a name. You can change this the next time you embark.</p>
+        <p class="lede">
+          @if (mode() === 'room') {
+            Pick a look and a name before you enter the lobby.
+          } @else {
+            Pick a look and a name. You can change this the next time you embark.
+          }
+        </p>
         <mat-form-field appearance="outline" subscriptSizing="dynamic" class="name">
           <mat-label>Name</mat-label>
           <input matInput maxlength="24" [(ngModel)]="name" />
@@ -49,8 +55,12 @@ import { PreferencesService } from '../../services/preferences.service';
           }
         </div>
         <div class="actions">
-          <button mat-stroked-button type="button" (click)="cancel.emit()">Cancel</button>
-          <button mat-flat-button color="primary" type="button" (click)="confirm()">Embark</button>
+          <button mat-stroked-button type="button" (click)="cancel.emit()">
+            {{ mode() === 'room' ? 'Leave lobby' : 'Cancel' }}
+          </button>
+          <button mat-flat-button color="primary" type="button" (click)="confirm()">
+            {{ mode() === 'room' ? 'Enter' : 'Embark' }}
+          </button>
         </div>
       </aside>
     </div>
@@ -67,11 +77,11 @@ import { PreferencesService } from '../../services/preferences.service';
       pointer-events: auto;
     }
     .panel {
-      width: min(28rem, 100%);
-      max-height: min(36rem, 92vh);
+      width: min(44rem, 100%);
+      max-height: min(48rem, 94vh);
       display: flex;
       flex-direction: column;
-      padding: 1rem 1.05rem 0.95rem;
+      padding: 1.15rem 1.2rem 1.05rem;
       border-radius: 14px;
       background: color-mix(in srgb, var(--tb-panel) 94%, transparent);
       backdrop-filter: blur(12px);
@@ -87,31 +97,31 @@ import { PreferencesService } from '../../services/preferences.service';
     }
     h2 {
       margin: 0.15rem 0 0.3rem;
-      font-size: 1.15rem;
+      font-size: 1.35rem;
       font-weight: 650;
     }
     .lede {
-      margin: 0 0 0.7rem;
-      font-size: 0.82rem;
+      margin: 0 0 0.75rem;
+      font-size: 0.88rem;
       color: var(--tb-muted);
     }
     .name {
       width: 100%;
-      margin-bottom: 0.35rem;
+      margin-bottom: 0.4rem;
     }
     .groups {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.3rem;
-      margin-bottom: 0.55rem;
+      gap: 0.35rem;
+      margin-bottom: 0.65rem;
     }
     .group {
       border: 1px solid color-mix(in srgb, var(--tb-ink) 12%, transparent);
       background: transparent;
       color: var(--tb-ink);
       border-radius: 999px;
-      padding: 0.2rem 0.65rem;
-      font: 700 0.68rem/1.2 Poppins, sans-serif;
+      padding: 0.28rem 0.75rem;
+      font: 700 0.72rem/1.2 Poppins, sans-serif;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       cursor: pointer;
@@ -123,20 +133,21 @@ import { PreferencesService } from '../../services/preferences.service';
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(2.65rem, 1fr));
-      gap: 0.35rem;
+      grid-template-columns: repeat(auto-fill, minmax(4.75rem, 1fr));
+      gap: 0.55rem;
       overflow: auto;
-      min-height: 8.5rem;
-      max-height: 16rem;
-      padding: 0.15rem 0.1rem 0.35rem;
+      min-height: 14rem;
+      max-height: min(28rem, 52vh);
+      padding: 0.2rem 0.15rem 0.45rem;
     }
     .face {
       aspect-ratio: 3 / 4;
-      border-radius: 8px;
+      border-radius: 10px;
       border: 1px solid color-mix(in srgb, var(--tb-ink) 12%, transparent);
       background-color: color-mix(in srgb, var(--tb-bg) 70%, transparent);
       cursor: pointer;
       padding: 0;
+      image-rendering: pixelated;
     }
     .face.on {
       border-color: var(--tb-accent-strong);
@@ -145,7 +156,7 @@ import { PreferencesService } from '../../services/preferences.service';
     .actions {
       display: flex;
       gap: 0.45rem;
-      margin-top: 0.55rem;
+      margin-top: 0.7rem;
     }
     .actions button {
       text-transform: none;
@@ -155,6 +166,7 @@ import { PreferencesService } from '../../services/preferences.service';
 })
 export class HeroPickerComponent {
   readonly prefs = inject(PreferencesService);
+  readonly mode = input<'adventure' | 'room'>('adventure');
   readonly embarked = output<{ name: string; sheet: string; char: number }>();
   readonly cancel = output<void>();
   readonly groups = HERO_GROUPS;
@@ -185,6 +197,11 @@ export class HeroPickerComponent {
   select(sheet: string, char: number): void {
     this.sheet = sheet;
     this.char = char;
+  }
+
+  onVeil(): void {
+    if (this.mode() === 'room') return;
+    this.cancel.emit();
   }
 
   confirm(): void {

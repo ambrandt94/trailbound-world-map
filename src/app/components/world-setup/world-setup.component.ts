@@ -17,6 +17,7 @@ import {
 } from '../../models/world.models';
 import { copySketch, paintSketchDisk, sameSketch, sketchHasInk, snapshotSketch, tryFillClosedStroke } from '../../engine/land-sketch';
 import { WorldService } from '../../services/world.service';
+import { RoomService } from '../../services/room.service';
 
 @Component({
   selector: 'app-world-setup',
@@ -80,9 +81,26 @@ import { WorldService } from '../../services/world.service';
         </mat-form-field>
       </div>
       <div class="actions">
-        <button mat-flat-button type="button" (click)="submit(false)" [disabled]="world.generating()">Rebuild</button>
-        <button mat-stroked-button type="button" (click)="submit(true)" [disabled]="world.generating()">New seed</button>
+        <button
+          mat-flat-button
+          type="button"
+          (click)="submit(false)"
+          [disabled]="world.generating() || roomLocked()"
+        >
+          Rebuild
+        </button>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="submit(true)"
+          [disabled]="world.generating() || room.connected()"
+        >
+          New seed
+        </button>
       </div>
+      @if (room.connected()) {
+        <p class="room-lock">Room shares one seed — guests cannot rebuild.</p>
+      }
     </aside>
   `,
   styles: `
@@ -169,12 +187,19 @@ import { WorldService } from '../../services/world.service';
       text-transform: none;
       flex: 1;
     }
+    .room-lock {
+      margin: 0.35rem 0 0;
+      font-size: 0.72rem;
+      color: var(--tb-muted);
+      line-height: 1.3;
+    }
   `,
 })
 export class WorldSetupComponent implements AfterViewInit {
   @ViewChild('sketch') sketchRef?: ElementRef<HTMLCanvasElement>;
 
   readonly world = inject(WorldService);
+  readonly room = inject(RoomService);
   readonly scales = WORLD_SCALES;
   readonly styles = MAP_STYLES;
   readonly labels = MAP_STYLE_LABELS;
@@ -232,8 +257,13 @@ export class WorldSetupComponent implements AfterViewInit {
   }
 
   submit(newSeed: boolean): void {
+    if (this.room.connected() && (newSeed || !this.room.isHost())) return;
     this.commitSketch();
     this.rebuilt.emit({ settings: this.draft(), newSeed });
+  }
+
+  roomLocked(): boolean {
+    return this.room.connected() && !this.room.isHost();
   }
 
   clearSketch(): void {

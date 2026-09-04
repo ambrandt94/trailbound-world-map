@@ -5,6 +5,7 @@ import { MatSliderModule } from '@angular/material/slider';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { PreferencesService } from '../../services/preferences.service';
 import { WorldService } from '../../services/world.service';
+import { RoomService } from '../../services/room.service';
 
 @Component({
   selector: 'app-settings-panel',
@@ -81,7 +82,7 @@ import { WorldService } from '../../services/world.service';
       </div>
 
       <div class="section actions">
-        <button mat-stroked-button type="button" (click)="newSeed.emit()">
+        <button mat-stroked-button type="button" (click)="newSeed.emit()" [disabled]="room.connected()">
           <mat-icon>restart_alt</mat-icon>
           New seed
         </button>
@@ -172,6 +173,7 @@ import { WorldService } from '../../services/world.service';
 export class SettingsPanelComponent implements AfterViewInit {
   readonly prefs = inject(PreferencesService);
   readonly world = inject(WorldService);
+  readonly room = inject(RoomService);
   readonly adventureOff = output<void>();
   readonly clearDetail = output<void>();
   readonly newSeed = output<void>();

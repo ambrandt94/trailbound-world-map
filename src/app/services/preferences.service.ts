@@ -17,7 +17,7 @@ const HERO_SHEET_KEY = 'tb-world-map-hero-sheet';
 const HERO_CHAR_KEY = 'tb-world-map-hero-char';
 const PREFS_VERSION_KEY = 'tb-world-map-prefs-v';
 /** Bump to clear stale gameplay prefs once, then keep persisting new choices. */
-const PREFS_VERSION = '9';
+const PREFS_VERSION = '10';
 const SETUP_KEY = 'tb-world-map-setup';
 
 /** One-shot reset so new defaults (8×, adventure on) replace old saved setup. */
@@ -28,6 +28,7 @@ export function migrateWorldMapPrefs(): void {
     localStorage.removeItem(ADJACENT_KEY);
     localStorage.removeItem(PLANET_KEY);
     localStorage.removeItem(SETUP_KEY);
+    localStorage.removeItem(NAMETAG_KEY);
     localStorage.setItem(PREFS_VERSION_KEY, PREFS_VERSION);
   } catch {
     /* private mode / blocked storage */
@@ -178,8 +179,7 @@ export class PreferencesService {
   private readNametagScale(): number {
     migrateWorldMapPrefs();
     const raw = Number(localStorage.getItem(NAMETAG_KEY));
-    // Prior default was 1.5; treat that as unset so the new middle (2.5) takes over.
-    if (!Number.isFinite(raw) || raw === 1.5) return 2.5;
+    if (!Number.isFinite(raw)) return 2.5;
     return Math.min(4.5, Math.max(0.5, raw));
   }
 

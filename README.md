@@ -2,7 +2,7 @@
 
 Kingdom-scale camera prototype: zoom from a biome overworld into street-level places. Standalone Angular app in `world-map/`. Hub visual style matches `json-viewer/` (see `../.cursor/rules/ui-style.mdc`).
 
-Canvas renderer for the overworld and street zoom. Far zoom is a raw WebGL globe (`src/app/engine/globe.ts`), not Three.js. Engine code in `src/app/engine/` stays free of Angular imports.
+Canvas renderer for the overworld and street zoom (Pixel Kingdom grasslands atlas). Far zoom is a raw WebGL globe (`src/app/engine/globe.ts`), not Three.js. Engine code in `src/app/engine/` stays free of Angular imports.
 
 ## Live site
 
@@ -32,8 +32,12 @@ npm run build:pages
 - **Start adventure**: remakes the kingdom, turns on adventure mode, and zooms to Close (32×) in the starting town
 - **Planet view** (Settings): a globe you can zoom all the way into (on explored land). Off keeps a flat continent map.
 - Click a traveler in explored land to zoom in
-- Toolbar: start adventure, node outlines, POI author view, sim clock, recenter, zoom, new seed, clear detail, settings, theme
+- Toolbar: Room (PIN lobby), Adventure, sim clock, recenter, zoom, settings, theme
 - In **sync** sim mode, Space waits a turn
+
+## Online rooms
+
+**Room** opens a peer-to-peer lobby (Trystero over MQTT). Create a room to get a 4-digit PIN, or join with one. Members share the host’s world seed and all start in Ashfen. Walkers see each other on the map; the bottom chat bar sends short speech bubbles over sprites. No dedicated game server yet (fine for prototypes; NAT can flake).
 
 ## Camera and nodes
 
@@ -42,8 +46,8 @@ The overworld is a biome map. With **Planet view** on, you stay on the globe (`x
 - Nodes are **irregular tile blobs** (`MapNode.tiles`), not circles or freeform polygons. Each world tile in the blob is a detail **chunk** (`ZONE_SCALE` inner tiles). Adjacent chunks inform edges.
 - Dive uses the world tile under the camera (or walker). If that tile belongs to a **visited** place, that place loads at your actual position, including edge cells. Uncharted land is under **clouds**; scrolling in while standing there generates a new region. In adventure mode a place only initializes if the walker is on that tile.
 - At street scale the place is isolated with a shadowed fog border. Inside a place you can zoom in close, or zoom out until the whole instance fits. One extra zoom-out past that fitted view returns to the overworld map.
-- **Authored** cities/towns are pre-marked (Ashfen, Goldmere, and Saltgate are cities; Veldcross is a smaller town; groves/camps stay small). Generated places pick a kind-based size, with 2× / 4× / 8× (and occasional shrink) rolls plus rotated/lobed outlines.
-- **POIs** are pre-placed and steer generation. Hidden from players; author view is on by default. Diving a POI creates a settlement-sized zone around it; the author pin and kind label stay on the ground when you zoom in.
+- **Authored** cities/towns are pre-marked (Ashfen, Goldmere, and Saltgate are cities; Ironmarch and Sunspire are towns; Shadowglen / Mythwood / Jadewild groves; Dunharrow camp). Generated places pick a kind-based size, with 2× / 4× / 8× (and occasional shrink) rolls plus rotated/lobed outlines.
+- **POIs** are pre-placed and steer generation (ruins, wizard towers, dragon lairs, temples, orc forts, and more). Author overlay (map dock) shows every marker when on. In adventure mode with the overlay off, a POI only appears after you walk through it or zoom into a detail chunk on/adjacent to it. Diving a POI creates a settlement-sized zone around it.
 - Default: **8×** continent, adventure mode **on**, camera at **Close (32×)**. **Start adventure** rolls a new seed and dives in again.
 
 Do not go back to continuous rectangle/polygon streaming that broke zoom isolation.

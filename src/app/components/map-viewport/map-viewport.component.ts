@@ -24,11 +24,8 @@ import {
   CLOSE_SCALE,
   CHUNK_STREAM_PER_FRAME,
   PlayerState,
-  SPEED_REF_SCALE,
-  SPRINT_MULT,
   SYNC_TURN_TILES,
   TILE,
-  WALK_SPEED,
   clamp,
   chunkKey,
   biomeAt,
@@ -43,6 +40,7 @@ import {
   leaveScaleForFit,
   minScaleFor,
   knownPlaceAt,
+  moveSpeed,
   nodeContaining,
   boundsFromTiles,
   clampLatY,
@@ -70,7 +68,9 @@ import { drawCanvasGlobe, GlobeMarker, GlobeRenderer, orbitGlobeLook, unprojectC
 import { globeShowsWholePlanet } from '../../engine/projection';
 import { WorldRenderer } from '../../engine/renderer';
 import { PreferencesService } from '../../services/preferences.service';
+import { RoomService } from '../../services/room.service';
 import { WorldService } from '../../services/world.service';
+import { selfId } from '@trystero-p2p/mqtt';
 
 /** Mix screen-center zoom (0) and cursor-locked zoom (1). */
 const ZOOM_CURSOR_BIAS = 1;
@@ -381,6 +381,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     };
   });
   readonly prefs = inject(PreferencesService);
+  readonly room = inject(RoomService);
   private readonly ngZone = inject(NgZone);
   private readonly assets = new AssetLibrary();
   private renderer: WorldRenderer | null = null;
@@ -772,6 +773,17 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
         this.world.setScale(scale);
         this.world.bumpSimHud();
       });
+      if (this.room.connected() && this.usingWalker()) {
+        this.room.publishPose({
+          name: this.player.name,
+          sheet: this.player.sheet,
+          char: this.player.char,
+          x: px,
+          y: py,
+          facing: this.player.facing,
+          frame: this.player.frame,
+        });
+      }
     }
   }
 
@@ -788,8 +800,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     }
     const len = Math.hypot(mx, my) || 1;
     const sprinting = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
-    const speed =
-      clamp(WALK_SPEED * (SPEED_REF_SCALE / this.camera.scale), 0.12, 92) * (sprinting ? SPRINT_MULT : 1);
+    const speed = moveSpeed(this.moveSpeedBand(), sprinting);
     const world = this.world.world();
     const width = world?.width ?? 192;
     const maxY = (world?.height ?? 192) - 0.5;
@@ -914,7 +925,14 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     }
     const iso = this.isolationTiles();
     if (!iso) return;
-    this.bakeCreated(this.world.ensureTiles(iso, CHUNK_STREAM_PER_FRAME, { x: fx, y: fy }), world);
+    // Edge-POI attach can expand the isolation set and invalidate chunk data — always
+    // catch up with a full bake when any iso tile is missing a ground bake.
+    const missingBake = iso.some((t) => !this.renderer!.hasChunkBake(t.x, t.y));
+    if (missingBake) {
+      this.fillAndBake(iso);
+    } else {
+      this.bakeCreated(this.world.ensureTiles(iso, CHUNK_STREAM_PER_FRAME, { x: fx, y: fy }), world);
+    }
     const dropped = this.world.dropChunksNotIn(iso);
     for (const key of dropped) {
       const [sx, sy] = key.split(',');
@@ -924,11 +942,24 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
 
   private fillAndBake(tiles: { x: number; y: number }[]): void {
     const world = this.world.world();
-    if (!world || !this.renderer) return;
-    this.bakeCreated(
-      this.world.ensureTiles(tiles, CHUNK_STREAM_PER_FRAME, { x: this.player.x, y: this.player.y }),
-      world,
-    );
+    if (!world || !this.renderer || !tiles.length) return;
+    // Bake the whole place up front so isolation never shows empty black tiles.
+    const created = this.world.ensureTiles(tiles, tiles.length, { x: this.player.x, y: this.player.y });
+    // Also rebake any iso tiles that already had chunk data but lost their ground canvas
+    // (e.g. after edge-POI attach invalidated neighbors).
+    const chunks = this.world.liveChunks();
+    const needBake: ChunkData[] = [...created];
+    const seen = new Set(created.map((c) => chunkKey(c.wx, c.wy)));
+    for (const t of tiles) {
+      const key = chunkKey(t.x, t.y);
+      if (seen.has(key)) continue;
+      if (this.renderer.hasChunkBake(t.x, t.y)) continue;
+      const chunk = chunks.get(key);
+      if (!chunk) continue;
+      needBake.push(chunk);
+      seen.add(key);
+    }
+    this.bakeCreated(needBake, world);
   }
 
   private bakeCreated(created: ChunkData[], world: NonNullable<ReturnType<WorldService['world']>>): void {
@@ -1035,7 +1066,6 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     if (this.isolatePlaceId) {
       const locked = world.nodes.find((n) => n.id === this.isolatePlaceId);
       if (locked?.tiles?.length) {
-        this.world.attachEdgePois(locked.id);
         const key = `${locked.id}:${locked.tiles.length}:${world.nodes.length}:${link}`;
         if (this.isoTilesCache?.key === key) return this.isoTilesCache.tiles;
         const tiles = this.adventureTiles(world.nodes, locked);
@@ -1118,6 +1148,9 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private syncIsolationLock(world: NonNullable<ReturnType<WorldService['world']>>): void {
     const place = knownPlaceAt(world.nodes, this.player.x, this.player.y);
     if (!place) return;
+    const before = world.nodes.length;
+    this.world.attachEdgePois(place.id);
+    if (world.nodes.length !== before) this.isoTilesCache = null;
     const tiles = this.adventureTiles(world.nodes, place);
     const lock = this.world.adventureLock();
     const lockMatches =
@@ -1130,6 +1163,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.world.claimAdventurePockets(place, tiles);
     this.world.adventureLock.set(regionFromTiles(tiles));
     this.world.markVisited(place);
+    this.isoTilesCache = null;
     this.fillAndBake(tiles);
   }
 
@@ -1169,6 +1203,13 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
 
   private usingWalker(): boolean {
     return this.prefs.adventureMode();
+  }
+
+  /** Fixed travel rates by view mode — not scaled by camera zoom. */
+  private moveSpeedBand(): 'iso' | 'overworld' | 'globe' {
+    if (this.showingGlobe()) return 'globe';
+    if (this.isolatePlaceId && !this.leavingIsolation) return 'iso';
+    return 'overworld';
   }
 
   private globeAllowed(): boolean {
@@ -1319,6 +1360,19 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       : live.filter(exploredOrMarked);
     const markerEntities =
       markersOn && isolateKeys ? live.filter((e) => !inIso(e)) : undefined;
+    const remotePlayers = this.room.connected()
+      ? this.room.peers().map((p) => ({
+          id: p.id,
+          name: p.name,
+          x: p.x,
+          y: p.y,
+          facing: p.facing,
+          frame: p.frame,
+          anim: 0,
+          sheet: p.sheet,
+          char: p.char,
+        }))
+      : [];
     this.renderer.draw(ctx, world, this.camera, this.player, this.viewW, this.viewH, {
       showOutlines: this.world.showOutlines(),
       showPois: this.world.showPois(),
@@ -1335,6 +1389,9 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       outlineAmt: this.prefs.zoneOverlay(),
       cloudAmt: this.prefs.cloudCover(),
       nametagScale: this.prefs.nametagScale(),
+      remotePlayers,
+      localPeerId: this.room.connected() ? selfId : null,
+      speechBubbles: this.room.connected() ? this.room.bubbles() : [],
     });
   }
 

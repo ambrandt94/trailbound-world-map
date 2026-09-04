@@ -69,6 +69,7 @@ const OUTLINES_KEY = 'tb-world-map-outlines';
 const POIS_KEY = 'tb-world-map-pois';
 const nodesKey = (seed: number) => `tb-world-map-nodes-v7-${seed}`;
 const visitedKey = (seed: number) => `tb-world-map-visited-v1-${seed}`;
+const discoveredPoisKey = (seed: number) => `tb-world-map-discovered-pois-v1-${seed}`;
 
 const SETTINGS_KEY = 'tb-world-map-setup';
 const SIM_KEY = 'tb-world-map-sim';
@@ -161,8 +162,13 @@ export class WorldService {
     const biome = biomeAt(world, player.x, player.y);
     const inside = nodeContaining(world.nodes, player.x, player.y);
     const touching = nodeTouching(world.nodes, player.x, player.y);
-    const poi = poiApproaching(world.pois, player.x, player.y);
-    const poiHere = poiOnTile(world.pois, player.x, player.y);
+    const adventure = this.prefs.adventureMode();
+    const rawPoi = poiApproaching(world.pois, player.x, player.y);
+    const rawHere = poiOnTile(world.pois, player.x, player.y);
+    const poi =
+      rawPoi && this.poiRevealed(rawPoi, adventure) ? rawPoi : null;
+    const poiHere =
+      rawHere && this.poiRevealed(rawHere, adventure) ? rawHere : null;
     const view = presentedFocus(player, world.nodes, world.pois, scale);
     const atGate = !!touching && !inside;
     return {
@@ -181,7 +187,7 @@ export class WorldService {
       poiKind: poi?.kind ?? null,
       scaleLabel: scaleLabel(scale, world.width),
       scale,
-      uncharted: !inside && !poiHere,
+      uncharted: !inside && !rawHere,
     };
   });
 
@@ -209,6 +215,8 @@ export class WorldService {
   private seed = DEFAULT_SEED;
   private simRng = new Rng(DEFAULT_SEED);
   private clockHours = START_HOUR;
+  /** When true, generated places are not written to localStorage (online lobby). */
+  private roomSession = false;
 
   get currentSeed(): number {
     return this.seed;
@@ -220,18 +228,24 @@ export class WorldService {
     return this.rebuild(this.seed);
   }
 
-  rebuild(seed: number): WorldData {
+  rebuild(seed: number, opts?: { clean?: boolean }): WorldData {
     this.seed = seed >>> 0 || DEFAULT_SEED;
     localStorage.setItem(SEED_KEY, String(this.seed));
     const world = generateWorld(this.seed, this.settings());
-    const extra = this.readGenerated(this.seed);
-    const used = new Set(world.nodes.map((n) => n.id));
-    for (const node of extra) {
-      if (used.has(node.id)) continue;
-      world.nodes.push(ensureNodeRegion(node, world));
-      used.add(node.id);
+    if (!opts?.clean) {
+      const extra = this.readGenerated(this.seed);
+      const used = new Set(world.nodes.map((n) => n.id));
+      for (const node of extra) {
+        if (used.has(node.id)) continue;
+        world.nodes.push(ensureNodeRegion(node, world));
+        used.add(node.id);
+      }
+      if (settlePoiSites(world.nodes, world) || separateNestedPlaces(world.nodes)) this.persistGenerated(world);
+    } else {
+      // Room sessions share only seed + settings — drop local generated places so peers match.
+      settlePoiSites(world.nodes, world);
+      separateNestedPlaces(world.nodes);
     }
-    if (settlePoiSites(world.nodes, world) || separateNestedPlaces(world.nodes)) this.persistGenerated(world);
     this.chunks.clear();
     this.world.set(world);
     this.player.set(this.heroFromPrefs(defaultPlayerStart(world)));
@@ -243,10 +257,26 @@ export class WorldService {
     this.simTick.update((n) => n + 1);
     this.ready.set(true);
     this.clearAdventure();
-    this.visitedIds = this.readVisited(this.seed);
+    if (opts?.clean) {
+      this.visitedIds = new Set();
+      this.discoveredPoiIds = new Set();
+    } else {
+      this.visitedIds = this.readVisited(this.seed);
+      this.discoveredPoiIds = this.readDiscoveredPois(this.seed);
+    }
     this.exploredCache = null;
     this.fogRev.update((n) => n + 1);
     return world;
+  }
+
+  /** Seed-only rebuild for online lobbies (no localStorage place memory). */
+  rebuildForRoom(seed: number): WorldData {
+    this.roomSession = true;
+    return this.rebuild(seed, { clean: true });
+  }
+
+  endRoomSession(): void {
+    this.roomSession = false;
   }
 
   /** Clip nested donuts and 1-tile spikes on an already-loaded world (HMR / old saves). */
@@ -277,20 +307,15 @@ export class WorldService {
     localStorage.setItem(POIS_KEY, on ? '1' : '0');
   }
 
-  /** Author view shows every marker. Adventure reveals a POI after its site is entered or a neighboring place exists. */
+  /** Author overlay shows every marker. Adventure reveals only after walk-through or an adjacent detail chunk. */
   poiRevealed(poi: PointOfInterest, adventureMode: boolean): boolean {
     if (this.showPois()) return true;
     if (!adventureMode) return false;
+    if (this.discoveredPoiIds.has(poi.id)) return true;
     const world = this.world();
     if (!world) return false;
     const own = world.nodes.find((n) => n.id === poi.id);
-    if (own && this.placeExplored(own)) return true;
-    for (const node of world.nodes) {
-      if (node.id === poi.id) continue;
-      if (!this.placeExplored(node)) continue;
-      if (poiFootprintTouchesPlace(node, poi, world)) return true;
-    }
-    return false;
+    return !!own && this.placeExplored(own);
   }
 
   visiblePoiIds(adventureMode: boolean): Set<string> {
@@ -306,6 +331,44 @@ export class WorldService {
       if (this.poiRevealed(poi, true)) ids.add(poi.id);
     }
     return ids;
+  }
+
+  /** Mark a POI as found (map pin + labels). No-op if already known. */
+  revealPoi(poiId: string | null | undefined): boolean {
+    if (!poiId || this.discoveredPoiIds.has(poiId)) return false;
+    this.discoveredPoiIds.add(poiId);
+    this.persistDiscoveredPois();
+    this.fogRev.update((n) => n + 1);
+    this.simTick.update((n) => n + 1);
+    return true;
+  }
+
+  /** Walking onto a POI footprint discovers it. */
+  discoverPoisAtWalk(x: number, y: number): void {
+    const world = this.world();
+    if (!world || !this.prefs.adventureMode()) return;
+    const here = poiCovering(world.pois, x, y, world);
+    if (here) this.revealPoi(here.id);
+  }
+
+  /**
+   * Diving / streaming a world-tile chunk discovers POIs on that tile or any
+   * orthogonally adjacent tile (including the POI's footprint).
+   */
+  discoverPoisNearChunk(wx: number, wy: number): void {
+    const world = this.world();
+    if (!world || !this.prefs.adventureMode()) return;
+    let changed = false;
+    for (const poi of world.pois) {
+      if (this.discoveredPoiIds.has(poi.id)) continue;
+      if (!poiAdjacentToChunk(poi, wx, wy, world)) continue;
+      this.discoveredPoiIds.add(poi.id);
+      changed = true;
+    }
+    if (!changed) return;
+    this.persistDiscoveredPois();
+    this.fogRev.update((n) => n + 1);
+    this.simTick.update((n) => n + 1);
   }
 
   setHovered(id: string | null): void {
@@ -381,6 +444,7 @@ export class WorldService {
     const nx = wrapX(x, world.width);
     const ny = clamp(y, 0.5, world.height - 0.5);
     this.player.set({ ...cur, ...pose, x: nx, y: ny });
+    this.discoverPoisAtWalk(nx, ny);
   }
 
   movePlayer(dx: number, dy: number): void {
@@ -397,11 +461,12 @@ export class WorldService {
   }
 
   private visitedIds = new Set<string>();
+  private discoveredPoiIds = new Set<string>();
   private exploredCache: { rev: number; keys: Set<string> } | null = null;
 
   fogKey(): string {
     const world = this.world();
-    return `${this.seed}:${this.fogRev()}:${world?.nodes.length ?? 0}`;
+    return `${this.seed}:${this.fogRev()}:${world?.nodes.length ?? 0}:${this.discoveredPoiIds.size}`;
   }
 
   placeExplored(node: MapNode): boolean {
@@ -436,6 +501,7 @@ export class WorldService {
   markVisited(place: MapNode | null | undefined): void {
     if (!place) return;
     if (place.origin !== 'authored' && !place.poiKind) return;
+    if (place.poiKind) this.revealPoi(place.id);
     if (this.visitedIds.has(place.id)) return;
     this.visitedIds.add(place.id);
     this.persistVisited();
@@ -480,16 +546,19 @@ export class WorldService {
     const rng = new Rng((world.seed ^ (region.tiles.length * 2654435761) ^ (region.x0 << 16) ^ region.y0) >>> 0);
     const resolved =
       kind ??
-      (biome === Biome.Forest || biome === Biome.DarkForest
+      (biome === Biome.Forest || biome === Biome.DarkForest || biome === Biome.Jungle
         ? 'grove'
         : biome === Biome.Water || biome === Biome.Sand || biome === Biome.Marsh
           ? 'shore'
-          : biome === Biome.Mountain || biome === Biome.Snow || biome === Biome.Taiga
+          : biome === Biome.Mountain ||
+              biome === Biome.Snow ||
+              biome === Biome.Taiga ||
+              biome === Biome.Ashlands
             ? 'pass'
             : kindForBiome(biome, rng));
     const node: MapNode = {
       id: `adv-${region.x0}-${region.y0}-${region.tiles.length}-${world.nodes.length}`,
-      name: generatedName(rng, used),
+      name: generatedName(rng, used, resolved),
       origin: 'generated',
       kind: resolved,
       biome,
@@ -665,15 +734,20 @@ export class WorldService {
   }
 
   ensureTiles(tiles: Vec2[], maxNew = 128, near?: Vec2): ChunkData[] {
-    const jobs = tiles.filter((t) => !this.chunks.has(chunkKey(t.x, t.y)));
-    if (near && jobs.length > maxNew) {
-      jobs.sort(
+    const ranked = tiles.slice();
+    if (near && ranked.length > maxNew) {
+      ranked.sort(
         (a, b) =>
           (a.x + 0.5 - near.x) ** 2 +
           (a.y + 0.5 - near.y) ** 2 -
           ((b.x + 0.5 - near.x) ** 2 + (b.y + 0.5 - near.y) ** 2),
       );
     }
+    // Discover from tiles we are actually diving into (existing or new).
+    for (const t of ranked.slice(0, Math.max(maxNew, 24))) {
+      this.discoverPoisNearChunk(t.x, t.y);
+    }
+    const jobs = ranked.filter((t) => !this.chunks.has(chunkKey(t.x, t.y)));
     return this.createChunkJobs(jobs, maxNew, false);
   }
 
@@ -682,6 +756,7 @@ export class WorldService {
     if (!world) return [];
     const created: ChunkData[] = [];
     for (const job of jobs.slice(0, maxNew)) {
+      this.discoverPoisNearChunk(job.x, job.y);
       if (discoverPois) {
         const poi = poiOnTile(world.pois, job.x + 0.5, job.y + 0.5);
         if (poi && !world.nodes.some((n) => n.id === poi.id)) this.nodeFromPoi(world, poi);
@@ -708,8 +783,12 @@ export class WorldService {
     const world = this.world();
     if (!world) return null;
     if (scale < DETAIL_START) return nodeContaining(world.nodes, x, y);
+    this.discoverPoisNearChunk(Math.floor(x), Math.floor(y));
     const poi = poiCovering(world.pois, x, y, world);
-    if (poi) return this.nodeFromPoi(world, poi);
+    if (poi) {
+      this.revealPoi(poi.id);
+      return this.nodeFromPoi(world, poi);
+    }
     const here = nodeContaining(world.nodes, x, y);
     if (here) return here;
     return this.discoverPlace(world, x, y);
@@ -761,12 +840,10 @@ export class WorldService {
     world.nodes = [...world.nodes, node];
     settlePoiSites(world.nodes, world);
     const placed = world.nodes.find((n) => n.id === poi.id) ?? node;
+    // Drop only the POI's own footprint chunks so neighbors keep their ground bakes.
+    // Callers rebake via fillAndBake when isolation expands.
     for (const t of placed.tiles ?? []) {
       this.chunks.delete(chunkKey(t.x, t.y));
-      this.chunks.delete(chunkKey(t.x - 1, t.y));
-      this.chunks.delete(chunkKey(t.x + 1, t.y));
-      this.chunks.delete(chunkKey(t.x, t.y - 1));
-      this.chunks.delete(chunkKey(t.x, t.y + 1));
     }
     this.world.set({ ...world, nodes: world.nodes });
     this.persistGenerated(world);
@@ -813,7 +890,7 @@ export class WorldService {
     const b = boundsFromTiles(blob.tiles);
     const node: MapNode = {
       id: `gen-${wx}-${wy}-${blob.tiles.length}`,
-      name: generatedName(rng, used),
+      name: generatedName(rng, used, kind),
       origin: 'generated',
       kind,
       biome,
@@ -835,6 +912,8 @@ export class WorldService {
   }
 
   private persistGenerated(world: WorldData): void {
+    // Online lobbies stay seed-canonical; don't write divergent places into localStorage.
+    if (this.roomSession) return;
     const generated = world.nodes.filter((n) => n.origin === 'generated');
     localStorage.setItem(nodesKey(this.seed), JSON.stringify(generated));
     this.bumpFog();
@@ -844,9 +923,25 @@ export class WorldService {
     localStorage.setItem(visitedKey(this.seed), JSON.stringify([...this.visitedIds]));
   }
 
+  private persistDiscoveredPois(): void {
+    localStorage.setItem(discoveredPoisKey(this.seed), JSON.stringify([...this.discoveredPoiIds]));
+  }
+
   private readVisited(seed: number): Set<string> {
     try {
       const raw = localStorage.getItem(visitedKey(seed));
+      if (!raw) return new Set();
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return new Set();
+      return new Set(parsed.filter((id): id is string => typeof id === 'string'));
+    } catch {
+      return new Set();
+    }
+  }
+
+  private readDiscoveredPois(seed: number): Set<string> {
+    try {
+      const raw = localStorage.getItem(discoveredPoisKey(seed));
       if (!raw) return new Set();
       const parsed = JSON.parse(raw) as unknown;
       if (!Array.isArray(parsed)) return new Set();
@@ -912,4 +1007,17 @@ export class WorldService {
       return { ...DEFAULT_WORLD_SETTINGS };
     }
   }
+}
+
+/** True if chunk (wx,wy) is on or orthogonally adjacent to any footprint tile. */
+function poiAdjacentToChunk(
+  poi: PointOfInterest,
+  wx: number,
+  wy: number,
+  world: { width: number; height: number; biomes?: Uint8Array },
+): boolean {
+  for (const t of poiFootprintTiles(poi, world)) {
+    if (Math.abs(t.x - wx) + Math.abs(t.y - wy) <= 1) return true;
+  }
+  return false;
 }
