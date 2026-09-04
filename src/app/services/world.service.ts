@@ -55,6 +55,7 @@ import {
   zoneRadiusFor,
   AdventureRegion,
   Vec2,
+  FOG_OF_WAR_ENABLED,
 } from '../models/world.models';
 import { Rng } from '../engine/noise';
 import { generatedName, kindForBiome } from '../engine/names';
@@ -470,12 +471,14 @@ export class WorldService {
   }
 
   placeExplored(node: MapNode): boolean {
+    if (!FOG_OF_WAR_ENABLED) return true;
     if (node.poiKind) return this.visitedIds.has(node.id);
     if (node.origin === 'generated') return true;
     return this.visitedIds.has(node.id);
   }
 
   tileExplored(x: number, y: number): boolean {
+    if (!FOG_OF_WAR_ENABLED) return true;
     const world = this.world();
     if (!world) return false;
     const wx = Math.floor(wrapX(x, world.width));
@@ -500,11 +503,12 @@ export class WorldService {
 
   markVisited(place: MapNode | null | undefined): void {
     if (!place) return;
-    if (place.origin !== 'authored' && !place.poiKind) return;
     if (place.poiKind) this.revealPoi(place.id);
     if (this.visitedIds.has(place.id)) return;
+    // Generated wilderness places also clear cloud cover; skipping them left the
+    // explored-tile cache stale after minting a new zone (esp. in room sessions).
     this.visitedIds.add(place.id);
-    this.persistVisited();
+    if (place.origin === 'authored' || place.poiKind) this.persistVisited();
     this.bumpFog();
   }
 
@@ -913,9 +917,11 @@ export class WorldService {
 
   private persistGenerated(world: WorldData): void {
     // Online lobbies stay seed-canonical; don't write divergent places into localStorage.
-    if (this.roomSession) return;
-    const generated = world.nodes.filter((n) => n.origin === 'generated');
-    localStorage.setItem(nodesKey(this.seed), JSON.stringify(generated));
+    // Always bump fog so newly minted / expanded places clear clouds on every peer.
+    if (!this.roomSession) {
+      const generated = world.nodes.filter((n) => n.origin === 'generated');
+      localStorage.setItem(nodesKey(this.seed), JSON.stringify(generated));
+    }
     this.bumpFog();
   }
 

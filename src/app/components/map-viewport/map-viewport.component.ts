@@ -450,8 +450,13 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       this.globe.setZones(this.renderer.zoneBake);
     }
     this.applyStartCamera(data, true);
-    this.renderer.bakeClouds(data, this.world.exploredTileKeys());
-    this.cloudBakeKey = this.world.fogKey();
+    if (this.prefs.fogEnabled) {
+      this.renderer.bakeClouds(data, this.world.exploredTileKeys());
+      this.cloudBakeKey = this.world.fogKey();
+    } else {
+      this.cloudBakeKey = 'off';
+      this.renderer.cloudBake = null;
+    }
     this.ngZone.run(() => this.world.generating.set(false));
 
     this.bindKeys();
@@ -523,8 +528,14 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     }
     if (data && this.prefs.adventureMode()) this.applyStartCamera(data, true);
     else this.fitCameraScale(data?.width ?? 192, true);
-    if (data) this.renderer?.bakeClouds(data, this.world.exploredTileKeys());
-    this.cloudBakeKey = this.world.fogKey();
+    if (data && this.prefs.fogEnabled) {
+      this.renderer?.bakeClouds(data, this.world.exploredTileKeys());
+      this.cloudBakeKey = this.world.fogKey();
+    } else {
+      this.cloudBakeKey = 'off';
+      if (this.renderer) this.renderer.cloudBake = null;
+      this.globe?.setClouds(null);
+    }
     this.scheduleFit();
   }
 
@@ -535,7 +546,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
 
   recenter(): void {
     if (this.usingWalker()) {
-      this.setFollow(true);
+      this.focusPlayer();
       return;
     }
     const world = this.world.world();
@@ -544,6 +555,17 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.camera.targetY = world.height / 2;
     this.zoomPivot = null;
     this.fitCameraScale(world.width, false);
+  }
+
+  /** Snap follow to the walker and dive to Close (32×). */
+  focusPlayer(): void {
+    this.setFollow(true);
+    this.zoomPivot = null;
+    this.camera.targetX = this.player.x;
+    this.camera.targetY = this.player.y;
+    this.camera.x = this.player.x;
+    this.camera.y = this.player.y;
+    this.setTargetScale(CLOSE_SCALE);
   }
 
   zoomBy(factor: number): void {
@@ -1387,7 +1409,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       isolateTiles: isolate,
       showPlayer: this.usingWalker(),
       outlineAmt: this.prefs.zoneOverlay(),
-      cloudAmt: this.prefs.cloudCover(),
+      cloudAmt: this.prefs.fogCover(),
       nametagScale: this.prefs.nametagScale(),
       remotePlayers,
       localPeerId: this.room.connected() ? selfId : null,
@@ -1599,6 +1621,14 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   }
 
   private syncCloudBake(world: NonNullable<ReturnType<WorldService['world']>>): void {
+    if (!this.prefs.fogEnabled || this.prefs.fogCover() < 0.01) {
+      if (this.cloudBakeKey !== 'off') {
+        this.cloudBakeKey = 'off';
+        if (this.renderer) this.renderer.cloudBake = null;
+        this.globe?.setClouds(null);
+      }
+      return;
+    }
     const key = `${this.world.fogKey()}:fog`;
     if (key === this.cloudBakeKey && this.renderer?.cloudBake) return;
     this.cloudBakeKey = key;

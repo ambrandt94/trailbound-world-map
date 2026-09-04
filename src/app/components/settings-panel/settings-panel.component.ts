@@ -67,12 +67,14 @@ import { RoomService } from '../../services/room.service';
             <input matSliderThumb [value]="overlayPct()" (input)="onOverlay($any($event.target).value)" />
           </mat-slider>
         </div>
-        <div class="slider-row">
-          <span>Fog</span>
-          <mat-slider min="0" max="100" step="1" discrete class="overlay-slider">
-            <input matSliderThumb [value]="cloudPct()" (input)="onClouds($any($event.target).value)" />
-          </mat-slider>
-        </div>
+        @if (prefs.fogEnabled) {
+          <div class="slider-row">
+            <span>Fog</span>
+            <mat-slider min="0" max="100" step="1" discrete class="overlay-slider">
+              <input matSliderThumb [value]="cloudPct()" (input)="onClouds($any($event.target).value)" />
+            </mat-slider>
+          </div>
+        }
         <div class="slider-row">
           <span>Tags</span>
           <mat-slider min="50" max="450" step="5" discrete class="overlay-slider">

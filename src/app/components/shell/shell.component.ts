@@ -90,7 +90,12 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
         </button>
       </div>
       <div class="nav-group" role="group" aria-label="Camera">
-        <button mat-icon-button type="button" (click)="map()?.recenter()" [matTooltip]="prefs.adventureMode() ? 'Follow walker' : 'Recenter'">
+        <button
+          mat-icon-button
+          type="button"
+          (click)="map()?.recenter()"
+          [matTooltip]="prefs.adventureMode() ? 'Focus on me · Close (32×)' : 'Recenter'"
+        >
           <mat-icon>my_location</mat-icon>
         </button>
         <button mat-icon-button type="button" (click)="map()?.zoomBy(1 / 1.55)" matTooltip="Zoom out">

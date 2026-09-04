@@ -1,5 +1,6 @@
 import { Injectable, computed, effect, signal } from '@angular/core';
 import { clampHeroName, DEFAULT_HERO_LOOK, DEFAULT_HERO_NAME, findHeroLook } from '../engine/hero';
+import { FOG_OF_WAR_ENABLED } from '../models/world.models';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -44,6 +45,9 @@ export class PreferencesService {
   readonly planetView = signal(this.readPlanet());
   readonly zoneOverlay = signal(this.readOverlay());
   readonly cloudCover = signal(this.readClouds());
+  /** Effective cloud alpha — 0 while fog is disabled. */
+  readonly fogCover = computed(() => (FOG_OF_WAR_ENABLED ? this.cloudCover() : 0));
+  readonly fogEnabled = FOG_OF_WAR_ENABLED;
   /** Always show traveler / caravan / host positions on the map. */
   readonly showWorldMarkers = signal(this.readWorldMarkers());
   /** Size vs the original 10px pixel nametag. Default 1.5. */

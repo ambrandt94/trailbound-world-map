@@ -60,6 +60,8 @@ export const DETAIL_END = 7.8;
 export const ADVENTURE_ASK_SCALE = 4.2;
 /** Max zoom over unexplored (cloudy) land — biome map, not street or character. */
 export const CLOUD_ZOOM_CAP = 3.6;
+/** Temporary kill switch — cloud fog of war + exploration gating. */
+export const FOG_OF_WAR_ENABLED = false;
 /** Leftover ungenerated pockets of this many tiles or fewer get absorbed into isolation. */
 export const ADVENTURE_POCKET_MAX = 16;
 /** Smallest generated place. Land leftovers under this are sealed into the new zone. */
