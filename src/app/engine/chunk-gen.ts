@@ -2,7 +2,6 @@ import {
   Biome,
   ChunkData,
   MapNode,
-  NodeKind,
   PlacedSprite,
   PoiKind,
   WorldData,
@@ -11,6 +10,14 @@ import {
   nodeBounds,
   tileCoveredByNode,
 } from '../models/world.models';
+import {
+  buildingInChunk,
+  pointHitsBuilding,
+  poiBuildingLayout,
+  settlementLayout,
+  settlementPlaza,
+  toPlacedSprite,
+} from './buildings';
 import { hash2, Rng } from './noise';
 
 function idx(x: number, y: number, size: number): number {
@@ -162,21 +169,13 @@ function treePool(biome: Biome): string[] {
   }
 }
 
-function cityBuildings(kind: NodeKind, rng: Rng): string[] {
-  const houses = ['house-1', 'house-2', 'house-3', 'house-5', 'house-7', 'house-8'];
-  if (kind === 'city') {
-    return ['town-hall', 'church', 'tavern', 'inn', 'inn-2', 'shop', 'blacksmith', ...(rng.chance(0.5) ? ['market'] : []), ...houses];
-  }
-  if (kind === 'town') return ['inn', 'shop', 'tavern', rng.pick(houses), rng.pick(houses), rng.pick(houses), 'farm'];
-  if (kind === 'hamlet') return [rng.pick(houses), rng.pick(houses), 'farm', 'well'];
-  return ['farm', rng.pick(houses), 'house-7'];
-}
 
 function worldPathAt(world: WorldData, x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= world.width || y >= world.height) return false;
   return !!world.paths[x + y * world.width];
 }
 
+/** Bake one world-tile instance (streets, props, buildings). Session/API entry. */
 export function generateChunk(
   world: WorldData,
   wx: number,
@@ -211,7 +210,7 @@ export function generateChunk(
 
   stampRoadNetwork(world, node, wx, wy, size, paths);
 
-  if (node) applyNodeOverlay(node, wx, wy, size, tiles, paths, cobble, sprites, layoutRng);
+  if (node) applyNodeOverlay(node, world.seed, wx, wy, size, tiles, paths, cobble, sprites, layoutRng);
   stampNearbyPois(world, node, wx, wy, size, tiles, paths, cobble, sprites, layoutRng);
 
   const pool = treePool(base);
@@ -222,8 +221,11 @@ export function generateChunk(
       if (cobble[idx(x, y, size)] || paths[idx(x, y, size)]) continue;
       const b = tiles[idx(x, y, size)] as Biome;
       if (b === Biome.Water) continue;
+      const tx = x + rng.range(0.1, 0.8);
+      const ty = y + rng.range(0.2, 0.9);
+      if (pointHitsBuilding(tx, ty, sprites, 1.6)) continue;
       if (!rng.chance(treeChance)) continue;
-      sprites.push({ sprite: rng.pick(pool), x: x + rng.range(0.1, 0.8), y: y + rng.range(0.2, 0.9) });
+      sprites.push({ sprite: rng.pick(pool), x: tx, y: ty });
     }
   }
 
@@ -231,6 +233,7 @@ export function generateChunk(
     for (let i = 0; i < 3; i++) {
       const x = rng.range(0.4, size - 0.4);
       const y = rng.range(0.4, size - 0.4);
+      if (pointHitsBuilding(x, y, sprites, 1.2)) continue;
       const b = tiles[idx(Math.floor(x), Math.floor(y), size)] as Biome;
       if (b === Biome.Water) {
         if (rng.chance(0.4)) sprites.push({ sprite: 'reed', x, y });
@@ -268,7 +271,7 @@ function stampNearbyPois(
     if (node?.id === poi.id) continue;
     const owner = tileCoveredByNode(world.nodes, Math.floor(poi.x), Math.floor(poi.y));
     if (owner?.poiKind && owner.id !== node?.id) continue;
-    const reach = poi.kind === 'battlefield' || poi.kind === 'ruins' ? 2 : 1;
+    const reach = poi.kind === 'battlefield' || poi.kind === 'ruins' ? 3 : 2.2;
     if (Math.abs(poi.x - (wx + 0.5)) > reach + 1.1 || Math.abs(poi.y - (wy + 0.5)) > reach + 1.1) continue;
     stampPoiIntoChunk(poi.kind, wx, wy, size, tiles, paths, cobble, sprites, poi.x * size, poi.y * size, rng);
   }
@@ -286,7 +289,7 @@ function stampCityStreets(node: MapNode, wx: number, wy: number, size: number, p
   const y1 = b.y1 * size - 1.2;
   const mx = node.cx * size;
   const my = node.cy * size;
-  const w = node.kind === 'city' ? 1.12 : node.kind === 'town' ? 0.98 : 0.88;
+  const w = node.kind === 'city' ? 1.45 : node.kind === 'town' ? 1.22 : 1.05;
   stampWorldCurve(paths, wx, wy, size, x0, my, x1, my, node.seed, 1, w);
   stampWorldCurve(paths, wx, wy, size, mx, y0, mx, y1, node.seed, 2, w * 0.92);
   if (node.kind === 'city' || node.kind === 'town') {
@@ -401,6 +404,7 @@ function stitchEdgesFromNeighbors(
 
 function applyNodeOverlay(
   node: MapNode,
+  worldSeed: number,
   wx: number,
   wy: number,
   size: number,
@@ -424,13 +428,10 @@ function applyNodeOverlay(
   if (settlement) {
     const lx = node.cx * size - originX;
     const ly = node.cy * size - originY;
-    const plazaW = node.kind === 'city' ? 3.6 : node.kind === 'town' ? 2.8 : 2.1;
-    const plazaH = node.kind === 'city' ? 3.1 : 2.4;
-    if (lx > -plazaW && lx < size + plazaW && ly > -plazaH && ly < size + plazaH) {
-      stampRect(cobble, size, lx - plazaW * 0.5, ly - plazaH * 0.45, plazaW, plazaH, 2);
-    }
+    const plaza = settlementPlaza(node.kind);
+    stampRect(cobble, size, lx - plaza.w * 0.5, ly - plaza.h * 0.45, plaza.w, plaza.h, 2);
     stampCityStreets(node, wx, wy, size, paths);
-    placeSettlementSprites(node, wx, wy, size, tiles, paths, cobble, sprites, rng);
+    placeSettlementSprites(node, worldSeed, wx, wy, size, cobble, sprites);
   } else if (node.kind === 'shore' && node.origin !== 'generated') {
     const shoreY = node.cy * size;
     for (let y = 0; y < size; y++) {
@@ -445,55 +446,44 @@ function applyNodeOverlay(
 
 function placeSettlementSprites(
   node: MapNode,
+  worldSeed: number,
   wx: number,
   wy: number,
   size: number,
-  tiles: Uint8Array,
-  paths: Uint8Array,
   cobble: Uint8Array,
   sprites: PlacedSprite[],
-  rng: Rng,
 ): void {
-  const buildings = cityBuildings(node.kind, rng);
-  const lx = node.cx * size - wx * size;
-  const ly = node.cy * size - wy * size;
-  const isCenter = lx >= -1 && lx < size + 1 && ly >= -1 && ly < size + 1;
-  const occupied: Array<[number, number]> = [];
-
-  const tooClose = (x: number, y: number, min = 2.35): boolean =>
-    occupied.some(([ox, oy]) => Math.hypot(x - ox, y - oy) < min);
-
-  if (isCenter) {
-    sprites.push({ sprite: buildings[0]!, x: lx, y: ly - 0.35 });
-    occupied.push([lx, ly]);
-    sprites.push({ sprite: 'well', x: lx + 1.55, y: ly + 1.35 });
-    if (node.kind === 'city' || node.kind === 'town') {
-      sprites.push({ sprite: 'lantern', x: lx - 1.35, y: ly + 0.55 });
-      sprites.push({ sprite: 'lantern', x: lx + 1.7, y: ly + 0.35 });
-      sprites.push({ sprite: 'bench', x: lx + 0.35, y: ly + 1.65 });
-      if (rng.chance(0.7)) sprites.push({ sprite: 'market', x: lx - 1.5, y: ly + 1.7 });
-    }
+  const originX = wx * size;
+  const originY = wy * size;
+  const layout = settlementLayout(node, worldSeed);
+  for (const b of layout) {
+    stampRect(
+      cobble,
+      size,
+      b.x - originX - b.footW * 0.38,
+      b.y - originY - 0.35,
+      b.footW * 0.76,
+      2.4,
+      1,
+    );
+    if (buildingInChunk(b, wx, wy, size)) sprites.push(toPlacedSprite(b, originX, originY));
   }
 
-  const cap = node.kind === 'city' ? 3 : node.kind === 'town' ? 2 : 1;
-  let placed = 0;
-  for (let y = 1; y < size - 1 && placed < cap; y++) {
-    for (let x = 1; x < size - 1 && placed < cap; x++) {
-      if (!paths[idx(x, y, size)]) continue;
-      if (cobble[idx(x, y, size)] === 2) continue;
-      if (!rng.chance(0.28)) continue;
-      const bx = x + rng.pick([-1.1, 1.1, 0]);
-      const by = y + rng.range(0.85, 1.35);
-      if (bx < 0.45 || by < 0.7 || bx > size - 0.45 || by > size - 0.25) continue;
-      const ix = Math.min(size - 1, Math.max(0, Math.floor(bx)));
-      const iy = Math.min(size - 1, Math.max(0, Math.floor(by)));
-      if (paths[idx(ix, iy, size)]) continue;
-      if ((tiles[idx(ix, iy, size)] as Biome) === Biome.Water) continue;
-      if (tooClose(bx, by)) continue;
-      sprites.push({ sprite: buildings[(placed + 1) % buildings.length]!, x: bx, y: by });
-      occupied.push([bx, by]);
-      placed++;
-    }
+  const plaza = settlementPlaza(node.kind);
+  const midX = node.cx * size;
+  const midY = node.cy * size;
+  const putProp = (sprite: string, x: number, y: number) => {
+    const lx = x - originX;
+    const ly = y - originY;
+    if (lx < 0 || ly < 0 || lx >= size || ly >= size) return;
+    sprites.push({ sprite, x: lx, y: ly });
+  };
+  putProp('well', midX + plaza.w * 0.12, midY + plaza.h * 0.28);
+  if (node.kind === 'city' || node.kind === 'town') {
+    putProp('lantern', midX - plaza.w * 0.32, midY + plaza.h * 0.08);
+    putProp('lantern', midX + plaza.w * 0.34, midY + plaza.h * 0.06);
+    putProp('bench', midX + 0.8, midY + plaza.h * 0.3);
+    if (((node.seed >>> 0) % 10) < 7) putProp('market', midX - plaza.w * 0.28, midY + plaza.h * 0.32);
   }
 }
 
@@ -508,121 +498,105 @@ function stampPoiIntoChunk(
   sprites: PlacedSprite[],
   midX: number,
   midY: number,
-  rng: Rng,
+  _rng: Rng,
 ): void {
   const originX = wx * size;
   const originY = wy * size;
   const lx = midX - originX;
   const ly = midY - originY;
-  const inChunk = lx > -6 && lx < size + 6 && ly > -8 && ly < size + 8;
+  for (const b of poiBuildingLayout(kind, midX, midY)) {
+    stampRect(
+      cobble,
+      size,
+      b.x - originX - b.footW * 0.38,
+      b.y - originY - 0.35,
+      b.footW * 0.76,
+      2.4,
+      1,
+    );
+    if (buildingInChunk(b, wx, wy, size)) sprites.push(toPlacedSprite(b, originX, originY));
+  }
+  const inChunk = lx > -14 && lx < size + 14 && ly > -16 && ly < size + 16;
   if (!inChunk) return;
   const put = (sprite: string, x: number, y: number) => {
-    if (x < -4 || y < -6 || x > size + 4 || y > size + 6) return;
+    if (x < 0 || y < 0 || x >= size || y >= size) return;
     sprites.push({ sprite, x, y });
   };
   switch (kind) {
     case 'ruins':
-      stampDisk(cobble, size, lx, ly, 4, 1);
-      put('church', lx, ly - 1);
+      stampDisk(cobble, size, lx, ly, 6, 1);
       break;
     case 'mansion':
-      stampWorldLine(paths, wx, wy, size, midX - 8, midY, midX + 8, midY, 1.1);
-      put('inn-2', lx, ly);
-      put('house-8', lx + 5, ly + 2);
+      stampWorldLine(paths, wx, wy, size, midX - 12, midY, midX + 12, midY, 1.2);
+      put('lantern', lx - 4, ly + 3);
       break;
     case 'abandoned-camp':
-      put('farm', lx, ly);
-      put('lantern', lx + 3, ly);
+      put('lantern', lx + 4, ly + 1);
       break;
     case 'shrine':
-      put('well', lx, ly);
-      put('church', lx, ly - 3);
+      put('well', lx + 5, ly + 4);
       break;
     case 'cave':
       stampDisk(tiles, size, lx, ly, 4, Biome.Mountain);
       put('rock-4', lx, ly + 1);
       break;
     case 'graves':
-      put('church', lx, ly - 2);
-      put('fence', lx + 2, ly);
+      put('fence', lx + 4, ly + 3);
       break;
     case 'homestead':
-      put('farm', lx - 2, ly);
-      put('house-1', lx + 4, ly);
-      put('well', lx, ly + 3);
+      put('well', lx + 2, ly + 5);
       break;
     case 'hideout':
-      put('house-7', lx, ly);
-      put('chest', lx + 2, ly + 1);
-      break;
-    case 'treehouse':
-      put('house-3', lx, ly);
-      put('house-5', lx + 4, ly + 2);
+      put('chest', lx + 5, ly + 2);
       break;
     case 'battlefield':
       put('chest', lx, ly);
-      put('lantern', lx + 3, ly - 1);
+      put('lantern', lx + 4, ly - 1);
       break;
     case 'military-camp':
-      stampWorldLine(paths, wx, wy, size, midX - 6, midY, midX + 6, midY, 1.2);
-      put('farm', lx, ly - 2);
-      put('house-7', lx + 3, ly);
+      stampWorldLine(paths, wx, wy, size, midX - 10, midY, midX + 10, midY, 1.3);
       break;
     case 'tower':
     case 'watchtower':
-      put('town-hall', lx, ly - 1);
-      put('lantern', lx + 3, ly);
+      put('lantern', lx + 5, ly + 2);
       break;
     case 'wizard-tower':
-      put('inn-2', lx, ly);
-      put('chest', lx + 3, ly + 1);
+      put('chest', lx + 5, ly + 2);
       break;
     case 'dragon-lair':
       stampDisk(tiles, size, lx, ly, 5, Biome.Ashlands);
       put('rock-4', lx, ly);
-      put('chest', lx + 3, ly + 2);
+      put('chest', lx + 4, ly + 3);
       break;
     case 'mine':
       stampDisk(tiles, size, lx, ly, 4, Biome.Mountain);
       put('rock-4', lx, ly);
-      put('lantern', lx + 2, ly);
+      put('lantern', lx + 3, ly + 1);
       break;
     case 'temple':
     case 'monastery':
-      put('church', lx, ly - 1);
-      put('well', lx + 3, ly + 2);
+      put('well', lx + 5, ly + 4);
       break;
     case 'port':
-      put('bridge', lx, ly + 2);
-      put('shop', lx - 2, ly - 1);
+      put('bridge', lx, ly + 4);
       break;
     case 'bridge-keep':
-      put('town-hall', lx, ly - 1);
-      put('bridge', lx, ly + 2);
+      put('bridge', lx, ly + 4);
       break;
     case 'fey-circle':
       put('well', lx, ly);
-      put('lantern', lx + 2, ly - 1);
-      break;
-    case 'orc-fort':
-      put('farm', lx, ly);
-      put('house-7', lx + 3, ly + 1);
+      put('lantern', lx + 3, ly - 1);
       break;
     case 'crypt':
-      put('church', lx, ly - 1);
-      put('fence', lx + 2, ly);
+      put('fence', lx + 4, ly + 3);
       break;
     case 'trading-post':
-      put('shop', lx, ly);
-      put('market', lx + 3, ly + 1);
+      put('market', lx + 6, ly + 3);
       break;
     case 'bandit-camp':
-      put('farm', lx, ly);
-      put('chest', lx + 2, ly);
+      put('chest', lx + 4, ly + 2);
       break;
-    case 'ancient-gate':
-      put('town-hall', lx - 2, ly);
-      put('church', lx + 3, ly);
+    default:
       break;
   }
 }

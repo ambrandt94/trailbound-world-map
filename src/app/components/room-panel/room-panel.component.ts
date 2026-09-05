@@ -4,12 +4,20 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { RoomService } from '../../services/room.service';
 
 @Component({
   selector: 'app-room-panel',
   standalone: true,
-  imports: [FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatIconModule],
+  imports: [
+    FormsModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatIconModule,
+    MatSlideToggleModule,
+  ],
   template: `
     <div class="veil" (click)="closed.emit()">
       <aside class="panel" (click)="$event.stopPropagation()">
@@ -30,11 +38,31 @@ import { RoomService } from '../../services/room.service';
           <div class="roster">
             <div class="label">In room</div>
             <ul>
-              @for (name of room.rosterNames(); track name + $index) {
-                <li>{{ name }}</li>
+              @for (row of room.presence(); track row.id) {
+                <li>
+                  <span class="pip" [style.background]="row.color"></span>
+                  <span>{{ row.name }}</span>
+                  @if (row.you) {
+                    <span class="you-tag">you</span>
+                  }
+                </li>
               }
             </ul>
           </div>
+          @if (room.isHost()) {
+            <div class="preview">
+              <mat-slide-toggle
+                [checked]="room.viewAsGuest()"
+                (change)="room.setViewAsGuest($event.checked)"
+              >
+                View as guest
+              </mat-slide-toggle>
+              <p class="note">
+                Hides host-only map controls so you can check what players see. Lobby hosting stays
+                on.
+              </p>
+            </div>
+          }
           <div class="actions">
             <button mat-stroked-button type="button" (click)="leave()">Leave room</button>
             <button mat-flat-button color="primary" type="button" (click)="closed.emit()">Keep PIN</button>
@@ -166,8 +194,40 @@ import { RoomService } from '../../services/room.service';
     }
     .roster ul {
       margin: 0.25rem 0 0;
-      padding: 0 0 0 1rem;
+      padding: 0;
+      list-style: none;
       font-size: 0.86rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .roster li {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .roster .pip {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, #1a120c 55%, transparent);
+      flex: 0 0 auto;
+    }
+    .roster .you-tag {
+      margin-left: auto;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--tb-accent-strong);
+    }
+    .preview {
+      display: grid;
+      gap: 0.35rem;
+      padding: 0.55rem 0.65rem;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--tb-bg) 55%, transparent);
+      border: 1px solid color-mix(in srgb, var(--tb-ink) 10%, transparent);
     }
     .join {
       display: grid;
@@ -213,6 +273,18 @@ import { RoomService } from '../../services/room.service';
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--tb-muted);
+    }
+    @media (max-width: 800px) {
+      .veil {
+        padding: max(0.55rem, env(safe-area-inset-top, 0px)) 0.55rem max(0.55rem, env(safe-area-inset-bottom, 0px));
+      }
+      .panel {
+        max-height: 92dvh;
+        overflow: auto;
+      }
+      .join {
+        grid-template-columns: 1fr;
+      }
     }
   `,
 })

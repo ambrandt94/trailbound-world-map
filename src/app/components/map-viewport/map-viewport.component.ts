@@ -67,10 +67,13 @@ import { Rng } from '../../engine/noise';
 import { drawCanvasGlobe, GlobeMarker, GlobeRenderer, orbitGlobeLook, unprojectCanvasGlobe } from '../../engine/globe';
 import { globeShowsWholePlanet } from '../../engine/projection';
 import { WorldRenderer } from '../../engine/renderer';
+import { collectStreetBuildings } from '../../engine/buildings';
+import { resolveInteriorWalk } from '../../engine/interior';
 import { PreferencesService } from '../../services/preferences.service';
 import { RoomService } from '../../services/room.service';
 import { WorldService } from '../../services/world.service';
 import { selfId } from '@trystero-p2p/mqtt';
+import { peerMarkerRgb } from '../../models/room.models';
 
 /** Mix screen-center zoom (0) and cursor-locked zoom (1). */
 const ZOOM_CURSOR_BIAS = 1;
@@ -164,6 +167,25 @@ const ZOOM_CATCH = 0.18;
             <span class="zoom-bar-label tb-mono">{{ zoomHud().barLabel }}</span>
           </div>
         </div>
+        @if (prefs.adventureMode()) {
+          <div class="walk-pad" aria-label="Walk controls">
+            <button type="button" class="walk-btn n" (pointerdown)="holdMove($event, 'KeyW')" (pointerup)="releaseMove('KeyW')" (pointercancel)="releaseMove('KeyW')">
+              <mat-icon>keyboard_arrow_up</mat-icon>
+            </button>
+            <button type="button" class="walk-btn w" (pointerdown)="holdMove($event, 'KeyA')" (pointerup)="releaseMove('KeyA')" (pointercancel)="releaseMove('KeyA')">
+              <mat-icon>keyboard_arrow_left</mat-icon>
+            </button>
+            <button type="button" class="walk-btn sprint" (pointerdown)="holdMove($event, 'ShiftLeft')" (pointerup)="releaseMove('ShiftLeft')" (pointercancel)="releaseMove('ShiftLeft')" aria-label="Sprint">
+              <mat-icon>directions_run</mat-icon>
+            </button>
+            <button type="button" class="walk-btn e" (pointerdown)="holdMove($event, 'KeyD')" (pointerup)="releaseMove('KeyD')" (pointercancel)="releaseMove('KeyD')">
+              <mat-icon>keyboard_arrow_right</mat-icon>
+            </button>
+            <button type="button" class="walk-btn s" (pointerdown)="holdMove($event, 'KeyS')" (pointerup)="releaseMove('KeyS')" (pointercancel)="releaseMove('KeyS')">
+              <mat-icon>keyboard_arrow_down</mat-icon>
+            </button>
+          </div>
+        }
       }
     </div>
   `,
@@ -357,6 +379,60 @@ const ZOOM_CATCH = 0.18;
       font-size: 0.7rem;
       color: var(--tb-muted);
     }
+    .walk-pad {
+      display: none;
+    }
+    @media (max-width: 800px), (pointer: coarse) {
+      .zoom-hud {
+        display: none;
+      }
+      .walk-pad {
+        position: absolute;
+        left: 0.55rem;
+        bottom: 0.55rem;
+        z-index: 4;
+        display: grid;
+        grid-template-columns: 2.85rem 2.85rem 2.85rem;
+        grid-template-rows: 2.85rem 2.85rem 2.85rem;
+        grid-template-areas:
+          '. n .'
+          'w sprint e'
+          '. s .';
+        gap: 0.28rem;
+        pointer-events: auto;
+        touch-action: none;
+      }
+      .walk-btn {
+        display: grid;
+        place-items: center;
+        margin: 0;
+        padding: 0;
+        border: 1px solid color-mix(in srgb, var(--tb-ink) 12%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--tb-panel) 88%, transparent);
+        color: var(--tb-ink);
+        box-shadow: 0 8px 18px color-mix(in srgb, black 20%, transparent);
+        backdrop-filter: blur(10px);
+      }
+      .walk-btn:active,
+      .walk-btn:focus-visible {
+        background: color-mix(in srgb, var(--tb-accent) 22%, var(--tb-panel));
+        color: var(--tb-accent-strong);
+      }
+      .walk-btn.n { grid-area: n; }
+      .walk-btn.s { grid-area: s; }
+      .walk-btn.w { grid-area: w; }
+      .walk-btn.e { grid-area: e; }
+      .walk-btn.sprint {
+        grid-area: sprint;
+        color: var(--tb-accent-strong);
+      }
+      .walk-btn mat-icon {
+        font-size: 1.45rem;
+        width: 1.45rem;
+        height: 1.45rem;
+      }
+    }
   `,
 })
 export class MapViewportComponent implements AfterViewInit, OnDestroy {
@@ -391,6 +467,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private hudAcc = 0;
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private readonly keys = new Set<string>();
+  private readonly ptrs = new Map<number, { x: number; y: number }>();
+  private pinchDist = 0;
   private dragMoved = false;
   private lastPtr = { x: 0, y: 0 };
   private viewW = 1;
@@ -691,26 +769,45 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   }
 
   onPointerDown(e: PointerEvent): void {
-    if (e.button !== 0) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (this.world.adventurePrompt()) return;
     const canvas = this.canvasRef.nativeElement;
-    this.dragging = true;
-    this.dragMoved = false;
-    this.lastPtr = { x: e.offsetX, y: e.offsetY };
+    const p = this.ptrPos(e);
+    this.ptrs.set(e.pointerId, p);
     try {
       canvas.setPointerCapture(e.pointerId);
     } catch {
       /* ignore — capture can fail for non-primary / synthetic pointers */
     }
+    if (this.ptrs.size >= 2) {
+      this.dragging = false;
+      this.dragMoved = true;
+      this.pinchDist = this.pinchGap();
+      return;
+    }
+    this.dragging = true;
+    this.dragMoved = false;
+    this.lastPtr = p;
   }
 
   onPointerMove(e: PointerEvent): void {
-    this.updateHover(e.offsetX, e.offsetY);
+    const p = this.ptrPos(e);
+    if (this.ptrs.has(e.pointerId)) this.ptrs.set(e.pointerId, p);
+    if (this.ptrs.size >= 2) {
+      const next = this.pinchGap();
+      if (this.pinchDist > 4 && next > 4) {
+        const mid = this.pinchMid();
+        this.zoomAt(mid.x, mid.y, next / this.pinchDist);
+      }
+      this.pinchDist = next;
+      return;
+    }
+    this.updateHover(p.x, p.y);
     if (!this.dragging) return;
-    const dx = e.offsetX - this.lastPtr.x;
-    const dy = e.offsetY - this.lastPtr.y;
+    const dx = p.x - this.lastPtr.x;
+    const dy = p.y - this.lastPtr.y;
     if (Math.hypot(dx, dy) > 3) this.dragMoved = true;
-    this.lastPtr = { x: e.offsetX, y: e.offsetY };
+    this.lastPtr = p;
     this.setFollow(false);
     this.zoomPivot = null;
     this.panBy(dx, dy);
@@ -719,9 +816,49 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   }
 
   onPointerUp(e: PointerEvent): void {
+    this.ptrs.delete(e.pointerId);
+    if (this.ptrs.size < 2) this.pinchDist = 0;
+    if (this.ptrs.size === 1) {
+      const left = [...this.ptrs.values()][0]!;
+      this.lastPtr = left;
+      this.dragging = true;
+      return;
+    }
     if (!this.dragging) return;
     this.dragging = false;
     if (!this.dragMoved) this.onClick(e.offsetX, e.offsetY);
+  }
+
+  holdMove(e: PointerEvent, code: string): void {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    this.keys.add(code);
+    if (this.usingWalker()) this.setFollow(true);
+  }
+
+  releaseMove(code: string): void {
+    this.keys.delete(code);
+  }
+
+  private ptrPos(e: PointerEvent): { x: number; y: number } {
+    const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  private pinchGap(): number {
+    const pts = [...this.ptrs.values()];
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
+  }
+
+  private pinchMid(): { x: number; y: number } {
+    const pts = [...this.ptrs.values()];
+    return { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
   }
 
   private onClick(sx: number, sy: number): void {
@@ -772,6 +909,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.syncPlanetView();
     this.stepPlayer(dt);
     this.confinePlayerToIsolation();
+    if (this.world.interior() && this.camera.scale < DETAIL_START) this.world.leaveInterior();
     this.stepSim(dt);
     this.stepCamera(dt);
     this.maybeGenerate();
@@ -834,8 +972,14 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     }
     const ox = this.player.x;
     const oy = this.player.y;
-    this.player.x = wrapX(this.player.x + (mx / len) * speed * dt, width);
-    this.player.y = clamp(this.player.y + (my / len) * speed * dt, 0.5, maxY);
+    let nx = wrapX(this.player.x + (mx / len) * speed * dt, width);
+    let ny = clamp(this.player.y + (my / len) * speed * dt, 0.5, maxY);
+    const buildings = collectStreetBuildings(this.world.liveChunks(), nx, ny, 3);
+    const walked = resolveInteriorWalk(ox, oy, nx, ny, buildings, this.world.interior());
+    this.player.x = walked.x;
+    this.player.y = walked.y;
+    if (walked.enter) this.world.enterInterior(walked.enter);
+    else if (walked.leave) this.world.leaveInterior();
     this.player.facing = facingFromDelta(mx, my);
     const moved = Math.hypot(wrapDeltaX(ox, this.player.x, width), this.player.y - oy);
     this.player.anim += moved * (sprinting ? 10.5 : 8.5);
@@ -1413,7 +1557,11 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       nametagScale: this.prefs.nametagScale(),
       remotePlayers,
       localPeerId: this.room.connected() ? selfId : null,
-      speechBubbles: this.room.connected() ? this.room.bubbles() : [],
+      speechBubbles: [
+        ...(this.prefs.npcChatter() ? this.world.npcBubbles() : []),
+        ...(this.room.connected() ? this.room.bubbles() : []),
+      ],
+      interior: this.world.interior(),
     });
   }
 
@@ -1605,9 +1753,19 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     marks.push({
       x: this.player.x,
       y: this.player.y,
-      color: [0.91, 0.76, 0.48],
+      color: this.room.connected() ? peerMarkerRgb(selfId) : [0.91, 0.76, 0.48],
       size: base + 2.5,
     });
+    if (this.room.connected()) {
+      for (const peer of this.room.peers()) {
+        marks.push({
+          x: peer.x,
+          y: peer.y,
+          color: peerMarkerRgb(peer.id),
+          size: base + 2.2,
+        });
+      }
+    }
     return marks;
   }
 

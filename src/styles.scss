@@ -65,8 +65,12 @@ html[data-theme='dark'] {
 }
 
 html,
-body {
+body,
+app-root {
   height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -96,4 +100,11 @@ textarea {
 
 .tb-mono {
   font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@media (max-width: 800px) {
+  .mat-mdc-form-field input,
+  .mat-mdc-form-field textarea {
+    font-size: 16px !important;
+  }
 }

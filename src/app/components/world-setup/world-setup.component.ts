@@ -99,7 +99,13 @@ import { RoomService } from '../../services/room.service';
         </button>
       </div>
       @if (room.connected()) {
-        <p class="room-lock">Room shares one seed — guests cannot rebuild.</p>
+        <p class="room-lock">
+          @if (room.hostControls()) {
+            Room shares one seed — rebuild updates everyone.
+          } @else {
+            Room shares one seed — guests cannot rebuild.
+          }
+        </p>
       }
     </aside>
   `,
@@ -193,6 +199,14 @@ import { RoomService } from '../../services/room.service';
       color: var(--tb-muted);
       line-height: 1.3;
     }
+    :host {
+      display: block;
+    }
+    @media (max-width: 800px) {
+      .panel {
+        width: 100%;
+      }
+    }
   `,
 })
 export class WorldSetupComponent implements AfterViewInit {
@@ -257,13 +271,13 @@ export class WorldSetupComponent implements AfterViewInit {
   }
 
   submit(newSeed: boolean): void {
-    if (this.room.connected() && (newSeed || !this.room.isHost())) return;
+    if (this.room.connected() && (newSeed || !this.room.hostControls())) return;
     this.commitSketch();
     this.rebuilt.emit({ settings: this.draft(), newSeed });
   }
 
   roomLocked(): boolean {
-    return this.room.connected() && !this.room.isHost();
+    return this.room.connected() && !this.room.hostControls();
   }
 
   clearSketch(): void {

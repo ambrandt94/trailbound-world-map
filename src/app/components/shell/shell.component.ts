@@ -16,6 +16,7 @@ import { SettingsPanelComponent } from '../settings-panel/settings-panel.compone
 import { WorldSetupComponent } from '../world-setup/world-setup.component';
 import { HeroPickerComponent } from '../hero-picker/hero-picker.component';
 import { RoomPanelComponent } from '../room-panel/room-panel.component';
+import { RoomPresenceComponent } from '../room-presence/room-presence.component';
 
 @Component({
   selector: 'app-shell',
@@ -34,6 +35,7 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
     SettingsPanelComponent,
     HeroPickerComponent,
     RoomPanelComponent,
+    RoomPresenceComponent,
   ],
   template: `
     <mat-toolbar class="topbar">
@@ -109,6 +111,7 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
           <mat-icon>zoom_in</mat-icon>
         </button>
       </div>
+      <div class="end-cluster">
       @if (room.connected() && room.pin()) {
         <button
           type="button"
@@ -117,6 +120,17 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
           (click)="copyPin()"
         >
           PIN {{ room.pin() }}
+        </button>
+      }
+      @if (room.isHost() && room.viewAsGuest()) {
+        <button
+          type="button"
+          class="preview-chip"
+          matTooltip="Exit guest preview — restore host map controls"
+          (click)="room.setViewAsGuest(false)"
+        >
+          <mat-icon>visibility</mat-icon>
+          <span class="btn-label">Viewing as guest</span>
         </button>
       }
       <button
@@ -129,9 +143,9 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
       >
         <mat-icon>group_add</mat-icon>
         @if (room.connected() && room.pin()) {
-          {{ room.pin() }}
+          <span class="btn-label">{{ room.pin() }}</span>
         } @else {
-          Room
+          <span class="btn-label">Room</span>
         }
       </button>
       <button
@@ -140,10 +154,24 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
         color="primary"
         class="adventure-btn"
         (click)="openAdventure()"
-        matTooltip="Remake the map and dive in at Close (32×)"
+        [matTooltip]="
+          room.connected()
+            ? 'Change your look and dive in at Close (32×)'
+            : 'Remake the map and dive in at Close (32×)'
+        "
       >
         <mat-icon>directions_walk</mat-icon>
-        Adventure
+        <span class="btn-label">Adventure</span>
+      </button>
+      <button
+        mat-icon-button
+        type="button"
+        class="chrome-btn setup-btn"
+        [class.active]="setupOpen()"
+        [matTooltip]="setupOpen() ? 'Close world setup' : 'World setup'"
+        (click)="toggleSetup()"
+      >
+        <mat-icon>tune</mat-icon>
       </button>
       <button
         mat-icon-button
@@ -164,11 +192,12 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
       >
         <mat-icon>{{ prefs.isDark() ? 'light_mode' : 'dark_mode' }}</mat-icon>
       </button>
+      </div>
     </mat-toolbar>
 
     <div class="layout">
       <app-map-viewport />
-      <div class="overlay">
+      <div class="overlay" [class.setup-open]="setupOpen()" [class.settings-open]="settingsOpen()">
         @if (settingsOpen()) {
           <app-settings-panel
             (adventureOff)="map()?.leaveAdventure()"
@@ -176,8 +205,10 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
             (newSeed)="reshuffle()"
           />
         }
-        <app-world-setup (rebuilt)="onRebuild($event)" />
-        <app-location-panel />
+        @if (!room.connected() || room.hostControls()) {
+          <app-world-setup class="setup-sheet" [class.open]="setupOpen()" (rebuilt)="onRebuild($event)" />
+        }
+        <app-location-panel class="loc-sheet" />
         <p class="hint">
           Scroll · drag
           @if (prefs.adventureMode()) {
@@ -191,6 +222,9 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
           }
         </p>
       </div>
+      @if (room.connected()) {
+        <app-room-presence class="presence" />
+      }
       @if (room.connected()) {
         <form class="chat-bar" (submit)="sendChat($event)">
           <mat-form-field appearance="outline" subscriptSizing="dynamic" class="chat-field">
@@ -216,7 +250,8 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
     :host {
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      height: 100%;
+      height: 100dvh;
     }
     .topbar {
       position: sticky;
@@ -308,6 +343,29 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
     .pin-chip:hover {
       background: color-mix(in srgb, var(--tb-accent) 34%, transparent);
     }
+    .preview-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      padding: 0.3rem 0.7rem 0.3rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border: 1px solid color-mix(in srgb, var(--tb-accent-strong) 45%, transparent);
+      background: color-mix(in srgb, var(--tb-accent) 18%, transparent);
+      color: var(--tb-accent-strong);
+      cursor: pointer;
+    }
+    .preview-chip mat-icon {
+      font-size: 1rem;
+      width: 1rem;
+      height: 1rem;
+    }
+    .preview-chip:hover {
+      background: color-mix(in srgb, var(--tb-accent) 28%, transparent);
+    }
     .room-btn mat-icon {
       margin-right: 0.15rem;
     }
@@ -316,6 +374,11 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
     }
     .adventure-btn mat-icon {
       margin-right: 0.15rem;
+    }
+    .end-cluster {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
     }
     .layout {
       position: relative;
@@ -353,6 +416,13 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
       text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
       pointer-events: none;
     }
+    .presence {
+      position: absolute;
+      left: 0.85rem;
+      bottom: 4.6rem;
+      z-index: 3;
+      pointer-events: auto;
+    }
     .chat-bar {
       position: absolute;
       left: 50%;
@@ -386,6 +456,9 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
       font-size: 1.05rem;
       letter-spacing: 0.04em;
     }
+    .setup-btn {
+      display: none;
+    }
     .chat-bar button {
       text-transform: none;
       flex-shrink: 0;
@@ -395,6 +468,86 @@ import { RoomPanelComponent } from '../room-panel/room-panel.component';
       min-height: 2.4rem;
       padding: 0 0.85rem;
     }
+    @media (max-width: 800px) {
+      .topbar {
+        min-height: 3rem;
+        padding: max(0.3rem, env(safe-area-inset-top, 0px)) max(0.4rem, env(safe-area-inset-right, 0px))
+          0.3rem max(0.4rem, env(safe-area-inset-left, 0px));
+        gap: 0.25rem;
+      }
+      .title,
+      .spacer,
+      .hint,
+      .zoom-chip-mult,
+      .brand {
+        display: none;
+      }
+      .setup-btn {
+        display: inline-flex;
+      }
+      .btn-label {
+        display: none;
+      }
+      .room-btn,
+      .adventure-btn {
+        min-width: 2.5rem;
+        padding: 0 0.35rem;
+      }
+      .room-btn mat-icon,
+      .adventure-btn mat-icon {
+        margin: 0;
+      }
+      .preview-chip {
+        padding: 0.3rem;
+      }
+      .end-cluster {
+        width: 100%;
+        justify-content: flex-end;
+        flex-wrap: nowrap;
+      }
+      .layout {
+        padding: 0.4rem;
+        padding-bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
+      }
+      .overlay {
+        inset: 0.4rem;
+        gap: 0.4rem;
+      }
+      .overlay.setup-open .loc-sheet,
+      .overlay.settings-open .loc-sheet {
+        display: none !important;
+      }
+      .setup-sheet {
+        display: none !important;
+      }
+      .setup-sheet.open {
+        display: block !important;
+        width: 100%;
+        max-height: min(62vh, 32rem);
+        overflow: auto;
+      }
+      .overlay app-settings-panel {
+        width: 100%;
+        max-height: min(62vh, 32rem);
+        overflow: auto;
+      }
+      .overlay app-location-panel {
+        margin-top: auto;
+        max-width: min(18rem, 100%);
+      }
+      .presence {
+        left: max(0.5rem, env(safe-area-inset-left, 0px));
+        top: 3.35rem;
+        bottom: auto;
+      }
+      .chat-bar {
+        left: 0.5rem;
+        right: 0.5rem;
+        width: auto;
+        transform: none;
+        bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+      }
+    }
   `,
 })
 export class ShellComponent {
@@ -403,6 +556,7 @@ export class ShellComponent {
   readonly room = inject(RoomService);
   readonly map = viewChild(MapViewportComponent);
   readonly settingsOpen = signal(false);
+  readonly setupOpen = signal(false);
   readonly heroOpen = signal(false);
   readonly heroMode = signal<'adventure' | 'room'>('adventure');
   readonly roomOpen = signal(false);
@@ -423,7 +577,13 @@ export class ShellComponent {
   }
 
   toggleSettings(): void {
+    this.setupOpen.set(false);
     this.settingsOpen.update((open) => !open);
+  }
+
+  toggleSetup(): void {
+    this.settingsOpen.set(false);
+    this.setupOpen.update((open) => !open);
   }
 
   openAdventure(): void {
@@ -478,13 +638,15 @@ export class ShellComponent {
   }
 
   clearGenerated(): void {
+    if (this.room.connected() && !this.room.hostControls()) return;
     this.world.clearGenerated();
     this.map()?.clearStreamed();
   }
 
   onRebuild(event: { settings: WorldSettings; newSeed: boolean }): void {
     if (this.room.connected() && event.newSeed) return;
-    if (this.room.connected() && !this.room.isHost()) return;
+    if (this.room.connected() && !this.room.hostControls()) return;
+    this.setupOpen.set(false);
     this.world.generating.set(true);
     window.setTimeout(() => {
       this.world.applySettings(event.settings);
@@ -492,7 +654,7 @@ export class ShellComponent {
       if (this.room.connected()) this.world.rebuildForRoom(seed);
       else this.world.rebuild(seed);
       this.map()?.reloadFromWorld();
-      if (this.room.connected() && this.room.isHost()) this.room.republishMeta();
+      if (this.room.connected() && this.room.hostControls()) this.room.republishMeta();
       this.world.generating.set(false);
     }, 40);
   }

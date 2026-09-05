@@ -162,6 +162,19 @@ import { PreferencesService } from '../../services/preferences.service';
       text-transform: none;
       flex: 1;
     }
+    @media (max-width: 800px) {
+      .veil {
+        padding: max(0.55rem, env(safe-area-inset-top, 0px)) 0.55rem max(0.55rem, env(safe-area-inset-bottom, 0px));
+        align-items: stretch;
+      }
+      .panel {
+        max-height: 92dvh;
+      }
+      .grid {
+        min-height: 8rem;
+        max-height: min(22rem, 38dvh);
+      }
+    }
   `,
 })
 export class HeroPickerComponent {

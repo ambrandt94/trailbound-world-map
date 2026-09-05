@@ -6,12 +6,14 @@ import {
   EMPTY_HOST_IDLE_MS,
   EMPTY_ROOM_MS,
   PeerPose,
+  PresenceRow,
   ROOM_APP_ID,
   RoomMeta,
   RoomStatus,
   clampChatText,
   isHostUnlocked,
   normalizePin,
+  peerMarkerColor,
   randomPin,
   roomIdForPin,
   unlockHost,
@@ -32,6 +34,11 @@ export class RoomService implements OnDestroy {
   readonly status = signal<RoomStatus>('idle');
   readonly pin = signal<string | null>(null);
   readonly isHost = signal(false);
+  /**
+   * Host-only preview: UI and rebuild gates match a guest so you can verify
+   * they cannot edit the shared map. Real host networking is unchanged.
+   */
+  readonly viewAsGuest = signal(false);
   readonly error = signal<string | null>(null);
   readonly peers = signal<PeerPose[]>([]);
   readonly bubbles = signal<ChatBubble[]>([]);
@@ -40,7 +47,31 @@ export class RoomService implements OnDestroy {
     const local = this.world.player().name;
     return local ? [local, ...names] : names;
   });
+  /** Local + remote players with stable pin colors for the presence dock. */
+  readonly presence = computed((): PresenceRow[] => {
+    if (!this.connected()) return [];
+    const local = this.world.player();
+    const you: PresenceRow = {
+      id: selfId,
+      name: local.name || 'You',
+      color: peerMarkerColor(selfId),
+      you: true,
+    };
+    const others = this.peers()
+      .map(
+        (p): PresenceRow => ({
+          id: p.id,
+          name: p.name || 'Guest',
+          color: peerMarkerColor(p.id),
+          you: false,
+        }),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [you, ...others];
+  });
   readonly connected = computed(() => this.status() === 'connected');
+  /** True when this peer may change shared room map settings (host, not previewing). */
+  readonly hostControls = computed(() => this.isHost() && !this.viewAsGuest());
   /** Bumped after a room-owned world rebuild so the viewport can reload. */
   readonly worldSyncRev = signal(0);
   /** Guest must pick name + look before playing. */
@@ -100,6 +131,14 @@ export class RoomService implements OnDestroy {
   /** Whether this browser is unlocked to create rooms. */
   canCreate(): boolean {
     return isHostUnlocked();
+  }
+
+  setViewAsGuest(on: boolean): void {
+    if (!this.isHost()) {
+      this.viewAsGuest.set(false);
+      return;
+    }
+    this.viewAsGuest.set(!!on);
   }
 
   tryUnlockHost(hostKey: string): boolean {
@@ -191,6 +230,7 @@ export class RoomService implements OnDestroy {
     const room = joinRoom({ appId: ROOM_APP_ID }, roomId) as RoomHandle;
     this.room = room;
     this.pin.set(pin);
+    this.viewAsGuest.set(false);
     this.isHost.set(asHost);
 
     const metaAction = room.makeAction('meta');
@@ -379,6 +419,7 @@ export class RoomService implements OnDestroy {
     this.bubbles.set([]);
     this.pin.set(null);
     this.isHost.set(false);
+    this.viewAsGuest.set(false);
     this.needsHero.set(false);
     this.aloneSince = 0;
     this.sawGuest = false;

@@ -3,6 +3,7 @@ import { clampHeroName, DEFAULT_HERO_LOOK, DEFAULT_HERO_NAME, findHeroLook } fro
 import { FOG_OF_WAR_ENABLED } from '../models/world.models';
 
 export type ThemeMode = 'light' | 'dark';
+export type PlayMode = 'adventure' | 'planet';
 
 const THEME_KEY = 'tb-world-map-theme';
 const ADVENTURE_KEY = 'tb-world-map-adventure';
@@ -13,6 +14,7 @@ const CLOUD_KEY = 'tb-world-map-cloud-cover';
 const CLOUD_OK = 'tb-world-map-cloud-cover-ok';
 const MARKERS_KEY = 'tb-world-map-world-markers';
 const NAMETAG_KEY = 'tb-world-map-nametag-scale';
+const CHATTER_KEY = 'tb-world-map-npc-chatter';
 const HERO_NAME_KEY = 'tb-world-map-hero-name';
 const HERO_SHEET_KEY = 'tb-world-map-hero-sheet';
 const HERO_CHAR_KEY = 'tb-world-map-hero-char';
@@ -43,6 +45,8 @@ export class PreferencesService {
   readonly adventureMode = signal(this.readAdventure());
   readonly adventureLinkNeighbors = signal(this.readAdjacent());
   readonly planetView = signal(this.readPlanet());
+  /** Adventure (walker / flat) vs planet (globe) — always one or the other. */
+  readonly playMode = computed<PlayMode>(() => (this.adventureMode() ? 'adventure' : 'planet'));
   readonly zoneOverlay = signal(this.readOverlay());
   readonly cloudCover = signal(this.readClouds());
   /** Effective cloud alpha — 0 while fog is disabled. */
@@ -52,11 +56,16 @@ export class PreferencesService {
   readonly showWorldMarkers = signal(this.readWorldMarkers());
   /** Size vs the original 10px pixel nametag. Default 1.5. */
   readonly nametagScale = signal(this.readNametagScale());
+  readonly npcChatter = signal(this.readNpcChatter());
   readonly heroName = signal(this.readHeroName());
   readonly heroSheet = signal(this.readHeroSheet());
   readonly heroChar = signal(this.readHeroChar());
 
   constructor() {
+    // Collapse any legacy both-on / both-off prefs into a single play mode.
+    if (this.adventureMode()) this.planetView.set(false);
+    else this.planetView.set(true);
+
     effect(() => {
       const theme = this.theme();
       document.documentElement.dataset['theme'] = theme;
@@ -85,6 +94,9 @@ export class PreferencesService {
       localStorage.setItem(NAMETAG_KEY, String(this.nametagScale()));
     });
     effect(() => {
+      localStorage.setItem(CHATTER_KEY, this.npcChatter() ? '1' : '0');
+    });
+    effect(() => {
       localStorage.setItem(HERO_NAME_KEY, this.heroName());
     });
     effect(() => {
@@ -99,8 +111,14 @@ export class PreferencesService {
     this.theme.update((current) => (current === 'dark' ? 'light' : 'dark'));
   }
 
+  setPlayMode(mode: PlayMode): void {
+    const adventure = mode === 'adventure';
+    this.adventureMode.set(adventure);
+    this.planetView.set(!adventure);
+  }
+
   setAdventureMode(on: boolean): void {
-    this.adventureMode.set(on);
+    this.setPlayMode(on ? 'adventure' : 'planet');
   }
 
   setAdventureLinkNeighbors(on: boolean): void {
@@ -108,7 +126,7 @@ export class PreferencesService {
   }
 
   setPlanetView(on: boolean): void {
-    this.planetView.set(on);
+    this.setPlayMode(on ? 'planet' : 'adventure');
   }
 
   setZoneOverlay(amt: number): void {
@@ -130,6 +148,10 @@ export class PreferencesService {
 
   setNametagScale(amt: number): void {
     this.nametagScale.set(Math.min(4.5, Math.max(0.5, amt)));
+  }
+
+  setNpcChatter(on: boolean): void {
+    this.npcChatter.set(on);
   }
 
   setHero(name: string, sheet: string, char: number): void {
@@ -185,6 +207,11 @@ export class PreferencesService {
     const raw = Number(localStorage.getItem(NAMETAG_KEY));
     if (!Number.isFinite(raw)) return 2.5;
     return Math.min(4.5, Math.max(0.5, raw));
+  }
+
+  private readNpcChatter(): boolean {
+    migrateWorldMapPrefs();
+    return localStorage.getItem(CHATTER_KEY) !== '0';
   }
 
   private readHeroName(): string {

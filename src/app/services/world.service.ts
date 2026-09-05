@@ -62,8 +62,12 @@ import { generatedName, kindForBiome } from '../engine/names';
 import { nearestEntity, spawnEntities, stepEntities } from '../engine/entities';
 import { clampHeroName, defaultPlayerState, findHeroLook, LOCAL_PLAYER_ID } from '../engine/hero';
 import { generateChunk, neighborMap } from '../engine/chunk-gen';
+import { generateInterior, InteriorPlan } from '../engine/interior';
+import { StreetBuilding } from '../engine/buildings';
+import { createChatterState, NPC_BUBBLE_MS, stepNpcChatter } from '../engine/chatter';
 import { defaultPlayerStart, generateWorld } from '../engine/world-gen';
 import { migrateWorldMapPrefs, PreferencesService } from './preferences.service';
+import { ChatBubble } from '../models/room.models';
 
 const SEED_KEY = 'tb-world-map-seed';
 const OUTLINES_KEY = 'tb-world-map-outlines';
@@ -77,6 +81,7 @@ const SIM_KEY = 'tb-world-map-sim';
 const DEFAULT_SEED = 7741;
 const START_HOUR = 8;
 
+/** Session/API owner: world, chunks, interiors, sim, NPC chatter. Generation lives in `engine/`. */
 @Injectable({ providedIn: 'root' })
 export class WorldService {
   private readonly prefs = inject(PreferencesService);
@@ -95,6 +100,10 @@ export class WorldService {
   readonly simMode = signal<SimMode>(this.readSimMode());
   readonly adventureLock = signal<AdventureRegion | null>(null);
   readonly adventurePrompt = signal(false);
+  readonly interior = signal<InteriorPlan | null>(null);
+  private readonly interiorCache = new Map<string, InteriorPlan>();
+  readonly npcBubbles = signal<ChatBubble[]>([]);
+  private chatter = createChatterState();
   /** Bumps when fog-of-war holes change (visited places). */
   readonly fogRev = signal(0);
   readonly simHours = signal(START_HOUR);
@@ -158,6 +167,7 @@ export class WorldService {
         scaleLabel: scaleLabel(scale),
         scale,
         uncharted: true,
+        interiorLabel: null,
       };
     }
     const biome = biomeAt(world, player.x, player.y);
@@ -189,12 +199,17 @@ export class WorldService {
       scaleLabel: scaleLabel(scale, world.width),
       scale,
       uncharted: !inside && !rawHere,
+      interiorLabel: this.interior()?.label ?? null,
     };
   });
 
   readonly statusLine = computed(() => {
     const loc = this.location();
     const poiLabel = loc.poiKind ? POI_LABELS[loc.poiKind] : null;
+    if (loc.interiorLabel) {
+      if (loc.inNode && loc.nodeName) return `In ${loc.nodeName} · ${loc.interiorLabel}`;
+      return `Inside ${loc.interiorLabel}`;
+    }
     if (loc.inNode && loc.nodeName) {
       if (poiLabel) return `In ${loc.nodeName} · ${poiLabel}`;
       const origin = loc.nodeOrigin === 'authored' ? 'authored' : 'generated';
@@ -248,6 +263,10 @@ export class WorldService {
       separateNestedPlaces(world.nodes);
     }
     this.chunks.clear();
+    this.interiorCache.clear();
+    this.interior.set(null);
+    this.chatter = createChatterState();
+    this.npcBubbles.set([]);
     this.world.set(world);
     this.player.set(this.heroFromPrefs(defaultPlayerStart(world)));
     this.followPlayer.set(true);
@@ -399,10 +418,29 @@ export class WorldService {
     const list = this.entities();
     stepEntities(world, list, dt, this.simRng);
     this.clockHours += dt * GAME_HOURS_PER_REAL_SEC;
+    if (this.prefs.npcChatter()) {
+      const line = stepNpcChatter(this.chatter, world, list, this.player(), Date.now(), this.clockHours, this.simRng);
+      if (line) {
+        const bubble: ChatBubble = {
+          id: `${line.speakerId}-${Date.now()}`,
+          peerId: line.speakerId,
+          name: line.name,
+          text: line.text,
+          until: Date.now() + NPC_BUBBLE_MS,
+        };
+        const now = Date.now();
+        this.npcBubbles.update((cur) => [...cur.filter((b) => b.peerId !== line.speakerId && b.until > now), bubble].slice(-8));
+      }
+    }
   }
 
   bumpSimHud(): void {
     this.simHours.set(this.clockHours);
+    const now = Date.now();
+    this.npcBubbles.update((list) => {
+      const next = list.filter((b) => b.until > now);
+      return next.length === list.length ? list : next;
+    });
     this.simTick.update((n) => n + 1);
   }
 
@@ -692,6 +730,22 @@ export class WorldService {
     return this.chunks;
   }
 
+  enterInterior(building: StreetBuilding): InteriorPlan {
+    const cur = this.interior();
+    if (cur?.id === building.id) return cur;
+    let plan = this.interiorCache.get(building.id);
+    if (!plan) {
+      plan = generateInterior(building);
+      this.interiorCache.set(building.id, plan);
+    }
+    this.interior.set(plan);
+    return plan;
+  }
+
+  leaveInterior(): void {
+    if (this.interior()) this.interior.set(null);
+  }
+
   forgetChunks(): void {
     this.chunks.clear();
     this.simTick.update((n) => n + 1);
@@ -712,6 +766,7 @@ export class WorldService {
   clearAdventure(): void {
     this.adventureLock.set(null);
     this.adventurePrompt.set(false);
+    this.leaveInterior();
   }
 
   ensureChunks(x0: number, y0: number, x1: number, y1: number, maxNew = 16): ChunkData[] {

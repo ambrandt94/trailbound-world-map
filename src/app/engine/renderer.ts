@@ -21,9 +21,12 @@ import {
   nodeBounds,
   smoothstep,
 } from '../models/world.models';
-import { ChatBubble } from '../models/room.models';
+import { ChatBubble, peerMarkerColor } from '../models/room.models';
+import { LOCAL_PLAYER_ID } from './hero';
 import { AssetLibrary, drawCharFrame } from './assets';
 import { armyVisibleFollowers, boatChar, kindColor } from './entities';
+import { buildingDrawOrigin, buildingDrawScale, buildingRoofFrac, isBuildingSprite } from './buildings';
+import { CELL_DOOR, CELL_FLOOR, CELL_VOID, CELL_WALL, InteriorPlan, interiorWallFill, isShellWall } from './interior';
 import { hash2 } from './noise';
 import { biomeSeason, blobLocal, decoFor, FLOORS, GROUPS, overlayGroup, tileSrc } from './tileset';
 
@@ -114,12 +117,25 @@ function drawTagLabel(
   const clearB = (opts?.clearBelow ?? 0) * uy;
   const aboveY = origin.y - clearA - gap - boxH / 2 - (kind === 'speech' ? tail * 0.35 : 0);
   const belowY = origin.y + clearB + gap + boxH / 2 + (kind === 'speech' ? tail * 0.35 : 0);
-  const candidates: Array<{ cx: number; cy: number; flip: boolean }> = [
-    { cx: origin.x, cy: aboveY, flip: false },
-    { cx: origin.x, cy: belowY, flip: true },
-    { cx: origin.x + boxW * 0.55, cy: aboveY, flip: false },
-    { cx: origin.x - boxW * 0.55, cy: aboveY, flip: false },
-  ];
+  const stackedY = aboveY - boxH - gap;
+  const candidates: Array<{ cx: number; cy: number; flip: boolean }> =
+    kind === 'speech'
+      ? [
+          { cx: origin.x, cy: aboveY, flip: false },
+          { cx: origin.x, cy: stackedY, flip: false },
+          { cx: origin.x + boxW * 0.55, cy: aboveY, flip: false },
+          { cx: origin.x - boxW * 0.55, cy: aboveY, flip: false },
+          { cx: origin.x + boxW * 0.55, cy: stackedY, flip: false },
+          { cx: origin.x - boxW * 0.55, cy: stackedY, flip: false },
+          { cx: origin.x, cy: belowY, flip: true },
+        ]
+      : [
+          { cx: origin.x, cy: aboveY, flip: false },
+          { cx: origin.x, cy: stackedY, flip: false },
+          { cx: origin.x + boxW * 0.55, cy: aboveY, flip: false },
+          { cx: origin.x - boxW * 0.55, cy: aboveY, flip: false },
+          { cx: origin.x, cy: belowY, flip: true },
+        ];
   const avoid = (opts?.avoid ?? []).map((b) => applyBox(tr, b));
   const taken = opts?.taken ?? [];
   let best: TagBox | null = null;
@@ -293,6 +309,7 @@ export class WorldRenderer {
   private readonly chunkBakes = new Map<string, HTMLCanvasElement>();
   private isoLayer: HTMLCanvasElement | null = null;
   private fogLayer: HTMLCanvasElement | null = null;
+  private blurLayer: HTMLCanvasElement | null = null;
   private tagScreenPx = NAMETAG_BASE_PX * 2.5;
 
   constructor(private readonly assets: AssetLibrary) {}
@@ -639,6 +656,7 @@ export class WorldRenderer {
       /** peerId of the local walker for speech-bubble anchoring. */
       localPeerId?: string | null;
       speechBubbles?: ChatBubble[];
+      interior?: InteriorPlan | null;
     },
   ): void {
     this.tagScreenPx = NAMETAG_BASE_PX * clamp(opts.nametagScale ?? 2.5, 0.5, 4.5);
@@ -704,7 +722,8 @@ export class WorldRenderer {
       lctx.scale(camera.scale, camera.scale);
       lctx.translate(-camera.x * TILE, -camera.y * TILE);
       this.drawVisibleChunks(lctx, camera, viewW, viewH, world, 1, isoKeys);
-      this.drawChunkSprites(lctx, camera, viewW, viewH, world, 1, opts.chunks, isoKeys);
+      this.drawChunkSprites(lctx, camera, viewW, viewH, world, 1, opts.chunks, isoKeys, opts.interior);
+      if (opts.interior) this.drawInterior(lctx, opts.interior);
       this.drawOutlines(
         lctx,
         isoNodes,
@@ -730,6 +749,7 @@ export class WorldRenderer {
         opts.localPeerId,
       );
       lctx.restore();
+      if (opts.interior) this.applyInteriorBlur(lctx, opts.interior, camera, viewW, viewH);
       this.applyScreenFog(lctx, isolated, camera, viewW, viewH);
       lctx.save();
       lctx.translate(viewW / 2, viewH / 2);
@@ -787,7 +807,8 @@ export class WorldRenderer {
 
     if (detailT > 0.02) {
       this.drawVisibleChunks(ctx, camera, viewW, viewH, world, detailT);
-      this.drawChunkSprites(ctx, camera, viewW, viewH, world, detailT, opts.chunks);
+      this.drawChunkSprites(ctx, camera, viewW, viewH, world, detailT, opts.chunks, undefined, opts.interior);
+      if (opts.interior) this.drawInterior(ctx, opts.interior);
     }
 
     for (const shift of wrapShifts) {
@@ -844,6 +865,7 @@ export class WorldRenderer {
       ctx.restore();
     }
     ctx.restore();
+    if (opts.interior) this.applyInteriorBlur(ctx, opts.interior, camera, viewW, viewH);
   }
 
   private ensureLayer(current: HTMLCanvasElement | null, viewW: number, viewH: number): HTMLCanvasElement {
@@ -900,6 +922,108 @@ export class WorldRenderer {
     ctx.restore();
   }
 
+  private drawInterior(ctx: CanvasRenderingContext2D, plan: InteriorPlan): void {
+    const floors = this.assets.floors;
+    const cell = TILE / ZONE_SCALE;
+    const floor = FLOORS[plan.floor] ?? FLOORS[0]!;
+    const wall = interiorWallFill(plan.sprite);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    for (let r = 0; r < plan.rows; r++) {
+      for (let c = 0; c < plan.cols; c++) {
+        const cellKind = plan.cells[c + r * plan.cols]!;
+        if (cellKind === CELL_VOID || cellKind === CELL_WALL) continue;
+        const dx = (plan.x0 + c / ZONE_SCALE) * TILE;
+        const dy = (plan.y0 + r / ZONE_SCALE) * TILE;
+        ctx.drawImage(floors, floor.sx, floor.sy, TILE, TILE, dx, dy, cell, cell);
+      }
+    }
+    ctx.fillStyle = wall;
+    for (let r = 0; r < plan.rows; r++) {
+      for (let c = 0; c < plan.cols; c++) {
+        if (plan.cells[c + r * plan.cols] !== CELL_WALL || isShellWall(plan, c, r)) continue;
+        ctx.fillRect((plan.x0 + c / ZONE_SCALE) * TILE, (plan.y0 + r / ZONE_SCALE) * TILE, cell, cell);
+      }
+    }
+    ctx.strokeStyle = '#1a120c';
+    ctx.lineWidth = 0.08;
+    for (let r = 0; r < plan.rows; r++) {
+      for (let c = 0; c < plan.cols; c++) {
+        if (plan.cells[c + r * plan.cols] !== CELL_WALL || isShellWall(plan, c, r)) continue;
+        const dx = (plan.x0 + c / ZONE_SCALE) * TILE;
+        const dy = (plan.y0 + r / ZONE_SCALE) * TILE;
+        ctx.strokeRect(dx + 0.15, dy + 0.15, cell - 0.3, cell - 0.3);
+      }
+    }
+    ctx.fillStyle = '#6b4a32';
+    for (let r = 0; r < plan.rows; r++) {
+      for (let c = 0; c < plan.cols; c++) {
+        if (plan.cells[c + r * plan.cols] !== CELL_DOOR) continue;
+        ctx.fillRect((plan.x0 + c / ZONE_SCALE) * TILE, (plan.y0 + r / ZONE_SCALE) * TILE + cell * 0.55, cell, cell * 0.45);
+      }
+    }
+    for (const f of plan.furniture) {
+      const img = this.assets.sprite(f.sprite);
+      if (!img) continue;
+      const x = plan.x0 + (f.col + 0.5) / ZONE_SCALE;
+      const y = plan.y0 + (f.row + 0.85) / ZONE_SCALE;
+      const k = (TILE / ZONE_SCALE / 16) * 1.15;
+      ctx.save();
+      ctx.translate(x * TILE, y * TILE);
+      ctx.scale(k, k);
+      ctx.drawImage(img, -img.width / 2, -img.height);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  private applyInteriorBlur(
+    ctx: CanvasRenderingContext2D,
+    plan: InteriorPlan,
+    camera: CameraState,
+    viewW: number,
+    viewH: number,
+  ): void {
+    this.blurLayer = this.ensureLayer(this.blurLayer, viewW, viewH);
+    const blur = this.blurLayer;
+    const bctx = blur.getContext('2d');
+    if (!bctx) return;
+    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    bctx.clearRect(0, 0, blur.width, blur.height);
+    bctx.imageSmoothingEnabled = true;
+    bctx.filter = 'blur(10px)';
+    bctx.drawImage(ctx.canvas, 0, 0);
+    bctx.filter = 'none';
+    bctx.fillStyle = 'rgba(12, 16, 20, 0.38)';
+    bctx.fillRect(0, 0, blur.width, blur.height);
+    bctx.globalCompositeOperation = 'destination-out';
+    bctx.save();
+    bctx.translate(viewW / 2, viewH / 2);
+    bctx.scale(camera.scale, camera.scale);
+    bctx.translate(-camera.x * TILE, -camera.y * TILE);
+    const pad = 0.03;
+    const cell = TILE / ZONE_SCALE;
+    bctx.fillStyle = '#fff';
+    for (let r = 0; r < plan.rows; r++) {
+      for (let c = 0; c < plan.cols; c++) {
+        if (plan.cells[c + r * plan.cols] === CELL_VOID) continue;
+        bctx.fillRect(
+          (plan.x0 + c / ZONE_SCALE) * TILE - pad * TILE,
+          (plan.y0 + r / ZONE_SCALE) * TILE - pad * TILE,
+          cell + pad * 2 * TILE,
+          cell + pad * 2 * TILE,
+        );
+      }
+    }
+    bctx.fillRect(plan.doorX0 * TILE - pad * TILE, plan.ay * TILE, (plan.doorX1 - plan.doorX0 + pad * 2) * TILE, 0.14 * TILE);
+    bctx.restore();
+    bctx.globalCompositeOperation = 'source-over';
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(blur, 0, 0);
+    ctx.restore();
+  }
+
   forgetChunk(wx: number, wy: number): void {
     this.chunkBakes.delete(chunkKey(wx, wy));
   }
@@ -949,26 +1073,27 @@ export class WorldRenderer {
     detailT: number,
     chunks: Map<string, ChunkData> | undefined,
     allowed?: Set<string>,
+    hide?: InteriorPlan | null,
   ): void {
     if (!chunks) return;
     const halfW = viewW / (2 * camera.scale) / TILE;
     const halfH = viewH / (2 * camera.scale) / TILE;
-    const x0 = Math.max(0, Math.floor(camera.x - halfW - 1));
-    const y0 = Math.max(0, Math.floor(camera.y - halfH - 2));
-    const x1 = Math.min(world.width - 1, Math.floor(camera.x + halfW + 1));
-    const y1 = Math.min(world.height - 1, Math.floor(camera.y + halfH + 1));
-    const drawn: Array<{ sprite: string; x: number; y: number }> = [];
+    const pad = 3.2;
+    const x0 = Math.max(0, Math.floor(camera.x - halfW - pad));
+    const y0 = Math.max(0, Math.floor(camera.y - halfH - pad));
+    const x1 = Math.min(world.width - 1, Math.floor(camera.x + halfW + pad));
+    const y1 = Math.min(world.height - 1, Math.floor(camera.y + halfH + pad));
+    const drawn: Array<{ sprite: string; x: number; y: number; footW?: number; roofOnly?: boolean }> = [];
     for (let wy = y0; wy <= y1; wy++) {
       for (let wx = x0; wx <= x1; wx++) {
         if (allowed && !allowed.has(chunkKey(wx, wy))) continue;
         const chunk = chunks.get(chunkKey(wx, wy));
         if (!chunk) continue;
         for (const spr of chunk.sprites) {
-          drawn.push({
-            sprite: spr.sprite,
-            x: wx + spr.x / chunk.size,
-            y: wy + spr.y / chunk.size,
-          });
+          const x = wx + spr.x / chunk.size;
+          const y = wy + spr.y / chunk.size;
+          const roofOnly = !!(hide && isBuildingSprite(spr.sprite) && Math.abs(x - hide.ax) < 0.04 && Math.abs(y - hide.ay) < 0.04);
+          drawn.push({ sprite: spr.sprite, x, y, footW: spr.footW, roofOnly });
         }
       }
     }
@@ -980,10 +1105,43 @@ export class WorldRenderer {
       if (!img) continue;
       ctx.save();
       ctx.translate(spr.x * TILE, spr.y * TILE);
-      const k = spriteWorldScale(img);
-      ctx.scale(k, k);
-      ctx.drawImage(img, -img.width / 2, -img.height);
-      ctx.restore();
+      if (isBuildingSprite(spr.sprite)) {
+        const k = buildingDrawScale(spr.sprite, img, spr.footW);
+        const { ox, oy } = buildingDrawOrigin(spr.sprite, img);
+        ctx.scale(k, k);
+        ctx.drawImage(img, -ox, -oy);
+        ctx.restore();
+        if (spr.roofOnly && hide) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.fillStyle = '#000';
+          const cell = TILE / ZONE_SCALE;
+          for (let r = 0; r < hide.rows; r++) {
+            for (let c = 0; c < hide.cols; c++) {
+              const kind = hide.cells[c + r * hide.cols]!;
+              if (kind !== CELL_FLOOR && kind !== CELL_DOOR) continue;
+              ctx.fillRect(
+                (hide.x0 + c / ZONE_SCALE) * TILE,
+                (hide.y0 + r / ZONE_SCALE) * TILE,
+                cell,
+                cell,
+              );
+            }
+          }
+          ctx.restore();
+          ctx.save();
+          ctx.translate(spr.x * TILE, spr.y * TILE);
+          ctx.scale(k, k);
+          const rh = Math.max(1, Math.round(img.height * buildingRoofFrac(spr.sprite)));
+          ctx.drawImage(img, 0, 0, img.width, rh, -ox, -oy, img.width, rh);
+          ctx.restore();
+        }
+      } else {
+        const k = spriteWorldScale(img);
+        ctx.scale(k, k);
+        ctx.drawImage(img, -img.width / 2, -img.height);
+        ctx.restore();
+      }
     }
     ctx.restore();
   }
@@ -1303,19 +1461,10 @@ export class WorldRenderer {
     const anchorByPeer = new Map<string, { x: number; y: number; clearAbove: number; clearBelow: number }>();
     for (const mark of marks) {
       if (mark.kind === 'player') {
-        const spr = this.drawPlayer(ctx, player, scale);
+        const spr = this.drawPlayer(ctx, player, scale, localPeerId);
         if (spr) occupied.push(spr);
         const clearAbove = spr ? player.y * TILE - spr.y : 12 / scale;
         const clearBelow = spr ? spr.y + spr.h - player.y * TILE : 4 / scale;
-        if (player.name && scale >= 2.8) {
-          pending.push({
-            text: player.name,
-            x: player.x * TILE,
-            y: player.y * TILE,
-            clearAbove,
-            clearBelow,
-          });
-        }
         if (localPeerId) {
           anchorByPeer.set(localPeerId, {
             x: player.x * TILE,
@@ -1328,7 +1477,7 @@ export class WorldRenderer {
       }
       if (mark.kind === 'guest' && mark.guest) {
         const g = mark.guest;
-        const spr = this.drawPlayer(ctx, g, scale);
+        const spr = this.drawPlayer(ctx, g, scale, null);
         if (spr) occupied.push(spr);
         const clearAbove = spr ? g.y * TILE - spr.y : 12 / scale;
         const clearBelow = spr ? spr.y + spr.h - g.y * TILE : 4 / scale;
@@ -1399,26 +1548,27 @@ export class WorldRenderer {
         }
       }
       if (sprite) occupied.push(sprite);
-      if (hovered && mark.lead) {
-        pending.push({
-          text: e.name,
+      if (mark.lead) {
+        const clearAbove = sprite ? my * TILE - sprite.y : 12 / scale;
+        const clearBelow = sprite ? sprite.y + sprite.h - my * TILE : 4 / scale;
+        anchorByPeer.set(e.id, {
           x: mx * TILE,
           y: my * TILE,
-          clearAbove: sprite ? my * TILE - sprite.y : 12 / scale,
-          clearBelow: sprite ? sprite.y + sprite.h - my * TILE : 4 / scale,
+          clearAbove: clearAbove + 10 / scale,
+          clearBelow,
         });
+        if (hovered) {
+          pending.push({
+            text: e.name,
+            x: mx * TILE,
+            y: my * TILE,
+            clearAbove,
+            clearBelow,
+          });
+        }
       }
     }
     const taken: TagBox[] = [];
-    for (const tag of pending) {
-      drawNametag(ctx, tag.text, tag.x, tag.y, scale, {
-        clearAbove: tag.clearAbove,
-        clearBelow: tag.clearBelow,
-        avoid: occupied,
-        taken,
-        screenPx: this.tagScreenPx,
-      });
-    }
     for (const bubble of speechBubbles) {
       const anchor = anchorByPeer.get(bubble.peerId);
       if (!anchor) continue;
@@ -1439,9 +1589,23 @@ export class WorldRenderer {
         screenPx: this.tagScreenPx * 1.05,
       });
     }
+    for (const tag of pending) {
+      drawNametag(ctx, tag.text, tag.x, tag.y, scale, {
+        clearAbove: tag.clearAbove,
+        clearBelow: tag.clearBelow,
+        avoid: occupied,
+        taken,
+        screenPx: this.tagScreenPx,
+      });
+    }
   }
 
-  private drawPlayer(ctx: CanvasRenderingContext2D, player: PlayerState, scale: number): TagBox | null {
+  private drawPlayer(
+    ctx: CanvasRenderingContext2D,
+    player: PlayerState,
+    scale: number,
+    localPeerId: string | null,
+  ): TagBox | null {
     const px = player.x * TILE;
     const py = player.y * TILE;
     const pinT = 1 - smoothstep(0.45, 2.4, scale);
@@ -1451,7 +1615,7 @@ export class WorldRenderer {
       const r = Math.max(3.2, 7 / scale);
       ctx.beginPath();
       ctx.arc(px, py - 2 / scale, r, 0, Math.PI * 2);
-      ctx.fillStyle = '#e8c37a';
+      ctx.fillStyle = pinColorForPlayer(player, localPeerId);
       ctx.fill();
       ctx.lineWidth = 2 / scale;
       ctx.strokeStyle = '#3a2414';
@@ -1495,6 +1659,14 @@ export class WorldRenderer {
     ctx.restore();
     return box;
   }
+}
+
+function pinColorForPlayer(player: PlayerState, localPeerId: string | null): string {
+  if (localPeerId && (player.id === LOCAL_PLAYER_ID || player.id === localPeerId)) {
+    return peerMarkerColor(localPeerId);
+  }
+  if (player.id === LOCAL_PLAYER_ID) return '#e8c37a';
+  return peerMarkerColor(player.id);
 }
 
 function countyRgb(node: MapNode): [number, number, number] {

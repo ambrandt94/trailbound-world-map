@@ -478,6 +478,9 @@ export interface PlacedSprite {
   sprite: string;
   x: number;
   y: number;
+  /** Inner-tile ground lot, set on street-scale buildings for interiors. */
+  footW?: number;
+  footD?: number;
 }
 
 export interface ZoneData {
@@ -635,6 +638,7 @@ export interface LocationInfo {
   scaleLabel: string;
   scale: number;
   uncharted: boolean;
+  interiorLabel: string | null;
 }
 
 export const BIOME_LABELS: Record<Biome, string> = {

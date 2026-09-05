@@ -34,18 +34,25 @@ import { WorldService } from '../../services/world.service';
           <dd>{{ world.simHud().wanderers }} · {{ world.simHud().caravans }} · {{ world.simHud().armies }} hosts</dd>
         </div>
       </dl>
-      @if (world.adventureLock(); as region) {
-        <span class="pill">{{ region.tiles.length }} tiles · leave edge for map</span>
-      } @else if (world.location().inNode) {
-        <span class="pill" [class.authored]="world.location().nodeOrigin === 'authored'">
-          {{ world.location().nodeOrigin === 'authored' ? 'Authored zone' : 'Discovered place' }}
-        </span>
-      } @else if (world.location().atGate) {
-        <span class="pill gate">At the gate</span>
-      } @else if (world.location().poiKind) {
-        <span class="pill poi">{{ poiLabel() }}</span>
+      @if (heard(); as line) {
+        <p class="heard"><span>{{ line.name }}</span> {{ line.text }}</p>
+      }
+      @if (world.interior(); as inn) {
+        <span class="pill">Inside · {{ inn.label }}</span>
       } @else {
-        <span class="pill uncharted">Outside any node</span>
+        @if (world.adventureLock(); as region) {
+          <span class="pill">{{ region.tiles.length }} tiles · leave edge for map</span>
+        } @else if (world.location().inNode) {
+          <span class="pill" [class.authored]="world.location().nodeOrigin === 'authored'">
+            {{ world.location().nodeOrigin === 'authored' ? 'Authored zone' : 'Discovered place' }}
+          </span>
+        } @else if (world.location().atGate) {
+          <span class="pill gate">At the gate</span>
+        } @else if (world.location().poiKind) {
+          <span class="pill poi">{{ poiLabel() }}</span>
+        } @else {
+          <span class="pill uncharted">Outside any node</span>
+        }
       }
     </aside>
   `,
@@ -143,6 +150,40 @@ import { WorldService } from '../../services/world.service';
       background: color-mix(in srgb, var(--tb-muted) 16%, transparent);
       color: var(--tb-muted);
     }
+    .heard {
+      margin: 0 0 0.55rem;
+      padding: 0.4rem 0.5rem;
+      border-radius: 10px;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      color: var(--tb-ink);
+      background: color-mix(in srgb, var(--tb-accent) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--tb-accent) 28%, transparent);
+    }
+    .heard span {
+      display: block;
+      font-size: 0.66rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--tb-accent-strong);
+      margin-bottom: 0.12rem;
+    }
+    @media (max-width: 800px) {
+      .panel {
+        width: min(16.5rem, 100%);
+        max-height: 28vh;
+        overflow: auto;
+        padding: 0.65rem 0.75rem;
+      }
+      .eyebrow,
+      .facts {
+        display: none;
+      }
+      .clock {
+        margin-bottom: 0.4rem;
+      }
+    }
   `,
 })
 export class LocationPanelComponent {
@@ -172,5 +213,10 @@ export class LocationPanelComponent {
   readonly poiLabel = computed(() => {
     const kind = this.world.location().poiKind;
     return kind ? POI_LABELS[kind] : 'Point of interest';
+  });
+
+  readonly heard = computed(() => {
+    const list = this.world.npcBubbles();
+    return list.length ? list[list.length - 1]! : null;
   });
 }

@@ -1,3 +1,4 @@
+/** Simulated people, caravans, and hosts. Movement + spawn only — chatter is `chatter.ts`. */
 import {
   Biome,
   EntityKind,

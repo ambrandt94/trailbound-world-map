@@ -33,6 +33,45 @@ export interface PeerPose {
   frame: number;
 }
 
+export interface PresenceRow {
+  id: string;
+  name: string;
+  color: string;
+  you: boolean;
+}
+
+/** Distinct overworld pin colors for room players (hashed from peer id). */
+export const PEER_MARKER_COLORS = [
+  '#e8c37a',
+  '#6ec6e8',
+  '#e07a8a',
+  '#7ed9a4',
+  '#c9a0e0',
+  '#f0a06a',
+  '#5fc4b8',
+  '#d4c05a',
+  '#8aabe8',
+  '#e8a0c0',
+  '#a8d46a',
+  '#e09060',
+  '#70b8d8',
+  '#d888b0',
+  '#90c878',
+  '#e8b070',
+] as const;
+
+export function peerMarkerColor(peerId: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < peerId.length; i++) h = Math.imul(h ^ peerId.charCodeAt(i), 16777619);
+  return PEER_MARKER_COLORS[(h >>> 0) % PEER_MARKER_COLORS.length]!;
+}
+
+export function peerMarkerRgb(peerId: string): [number, number, number] {
+  const hex = peerMarkerColor(peerId);
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
 export interface ChatBubble {
   id: string;
   peerId: string;

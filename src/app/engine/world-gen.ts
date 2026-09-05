@@ -1,3 +1,4 @@
+/** Continent + biomes + authored/generated places. No Angular — API-safe. */
 import {
   BIOME_COUNT,
   Biome,
