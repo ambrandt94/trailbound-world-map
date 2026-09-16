@@ -10,6 +10,12 @@ https://ambrandt94.github.io/trailbound-world-map/
 
 Deployed from `main` via GitHub Actions (`.github/workflows/deploy-pages.yml`). In the repo **Settings → Pages**, set **Source** to **GitHub Actions** (not “Deploy from a branch”).
 
+Commit, push, and deploy in one step (message required when the tree is dirty):
+
+```bash
+npm run ship -- "Commit message"
+```
+
 ## Run
 
 ```bash

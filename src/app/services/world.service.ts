@@ -865,7 +865,7 @@ export class WorldService {
     this.simTick.update((n) => n + 1);
   }
 
-  /** Mint compact, POI-centered sites for markers that sit on this place's edge. */
+  /** Mint POI-centered sites (min/max per kind) for markers that sit on this place's edge. */
   attachEdgePois(placeId: string): void {
     const world = this.world();
     if (!world) return;

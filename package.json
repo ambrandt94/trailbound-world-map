@@ -7,7 +7,8 @@
     "start": "ng serve --port 4202",
     "build": "ng build",
     "build:pages": "ng build --configuration production --base-href /trailbound-world-map/",
-    "watch": "ng build --watch --configuration development"
+    "watch": "ng build --watch --configuration development",
+    "ship": "node scripts/ship.mjs"
   },
   "dependencies": {
     "@angular/animations": "^19.2.25",

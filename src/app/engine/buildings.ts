@@ -548,16 +548,19 @@ function poiPair(kind: PoiKind): string[] {
 }
 
 export function poiBuildingLayout(kind: PoiKind, midX: number, midY: number): PlacedBuilding[] {
-  const names = poiPair(kind);
-  const out: PlacedBuilding[] = [];
-  for (let i = 0; i < names.length; i++) {
-    const def = BUILDINGS[names[i]!];
-    if (!def) continue;
-    const x = midX + (i === 0 ? 0 : def.footW * 0.62 + 3);
-    const y = midY + (i === 0 ? -1 : 2.4);
-    out.push({ ...def, x, y });
-  }
-  return out;
+  const defs = poiPair(kind)
+    .map((name) => BUILDINGS[name])
+    .filter((d): d is BuildingDef => !!d);
+  if (!defs.length) return [];
+  if (defs.length === 1) return [{ ...defs[0]!, x: midX, y: midY - 1 }];
+  const a = defs[0]!;
+  const b = defs[1]!;
+  const gap = 3.2;
+  const span = a.footW * 0.5 + gap + b.footW * 0.5;
+  return [
+    { ...a, x: midX - span * 0.5 + a.footW * 0.5, y: midY - 1 },
+    { ...b, x: midX + span * 0.5 - b.footW * 0.5, y: midY + 1.6 },
+  ];
 }
 
 export function toPlacedSprite(b: PlacedBuilding, originX: number, originY: number): PlacedSprite {

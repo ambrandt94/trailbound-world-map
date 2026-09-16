@@ -699,6 +699,46 @@ export const POI_LABELS: Record<PoiKind, string> = {
   'ancient-gate': 'ancient gate',
 };
 
+/**
+ * World-tile radius of a POI site. Min is large enough for that kind's Town Tale
+ * lots (church / hall / farm are 16–22 inner tiles; ZONE_SCALE is 8) plus isolation
+ * fog. Max caps sprawl so 16× continents cannot mint city-sized POI zones.
+ */
+export const POI_SITE_SIZE: Record<PoiKind, { min: number; max: number }> = {
+  ruins: { min: 5.2, max: 7.4 },
+  mansion: { min: 4.8, max: 6.6 },
+  'abandoned-camp': { min: 3.6, max: 5.0 },
+  shrine: { min: 4.0, max: 5.6 },
+  cave: { min: 3.8, max: 5.4 },
+  graves: { min: 4.2, max: 6.0 },
+  homestead: { min: 4.4, max: 6.2 },
+  hideout: { min: 4.0, max: 5.6 },
+  treehouse: { min: 4.4, max: 6.2 },
+  battlefield: { min: 6.4, max: 9.2 },
+  'military-camp': { min: 4.6, max: 6.4 },
+  tower: { min: 4.0, max: 5.4 },
+  'wizard-tower': { min: 4.2, max: 5.8 },
+  'dragon-lair': { min: 5.6, max: 8.0 },
+  mine: { min: 4.0, max: 5.6 },
+  temple: { min: 4.6, max: 6.6 },
+  monastery: { min: 4.8, max: 6.8 },
+  port: { min: 4.6, max: 6.4 },
+  'bridge-keep': { min: 4.4, max: 6.0 },
+  'fey-circle': { min: 3.8, max: 5.4 },
+  'orc-fort': { min: 5.0, max: 7.2 },
+  crypt: { min: 4.0, max: 5.6 },
+  watchtower: { min: 3.8, max: 5.2 },
+  'trading-post': { min: 4.2, max: 5.8 },
+  'bandit-camp': { min: 3.6, max: 5.0 },
+  'ancient-gate': { min: 5.2, max: 7.4 },
+};
+
+/** Sampled world-tile radius in `[min, max]` for this POI kind (stable per seed). */
+export function poiSiteRadius(kind: PoiKind, seed: number): number {
+  const size = POI_SITE_SIZE[kind];
+  return size.min + blobHash(seed, 19, 41) * (size.max - size.min);
+}
+
 export function biomeAt(world: WorldData, x: number, y: number): Biome {
   const ix = Math.floor(x);
   const iy = Math.floor(y);
@@ -1832,18 +1872,15 @@ export function poiOnTile(pois: PointOfInterest[], x: number, y: number): PointO
   return best;
 }
 
-/** World-tile radius of a POI's pre-defined site (mansion ≈ 3×3, battlefield ≈ 5×5 disk). */
-export function poiSiteReach(kind: PoiKind): number {
-  return kind === 'battlefield' ||
-    kind === 'ruins' ||
-    kind === 'dragon-lair' ||
-    kind === 'orc-fort' ||
-    kind === 'ancient-gate'
-    ? 2
-    : 1;
+/** Sampled world-tile radius for this POI kind (between that type's min and max). */
+export function poiSiteReach(kind: PoiKind, seed = 0): number {
+  return poiSiteRadius(kind, seed);
 }
 
-/** Compact land tiles centered on the POI so layouts are never clipped to a blob edge. */
+/**
+ * Land tiles centered on the POI. The filled `min` disk keeps buildings inside
+ * isolation; tiles between min and the sampled radius add irregular fringe.
+ */
 export function poiFootprintTiles(
   poi: { kind: PoiKind; x: number; y: number; seed: number },
   world: { width: number; height: number; biomes?: Uint8Array },
@@ -1851,12 +1888,19 @@ export function poiFootprintTiles(
 ): Vec2[] {
   const cx = Math.floor(poi.x);
   const cy = Math.floor(poi.y);
-  const reach = poiSiteReach(poi.kind);
+  const { min, max } = POI_SITE_SIZE[poi.kind];
+  const reach = poiSiteRadius(poi.kind, poi.seed);
+  const scan = Math.ceil(reach);
   const tiles: Vec2[] = [];
-  for (let dy = -reach; dy <= reach; dy++) {
-    for (let dx = -reach; dx <= reach; dx++) {
-      if (reach > 1 && dx * dx + dy * dy > reach * reach + 1) continue;
-      if (reach === 1 && dx !== 0 && dy !== 0 && blobHash(poi.seed, 11 + dx, 13 + dy) < 0.38) continue;
+  for (let dy = -scan; dy <= scan; dy++) {
+    for (let dx = -scan; dx <= scan; dx++) {
+      const d = Math.hypot(dx, dy);
+      if (d > reach + 0.15) continue;
+      if (d > min) {
+        const span = Math.max(0.35, reach - min);
+        const fringe = (d - min) / span;
+        if (blobHash(poi.seed, 11 + dx, 13 + dy) < fringe * 0.28) continue;
+      }
       const x = cx + dx;
       const y = cy + dy;
       if (x < 0 || y < 0 || x >= world.width || y >= world.height) continue;
@@ -1868,6 +1912,19 @@ export function poiFootprintTiles(
   if (!tiles.some((t) => t.x === cx && t.y === cy) && !blocked?.has(tileKey(cx, cy))) {
     tiles.unshift({ x: cx, y: cy });
   }
+  const want = Math.max(MIN_ZONE_TILES, Math.round(Math.PI * min * min * 0.72));
+  const cap = Math.round(Math.PI * max * max);
+  expandToMinTiles(
+    tiles,
+    Math.min(want, cap),
+    (x, y) => {
+      if (x < 0 || y < 0 || x >= world.width || y >= world.height) return false;
+      if (blocked?.has(tileKey(x, y))) return false;
+      if (world.biomes && (world.biomes[x + y * world.width] as Biome) === Biome.Water) return false;
+      return Math.hypot(x - cx, y - cy) <= max + 0.2;
+    },
+    blocked ?? new Set(),
+  );
   return tiles;
 }
 
@@ -1946,9 +2003,18 @@ export function settlePoiSites(
     const same =
       tiles.length === (node.tiles?.length ?? 0) &&
       tiles.every((t) => node.tiles!.some((u) => u.x === t.x && u.y === t.y));
-    if (same) continue;
-    assignNodeTiles(node, { tiles, ...boundsFromTiles(tiles) });
-    changed = true;
+    if (!same) {
+      assignNodeTiles(node, { tiles, ...boundsFromTiles(tiles) });
+      changed = true;
+    }
+    const radius = Math.max(
+      poiSiteRadius(node.poiKind, node.seed),
+      Math.hypot(node.x1 - node.x0, node.y1 - node.y0) / 2,
+    );
+    if (Math.abs(node.radius - radius) > 0.05) {
+      node.radius = radius;
+      changed = true;
+    }
   }
   const claimed = new Set<string>();
   for (const node of nodes) {
@@ -2080,7 +2146,10 @@ export function poiAsNode(
   }, opts?.blocked);
   if (!tiles.length) tiles.push({ x: Math.floor(poi.x), y: Math.floor(poi.y) });
   const blob = { tiles, ...boundsFromTiles(tiles) };
-  const radius = Math.max(poiSiteReach(poi.kind) + 0.6, Math.hypot(blob.x1 - blob.x0, blob.y1 - blob.y0) / 2);
+  const radius = Math.max(
+    poiSiteRadius(poi.kind, poi.seed),
+    Math.hypot(blob.x1 - blob.x0, blob.y1 - blob.y0) / 2,
+  );
   return {
     id: poi.id,
     name: poi.name,
