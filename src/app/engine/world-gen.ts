@@ -294,6 +294,7 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
   const h = w;
   const rng = new Rng(seed);
   const biomes = new Uint8Array(w * h);
+  const heights = new Float32Array(w * h);
   const paths = new Uint8Array(w * h);
   const geo = w / WORLD_BASE;
   const style = settings.mapStyle ?? 'continent';
@@ -318,6 +319,7 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
       const ny = y / h;
       const mask = landMask(nx, ny, style, seed, sketch);
       const height = fbm(nx * freq, ny * freq, seed, 5) * noiseW + mask * maskW;
+      heights[idx(x, y, w)] = height;
       const moist = fbm(nx * (freq * 1.17) + 9.2, ny * (freq * 1.17), seed + 17, 4);
       const temp = fbm(nx * (freq * 0.74) - 2.1, ny * (freq * 0.83) + 4.4, seed + 53, 4);
       const river = ridged(nx * (freq * 1.54), ny * (freq * 1.54), seed + 31);
@@ -471,7 +473,7 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
     settings.poiCount,
   );
 
-  return { seed, width: w, height: h, settings, biomes, paths, nodes, pois, features };
+  return { seed, width: w, height: h, settings, biomes, heights, paths, nodes, pois, features };
 }
 
 function treeFor(b: Biome, n: number): { threshold: number; sprite: string } | null {
