@@ -7,6 +7,7 @@ import {
   ViewChild,
   computed,
   inject,
+  signal,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -59,6 +60,8 @@ import {
   mapScaleBar,
   zoneRadiusFor,
 } from '../../models/world.models';
+import { buildAreaExport } from '../../engine/area-export';
+import { downloadAreaExport, openAreaInController, type AreaBridgeSession } from '../../engine/area-bridge';
 import { AssetLibrary } from '../../engine/assets';
 import { nearestEntity } from '../../engine/entities';
 import { defaultPlayerState } from '../../engine/hero';
@@ -154,6 +157,28 @@ const ZOOM_CATCH = 0.18;
             <mat-icon>{{ prefs.showWorldMarkers() ? 'groups' : 'visibility_off' }}</mat-icon>
           </button>
         </div>
+        @if (isolatedPlaceId()) {
+          <div class="play3d">
+            <div class="play3d-row">
+              <button
+                mat-flat-button
+                color="primary"
+                type="button"
+                (click)="playIn3d()"
+                matTooltip="Open this place in the 3D controller"
+              >
+                <mat-icon>view_in_ar</mat-icon>
+                Play in 3D
+              </button>
+              <button mat-stroked-button type="button" (click)="downloadArea()" matTooltip="Save this place as AreaExport JSON">
+                Download area JSON
+              </button>
+            </div>
+            @if (bridgeNote()) {
+              <p class="play3d-note">{{ bridgeNote() }}</p>
+            }
+          </div>
+        }
         <div class="zoom-hud" aria-hidden="true">
           <div class="zoom-meta">
             <span class="zoom-band">{{ zoomHud().label }}</span>
@@ -258,6 +283,38 @@ const ZOOM_CATCH = 0.18;
       font-size: 1.15rem;
       width: 1.15rem;
       height: 1.15rem;
+    }
+    .play3d {
+      position: absolute;
+      z-index: 4;
+      top: 4rem;
+      left: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.35rem;
+      max-width: min(24rem, calc(100% - 1.5rem));
+      padding: 0.4rem;
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--tb-panel) 90%, transparent);
+      border: 1px solid color-mix(in srgb, var(--tb-ink) 10%, transparent);
+      box-shadow: 0 8px 22px color-mix(in srgb, black 22%, transparent);
+      pointer-events: auto;
+    }
+    .play3d-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+    .play3d button {
+      text-transform: none;
+    }
+    .play3d-note {
+      margin: 0;
+      padding: 0 0.25rem 0.15rem;
+      font-size: 0.72rem;
+      line-height: 1.35;
+      color: var(--tb-muted);
     }
     .boot {
       position: absolute;
@@ -476,6 +533,10 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   private syncAcc = 0;
   private edgeReturn: { x: number; y: number } | null = null;
   private isolatePlaceId: string | null = null;
+  /** Mirrors isolatePlaceId for the Play in 3D chrome. Updated from the map tick. */
+  readonly isolatedPlaceId = signal<string | null>(null);
+  readonly bridgeNote = signal('');
+  private bridge: AreaBridgeSession | null = null;
   private leavingIsolation = false;
   private discoverArmed = false;
   /** Locked dive tile while zooming into uncharted land (avoids sliding into a neighbor place). */
@@ -573,6 +634,45 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.unbindKeys();
     this.globe?.dispose();
     this.globe = null;
+    this.bridge?.close();
+    this.bridge = null;
+  }
+
+  playIn3d(): void {
+    this.bridgeNote.set('Exporting this place…');
+    setTimeout(() => {
+      const area = this.exportIsolatedArea();
+      if (!area) {
+        this.bridgeNote.set('Zoom into a place before playing it in 3D.');
+        return;
+      }
+      this.bridge?.close();
+      this.bridge = openAreaInController(area, {
+        onStatus: (message) => this.ngZone.run(() => this.bridgeNote.set(message)),
+      });
+    }, 0);
+  }
+
+  downloadArea(): void {
+    this.bridgeNote.set('Exporting this place…');
+    setTimeout(() => {
+      const area = this.exportIsolatedArea();
+      if (!area) {
+        this.bridgeNote.set('Zoom into a place before downloading it.');
+        return;
+      }
+      downloadAreaExport(area);
+      this.bridgeNote.set(`Saved area-${area.area.id}.json · ${area.meta.hash.slice(0, 19)}…`);
+    }, 0);
+  }
+
+  private exportIsolatedArea() {
+    const world = this.world.world();
+    const id = this.isolatePlaceId;
+    if (!world || !id) return null;
+    const place = world.nodes.find((n) => n.id === id);
+    if (!place?.tiles?.length) return null;
+    return buildAreaExport(world, place, { timeOfDayHours: this.world.simHours() });
   }
 
   reloadFromWorld(): void {
@@ -932,6 +1032,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
         });
         this.world.setScale(scale);
         this.world.bumpSimHud();
+        if (this.isolatePlaceId !== this.isolatedPlaceId()) this.isolatedPlaceId.set(this.isolatePlaceId);
       });
       if (this.room.connected() && this.usingWalker()) {
         this.room.publishPose({

@@ -1,0 +1,135 @@
+# AreaExport v0.1
+
+World-map is the authority for a place. The Trailbound controller does not invent geography. The TypeScript types in `src/app/engine/area-export.ts` are the schema. This note is the field guide; if they disagree, the types win.
+
+`buildAreaExport(world, place, opts)` returns one `AreaExport`. It covers the isolated place only (`MapNode.tiles`). Neighbours are metadata. “Load adjacent regions” does not enlarge the grids.
+
+## Transport
+
+**Play in 3D** (visible while a place is isolated) opens the controller and hands off the payload:
+
+1. Resolve the controller URL (below) and append `?bridge=1`.
+2. `window.open` that URL as `tb-controller`.
+3. Post `{ type: 'tb-area-hello', version }` to the controller origin, and repeat until it answers or the window closes.
+4. On `{ type: 'tb-area-ready' }` from that window, post `{ type: 'tb-area', payload }` where `payload` is the `AreaExport`.
+5. On `{ type: 'tb-area-ack', hash }`, compare `hash` to `meta.hash` (the `sha1:` prefix is optional).
+
+Every `postMessage` uses the controller origin as `targetOrigin`. Incoming messages must come from that same window and from an allowlisted origin. `'*'` is never used.
+
+**Download area JSON** saves the same object.
+
+### Controller URL
+
+| Where the map runs | Controller |
+| --- | --- |
+| `localhost` or `127.0.0.1` | `http://localhost:8787/` |
+| anywhere else (GitHub Pages) | `https://trailbound-controller.ambrandt94.workers.dev/` |
+
+Set `localStorage['tb-controller-url']` to override (for example `http://127.0.0.1:8790/`). The default allowlist is the production origin plus `http://localhost:8787` and `http://127.0.0.1:8787`. An override’s origin is added to the allowlist for that click.
+
+## Units
+
+- 1 inner tile = 1 metre (`METERS_PER_TILE`).
+- `ZONE_SCALE` is 8 inner tiles per world tile.
+- Grid index `i = x + y * w`, x right, y down. Absolute inner coords match `buildings.ts` (door sill is south-centre).
+- Controller mapping: `three.x = (innerX - innerOrigin.x) * metersPerTile`, `three.z = (innerY - innerOrigin.y) * metersPerTile`.
+
+`MapNode.x1` / `y1` are exclusive. `area.worldBounds` is inclusive, so a single tile at world `(5, 9)` is `{ x0: 5, y0: 9, x1: 5, y1: 9 }`.
+
+## What is baked
+
+Chunks are regenerated inside the exporter, not copied from the session. Tiles are sorted by `(y, x)` and `generateChunk` runs twice (`AREA_CHUNK_PASSES`) so each edge is stitched against neighbours from that same order. Visit order cannot change the hash.
+
+`meta.hash` is `sha1:` plus the SHA-1 of the canonical JSON (keys sorted, UTF-8). `meta.exportedAt`, `meta.timeOfDayHours`, and `meta.hash` are left out, so the clock does not change the hash. The same seed and place hash the same twice.
+
+### Ground classes
+
+`layers.ground` is one byte per inner tile. `legend` is the index order.
+
+| Value | Class | Source |
+| --- | --- | --- |
+| 0 | grass | everything else, including snow |
+| 1 | dirt | chunk path that is not a world-grid road |
+| 2 | road | chunk path on a world tile flagged in `WorldData.paths` |
+| 3 | lot | chunk cobble `1` (building front) |
+| 4 | plaza | chunk cobble `2` |
+| 5 | water | biome Water, after paths and cobble |
+| 6 | sand | biome Sand or Desert |
+| 7 | rock | biome Mountain |
+
+`layers.biome` is the chunk biome id. `grid.mask` is 1 on inner cells that belong to the place and 0 in the bounding box outside the blob. Grids are base64 (`enc: "b64u8"`).
+
+### Height
+
+`WorldData.heights` is the normalized elevation sample `generateWorld` already computes (0 deep, 1 peak). It is not the continental ×3200 m readout.
+
+`layers.height.raw` is those samples averaged onto world-tile corners, plus a one-tile apron. Sample `[0]` is `originCorner`. Local metres:
+
+```
+y = (raw - min) / (max - min) * reliefMeters
+```
+
+bilinear between corners. `RELIEF_METERS` is **6**. `reliefMeters` is `6 × reliefBiomeMultiplier`. The multiplier is the highest entry below among the place’s own biome and the biomes of its world tiles:
+
+| Biome | Multiplier |
+| --- | --- |
+| Water, Sand, Plains, Meadow, Marsh | 1 |
+| Forest, DarkForest, Desert, Jungle | 1.15 |
+| Heath, Taiga | 1.35 |
+| Ashlands | 1.5 |
+| Hills | 1.75 |
+| Snow | 2.25 |
+| Mountain | 2.5 |
+
+On seed 7741, Dunharrow is Hills and exports `reliefMeters: 10.5`. Ironmarch’s site landed on Plains, so that town stays at 6 m. The check script asserts the Hills case.
+
+### Water level
+
+There is no stored water line. `layers.water` is derived:
+
+- `present` is true when any masked cell’s ground class is water.
+- `raw` is the lowest `heights` sample on a Water world tile in the area plus the one-tile apron.
+- `level` is that raw value remapped with the formula above (metres above the area’s lowest corner).
+- If no Water world tile is in range, `raw` falls back to `units.seaLevel` (`0.36`, the contract value; world-gen’s hard water cutoff is height &lt; 0.33 before style overrides) and the note says so.
+
+Water cells should stay flat at `level`.
+
+### Spawn and edges
+
+Spawn is not the live walker, so two peers with the same seed export the same point. It is the road cell nearest the mask centroid, then dirt, plaza, lot, grass, sand, rock, and water. `facing` points from that cell toward the centroid (or `N` when it is already central). Y down, so increasing y is south.
+
+Edge entries are road or dirt cells on the mask boundary, one per side (`edge-n`, `edge-e`, `edge-s`, `edge-w`), each with `toWorldTile`. `roads.polylines` is empty in 0.1.0. `roads.worldTiles` is the coarse flag list. `roads.floors` is the place’s street and plaza floor ids.
+
+Buildings copy `PlacedSprite` rows that `isBuildingSprite` accepts. `x, y` is the door-sill anchor. The lot is `x ± footW/2`, `y - footD .. y`. `rotation` is 0 and `door` is `S`. Props are the other sprites; `class` is `tree`, `rock`, `plant`, or `prop` from the sprite name.
+
+## Fixtures
+
+Seed **7741**, default continent settings, `exportedAt` fixed at `2026-10-26T00:00:00.000Z` (not part of the hash). Regenerate with:
+
+```
+AREA_EXPORT_WRITE=1 npx tsx scripts/area-export-check.ts
+```
+
+| File | Place | What it is |
+| --- | --- | --- |
+| `fixtures/area-veldcross.json` | Ironmarch | Town, streets and buildings. `sha1:2974973a12a56ab7dcc24ba252b72a9f49de84ed` |
+| `fixtures/area-hollowmere.json` | Shadowglen | Grove, trees, no buildings. `sha1:5dc29a9f7ed216149b3e12fd16b225613e22146d` |
+| `fixtures/area-jadewild.json` | Jadewild | Forest grove with water cells. `sha1:ac7ad5f00675ec260e36eb1dad6d2f37bb86c365` |
+
+Jadewild header (grids omitted):
+
+```json
+{
+  "type": "trailbound.area",
+  "version": "0.1.0",
+  "source": { "app": "world-map", "build": "2026-10-26", "seed": 7741, "worldScale": 8, "mapStyle": "continent", "zoneScale": 8 },
+  "area": { "id": "jadewild", "name": "Jadewild", "kind": "grove", "origin": "authored", "biome": "Forest", "worldBounds": { "x0": 351, "y0": 615, "x1": 358, "y1": 626 }, "innerOrigin": { "x": 2808, "y": 4920 } },
+  "units": { "zoneScale": 8, "metersPerTile": 1, "upAxis": "y", "gridAxes": "x-right,y-down", "seaLevel": 0.36 },
+  "layers": {
+    "height": { "sampling": "world-tile-corners", "reliefBaseMeters": 6, "reliefBiomeMultiplier": 1.15, "reliefBiome": "Forest", "reliefMeters": 6.9 },
+    "water": { "level": 2.241, "raw": 0.37502, "fromBiome": true, "present": true }
+  },
+  "entries": [{ "id": "player", "kind": "spawn", "x": 2843.5, "y": 4977.5, "facing": "E" }],
+  "meta": { "hash": "sha1:ac7ad5f00675ec260e36eb1dad6d2f37bb86c365" }
+}
+```

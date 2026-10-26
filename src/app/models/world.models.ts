@@ -592,6 +592,8 @@ export interface WorldData {
   height: number;
   settings: WorldSettings;
   biomes: Uint8Array;
+  /** Normalized elevation, one sample per world tile (0 deep, 1 peak). */
+  heights: Float32Array;
   paths: Uint8Array;
   nodes: MapNode[];
   pois: PointOfInterest[];
