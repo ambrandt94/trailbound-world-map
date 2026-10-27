@@ -27,7 +27,7 @@ import { LOCAL_PLAYER_ID } from './hero';
 import { AssetLibrary, drawCharFrame } from './assets';
 import { armyVisibleFollowers, boatChar, kindColor } from './entities';
 import { buildingDrawOrigin, buildingDrawScale, buildingRoofFrac, isBuildingSprite } from './buildings';
-import { drawTileBuilding } from './building-draw';
+import { paintChunkRoofs } from './building-draw';
 import { placedMask, structureBounds, templateById, templatesForType } from './building-templates';
 import { CELL_DOOR, CELL_FLOOR, CELL_VOID, CELL_WALL, InteriorPlan, interiorWallFill, isShellWall } from './interior';
 import { hash2 } from './noise';
@@ -339,6 +339,8 @@ export class WorldRenderer {
   worldBake: HTMLCanvasElement | null = null;
   zoneBake: HTMLCanvasElement | null = null;
   cloudBake: HTMLCanvasElement | null = null;
+  /** When false, chunk bakes omit tile roofs so Town Tale sprites can stand in. */
+  bakeRoofs = true;
   private readonly chunkBakes = new Map<string, HTMLCanvasElement>();
   private isoLayer: HTMLCanvasElement | null = null;
   private fogLayer: HTMLCanvasElement | null = null;
@@ -649,6 +651,7 @@ export class WorldRenderer {
       }
     }
 
+    if (this.bakeRoofs) paintChunkRoofs(ctx, chunk, neighbors);
     this.chunkBakes.set(chunkKey(chunk.wx, chunk.wy), canvas);
   }
 
@@ -966,6 +969,16 @@ export class WorldRenderer {
     const wall = interiorWallFill(plan.sprite);
     ctx.save();
     ctx.imageSmoothingEnabled = false;
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = '#000';
+    for (let r = 0; r < plan.rows; r++) {
+      for (let c = 0; c < plan.cols; c++) {
+        const cellKind = plan.cells[c + r * plan.cols]!;
+        if (cellKind !== CELL_FLOOR && cellKind !== CELL_DOOR) continue;
+        ctx.fillRect((plan.x0 + c / ZONE_SCALE) * TILE, (plan.y0 + r / ZONE_SCALE) * TILE, cell, cell);
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
     for (let r = 0; r < plan.rows; r++) {
       for (let c = 0; c < plan.cols; c++) {
         const cellKind = plan.cells[c + r * plan.cols]!;
@@ -1127,7 +1140,6 @@ export class WorldRenderer {
       y: number;
       footW?: number;
       roofOnly?: boolean;
-      tile?: { left: number; top: number; id: string; rotation: 0 | 90 | 180 | 270 };
     }> = [];
     for (let wy = y0; wy <= y1; wy++) {
       for (let wx = x0; wx <= x1; wx++) {
@@ -1139,27 +1151,8 @@ export class WorldRenderer {
           const y = wy + spr.y / chunk.size;
           const building = isBuildingSprite(spr.sprite);
           const roofOnly = !!(hide && building && Math.abs(x - hide.ax) < 0.04 && Math.abs(y - hide.ay) < 0.04);
-          if (building && !spriteBuildings) {
-            const tmpl = (spr.templateId && templateById(spr.templateId)) || templatesForType(spr.sprite)[0];
-            if (tmpl) {
-              const plotW = spr.footW ?? tmpl.w;
-              const plotD = spr.footD ?? tmpl.d;
-              const rotation = spr.rotation ?? 0;
-              drawn.push({
-                sprite: spr.sprite,
-                x,
-                y,
-                footW: spr.footW,
-                roofOnly,
-                tile: {
-                  left: (x - plotW / 2 / ZONE_SCALE) * TILE,
-                  top: (y - plotD / ZONE_SCALE) * TILE,
-                  id: tmpl.id,
-                  rotation,
-                },
-              });
-              continue;
-            }
+          if (building && !spriteBuildings && ((spr.templateId && templateById(spr.templateId)) || templatesForType(spr.sprite)[0])) {
+            continue;
           }
           if (building) {
             const pose = spriteBuildingPose(spr, x, y);
@@ -1174,12 +1167,6 @@ export class WorldRenderer {
     ctx.save();
     ctx.globalAlpha = detailT;
     for (const spr of drawn) {
-      if (spr.tile) {
-        const tmpl = templateById(spr.tile.id);
-        if (!tmpl) continue;
-        drawTileBuilding(ctx, spr.tile.left, spr.tile.top, tmpl, spr.tile.rotation);
-        continue;
-      }
       const img = this.assets.sprite(spr.sprite);
       if (!img) continue;
       ctx.save();

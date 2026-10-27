@@ -1154,6 +1154,11 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
 
   private maybeGenerate(): void {
     if (!this.renderer) return;
+    const roofs = !this.prefs.spriteBuildings();
+    if (this.renderer.bakeRoofs !== roofs) {
+      this.renderer.bakeRoofs = roofs;
+      this.renderer.clearChunks();
+    }
     const world = this.world.world();
     if (!world) return;
     const atPlayer = this.prefs.adventureMode() || this.camera.followPlayer;
