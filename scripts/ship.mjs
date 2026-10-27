@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 /**
- * Commit, push, and deploy GitHub Pages in one step.
+ * Commit, push, and deploy GitHub Pages and Cloudflare Pages in one step.
  *
  *   npm run ship -- "Commit message here."
  *
- * Pushing `main` triggers `.github/workflows/deploy-pages.yml`.
+ * Pushing `main` triggers `.github/workflows/deploy-pages.yml`
+ * (GitHub Pages and Cloudflare Pages).
  * Other branches only push. Redeploy current `main` with no local
  * changes: the script dispatches that workflow.
  */
 import { spawnSync } from 'node:child_process';
 
 const PAGES = 'https://ambrandt94.github.io/trailbound-world-map/';
+const CLOUDFLARE = 'https://map.4thtower.com';
+const CLOUDFLARE_PAGES = 'https://trailbound-world-map.pages.dev';
 const WORKFLOW = 'deploy-pages.yml';
 
 function run(cmd, args, opts = {}) {
@@ -101,7 +104,7 @@ if (needsPush) {
   console.log(`Already up to date with origin/${branch}.`);
   if (branch === 'main') {
     if (!hasGh()) {
-      console.error('Install GitHub CLI (gh) to dispatch a Pages deploy without a new commit.');
+      console.error('Install GitHub CLI (gh) to dispatch a deploy without a new commit.');
       process.exit(1);
     }
     console.log(`Dispatching ${WORKFLOW}…`);
@@ -110,7 +113,9 @@ if (needsPush) {
 }
 
 if (branch === 'main') {
-  console.log(`Pages: ${PAGES}`);
+  console.log(`GitHub Pages: ${PAGES}`);
+  console.log(`Cloudflare Pages: ${CLOUDFLARE}`);
+  console.log(`Cloudflare Pages: ${CLOUDFLARE_PAGES}`);
   if (hasGh()) {
     const id = waitForNewRun(beforeRun);
     if (id) {
@@ -122,8 +127,8 @@ if (branch === 'main') {
       console.log('No workflow run found yet. Check the Actions tab.');
     }
   } else {
-    console.log('Push started the Pages workflow. Install gh to wait on it here.');
+    console.log('Push started the deploy workflow. Install gh to wait on it here.');
   }
 } else {
-  console.log(`Pushed ${branch}. Merge to main to deploy Pages.`);
+  console.log(`Pushed ${branch}. Merge to main to deploy GitHub Pages and Cloudflare Pages.`);
 }
