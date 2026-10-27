@@ -48,13 +48,13 @@ export const METERS_PER_TILE = 1;
 export const SEA_LEVEL = 0.36;
 /**
  * Local relief span for an area before the per-biome multiplier.
- * The continental `elevationMeters` scale (×3200) is not used.
+ * The continental elevation readout (ELEVATION_SPAN_M, ×3200) is not used.
  */
-export const RELIEF_METERS = 6;
+export const RELIEF_METERS = 15;
 /** How many fixed-order chunk passes to run so edges see their neighbours. */
 export const AREA_CHUNK_PASSES = 2;
 
-/** Hills and peaks can rise above the 6 m base. 1 keeps a plains town near 6 m. */
+/** Hills and peaks rise above the 15 m base. 1 keeps a plains town near 15 m. */
 export const RELIEF_BIOME_MULT: Record<Biome, number> = {
   [Biome.Water]: 1,
   [Biome.Sand]: 1,
@@ -62,10 +62,10 @@ export const RELIEF_BIOME_MULT: Record<Biome, number> = {
   [Biome.Meadow]: 1,
   [Biome.Forest]: 1.15,
   [Biome.DarkForest]: 1.15,
-  [Biome.Hills]: 1.75,
+  [Biome.Hills]: 2,
   [Biome.Heath]: 1.35,
   [Biome.Marsh]: 1,
-  [Biome.Mountain]: 2.5,
+  [Biome.Mountain]: 3,
   [Biome.Snow]: 2.25,
   [Biome.Taiga]: 1.35,
   [Biome.Desert]: 1.15,
@@ -297,7 +297,7 @@ export interface AreaExportOptions {
 const NOTES = [
   'Street chunks are regenerated in (y, x) order for two passes. Edges do not depend on which neighbour the session generated first.',
   'Spawn is the road or dirt cell nearest the place centroid, otherwise the nearest walkable cell. The live walker is not baked in, so the same seed and place hash the same.',
-  'reliefMeters is 6 times the highest per-biome multiplier among the place biome and its world tiles. Hills and mountains are taller than the 6 m base. This is not the continental elevationMeters scale.',
+  `reliefMeters is ${RELIEF_METERS} times the highest per-biome multiplier among the place biome and its world tiles. Hills use ${RELIEF_BIOME_MULT[Biome.Hills]} and mountains use ${RELIEF_BIOME_MULT[Biome.Mountain]}, so they rise above the ${RELIEF_METERS} m base. This is not the continental elevationMeters scale.`,
   'Water level is derived. See layers.water.note. world-map does not store a water line or depth.',
   'Road polylines are not traced in 0.1.0. Ground classes road and dirt are the road mask. roads.worldTiles are the coarse world-grid flags.',
   'Neighbours are metadata only. The grids cover this isolated place, not places that merely touch it.',

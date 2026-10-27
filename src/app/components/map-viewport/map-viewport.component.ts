@@ -61,6 +61,12 @@ import {
   zoneRadiusFor,
 } from '../../models/world.models';
 import { buildAreaExport } from '../../engine/area-export';
+import {
+  CONTOUR_INTERVAL_M,
+  ELEVATION_LEGEND_M,
+  elevationRampCss,
+  formatMeters,
+} from '../../engine/height-view';
 import { downloadAreaExport, openAreaInController, type AreaBridgeSession } from '../../engine/area-bridge';
 import { AssetLibrary } from '../../engine/assets';
 import { nearestEntity } from '../../engine/entities';
@@ -156,7 +162,32 @@ const ZOOM_CATCH = 0.18;
           >
             <mat-icon>{{ prefs.showWorldMarkers() ? 'groups' : 'visibility_off' }}</mat-icon>
           </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="dock-btn"
+            [class.on]="prefs.showHeight()"
+            (click)="prefs.setShowHeight(!prefs.showHeight())"
+            matTooltip="Elevation"
+          >
+            <mat-icon>terrain</mat-icon>
+          </button>
         </div>
+        @if (prefs.showHeight()) {
+          <div class="height-legend" aria-label="Elevation in metres">
+            <div class="ramp" [style.background]="elevationRamp"></div>
+            <div class="legend-copy">
+              <div class="ticks">
+                @for (m of elevationTicks; track m) {
+                  <span class="tb-mono">{{ formatMeters(m) }}</span>
+                }
+              </div>
+              @if (prefs.showContours()) {
+                <div class="interval">{{ contourLabel }} contours</div>
+              }
+            </div>
+          </div>
+        }
         @if (isolatedPlaceId()) {
           <div class="play3d">
             <div class="play3d-row">
@@ -283,6 +314,48 @@ const ZOOM_CATCH = 0.18;
       font-size: 1.15rem;
       width: 1.15rem;
       height: 1.15rem;
+    }
+    .height-legend {
+      position: absolute;
+      z-index: 3;
+      left: 0.85rem;
+      top: 46%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: flex-start;
+      gap: 0.35rem;
+      padding: 0.45rem 0.55rem 0.45rem 0.45rem;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--tb-panel) 88%, transparent);
+      backdrop-filter: blur(10px);
+      border: 1px solid color-mix(in srgb, var(--tb-ink) 10%, transparent);
+      box-shadow: 0 8px 22px color-mix(in srgb, black 22%, transparent);
+      pointer-events: none;
+      color: var(--tb-ink);
+    }
+    .height-legend .ramp {
+      width: 0.72rem;
+      height: 7.5rem;
+      border-radius: 4px;
+      border: 1px solid color-mix(in srgb, var(--tb-ink) 20%, transparent);
+    }
+    .legend-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 0.28rem;
+    }
+    .ticks {
+      height: 7.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      font-size: 0.68rem;
+    }
+    .interval {
+      font-size: 0.62rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--tb-muted);
     }
     .play3d {
       position: absolute;
@@ -514,6 +587,10 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     };
   });
   readonly prefs = inject(PreferencesService);
+  readonly elevationRamp = elevationRampCss();
+  readonly elevationTicks = ELEVATION_LEGEND_M;
+  readonly formatMeters = formatMeters;
+  readonly contourLabel = formatMeters(CONTOUR_INTERVAL_M);
   readonly room = inject(RoomService);
   private readonly ngZone = inject(NgZone);
   private readonly assets = new AssetLibrary();
@@ -1662,6 +1739,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       cloudAmt: this.prefs.fogCover(),
       nametagScale: this.prefs.nametagScale(),
       spriteBuildings: this.prefs.spriteBuildings(),
+      showHeight: this.prefs.showHeight(),
+      showContours: this.prefs.showContours(),
       remotePlayers,
       localPeerId: this.room.connected() ? selfId : null,
       speechBubbles: [

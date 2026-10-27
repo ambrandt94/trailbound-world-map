@@ -32,6 +32,7 @@ import { placedMask, structureBounds, templateById, templatesForType } from './b
 import { CELL_DOOR, CELL_FLOOR, CELL_VOID, CELL_WALL, InteriorPlan, interiorWallFill, isShellWall } from './interior';
 import { hash2 } from './noise';
 import { biomeSeason, blobLocal, decoFor, FLOORS, GROUPS, overlayGroup, tileSrc } from './tileset';
+import { bakeElevationOverlay, buildContours, contourWindow, type ContourPaths } from './height-view';
 
 const PIXEL_FONT = 'Tiny5, "Press Start 2P", ui-monospace, monospace';
 
@@ -346,6 +347,10 @@ export class WorldRenderer {
   private fogLayer: HTMLCanvasElement | null = null;
   private blurLayer: HTMLCanvasElement | null = null;
   private tagScreenPx = NAMETAG_BASE_PX * 2.5;
+  private heightWorld: WorldData | null = null;
+  private heightBake: HTMLCanvasElement | null = null;
+  private contourKey = '';
+  private contourPaths: ContourPaths | null = null;
 
   constructor(private readonly assets: AssetLibrary) {}
 
@@ -689,6 +694,10 @@ export class WorldRenderer {
       cloudAmt?: number;
       /** Multiplier on the original 10px nametag (2.5 = default / slider middle). */
       nametagScale?: number;
+      /** Baked elevation tint. Off leaves the frame path unchanged. */
+      showHeight?: boolean;
+      /** Isolines drawn with the height tint. */
+      showContours?: boolean;
       /** Other players in an online room. */
       remotePlayers?: PlayerState[];
       /** peerId of the local walker for speech-bubble anchoring. */
@@ -728,6 +737,11 @@ export class WorldRenderer {
         ctx.drawImage(this.worldBake, 0, 0, world.width * TILE, world.height * TILE);
         ctx.globalAlpha = 1;
       }
+      if (opts.showHeight) {
+        ctx.globalAlpha = 0.72;
+        this.drawRelief(ctx, world, camera, viewW, viewH, !!opts.showContours);
+        ctx.globalAlpha = 1;
+      }
       this.drawOutlines(
         ctx,
         contextNodes,
@@ -762,6 +776,7 @@ export class WorldRenderer {
       lctx.scale(camera.scale, camera.scale);
       lctx.translate(-camera.x * TILE, -camera.y * TILE);
       this.drawVisibleChunks(lctx, camera, viewW, viewH, world, 1, isoKeys);
+      if (opts.showHeight) this.drawRelief(lctx, world, camera, viewW, viewH, !!opts.showContours);
       this.drawChunkSprites(lctx, camera, viewW, viewH, world, 1, opts.chunks, isoKeys, opts.interior, !!opts.spriteBuildings);
       if (opts.interior) this.drawInterior(lctx, opts.interior);
       this.drawOutlines(
@@ -845,8 +860,9 @@ export class WorldRenderer {
       ctx.globalAlpha = 1;
     }
 
+    if (detailT > 0.02) this.drawVisibleChunks(ctx, camera, viewW, viewH, world, detailT);
+    if (opts.showHeight) this.drawRelief(ctx, world, camera, viewW, viewH, !!opts.showContours);
     if (detailT > 0.02) {
-      this.drawVisibleChunks(ctx, camera, viewW, viewH, world, detailT);
       this.drawChunkSprites(ctx, camera, viewW, viewH, world, detailT, opts.chunks, undefined, opts.interior, !!opts.spriteBuildings);
       if (opts.interior) this.drawInterior(ctx, opts.interior);
     }
@@ -906,6 +922,84 @@ export class WorldRenderer {
     }
     ctx.restore();
     if (opts.interior) this.applyInteriorBlur(ctx, opts.interior, camera, viewW, viewH);
+  }
+
+  /** Visible-rect blit of the baked ramp, plus optional cached contour strokes. */
+  private drawRelief(
+    ctx: CanvasRenderingContext2D,
+    world: WorldData,
+    camera: CameraState,
+    viewW: number,
+    viewH: number,
+    contours: boolean,
+  ): void {
+    const bake = this.ensureHeight(world);
+    if (!bake) return;
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = true;
+    const halfW = viewW / (2 * Math.max(camera.scale, 1e-4)) / TILE + 1;
+    const halfH = viewH / (2 * Math.max(camera.scale, 1e-4)) / TILE + 1;
+    const x0 = camera.x - halfW;
+    const x1 = camera.x + halfW;
+    const y0 = Math.max(0, camera.y - halfH);
+    const y1 = Math.min(world.height, camera.y + halfH);
+    const spanY = y1 - y0;
+    if (spanY > 0) {
+      const w = world.width;
+      let x = x0;
+      let guard = 0;
+      while (x < x1 - 1e-4 && guard++ < 8) {
+        let sx = x % w;
+        if (sx < 0) sx += w;
+        const span = Math.min(x1 - x, w - sx);
+        if (!(span > 1e-4)) break;
+        ctx.drawImage(bake, sx, y0, span, spanY, x * TILE, y0 * TILE, span * TILE, spanY * TILE);
+        x += span;
+      }
+    }
+    ctx.imageSmoothingEnabled = prevSmooth;
+    if (contours) this.strokeContours(ctx, world, camera, viewW, viewH);
+  }
+
+  private ensureHeight(world: WorldData): HTMLCanvasElement | null {
+    if (this.heightWorld !== world || !this.heightBake) {
+      this.heightBake = bakeElevationOverlay(world);
+      this.heightWorld = world;
+      this.contourKey = '';
+      this.contourPaths = null;
+    }
+    return this.heightBake;
+  }
+
+  private strokeContours(
+    ctx: CanvasRenderingContext2D,
+    world: WorldData,
+    camera: CameraState,
+    viewW: number,
+    viewH: number,
+  ): void {
+    const win = contourWindow(world.height, camera.x, camera.y, viewW, viewH, camera.scale);
+    const key = `${world.seed}:${win.x0}:${win.y0}:${win.x1}:${win.y1}:${win.step}`;
+    if (key !== this.contourKey || !this.contourPaths) {
+      this.contourPaths = buildContours(world, win.x0, win.y0, win.x1, win.y1, win.step);
+      this.contourKey = key;
+    }
+    const { minor, major } = this.contourPaths;
+    const px = 1 / Math.max(camera.scale, 1e-4);
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255, 248, 236, 0.42)';
+    ctx.lineWidth = 2.4 * px;
+    ctx.stroke(minor);
+    ctx.lineWidth = 3.3 * px;
+    ctx.stroke(major);
+    ctx.strokeStyle = 'rgba(32, 24, 16, 0.72)';
+    ctx.lineWidth = 1.05 * px;
+    ctx.stroke(minor);
+    ctx.lineWidth = 1.65 * px;
+    ctx.stroke(major);
+    ctx.restore();
   }
 
   private ensureLayer(current: HTMLCanvasElement | null, viewW: number, viewH: number): HTMLCanvasElement {

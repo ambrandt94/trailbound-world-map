@@ -645,6 +645,8 @@ export interface LocationInfo {
   scale: number;
   uncharted: boolean;
   interiorLabel: string | null;
+  /** Continental metres (normalized height × 3200) at the walker. */
+  elevationM: number;
 }
 
 export const BIOME_LABELS: Record<Biome, string> = {

@@ -1,4 +1,5 @@
 import { Component, computed, inject } from '@angular/core';
+import { formatMeters } from '../../engine/height-view';
 import { ENTITY_LABELS, POI_LABELS, minScaleFor, zoomProgress } from '../../models/world.models';
 import { WorldService } from '../../services/world.service';
 
@@ -13,6 +14,7 @@ import { WorldService } from '../../services/world.service';
       </div>
       <div class="you">{{ world.player().name }}</div>
       <div class="clock">{{ world.simLine() }}</div>
+      <div class="elev"><span>Height</span> <span class="tb-mono">{{ elevationText() }}</span></div>
       <dl class="facts">
         <div>
           <dt>Here</dt>
@@ -92,7 +94,20 @@ import { WorldService } from '../../services/world.service';
       font-family: ui-monospace, monospace;
       font-size: 0.76rem;
       color: var(--tb-accent-strong);
+      margin-bottom: 0.35rem;
+    }
+    .elev {
+      font-size: 0.78rem;
+      color: var(--tb-ink);
       margin-bottom: 0.65rem;
+    }
+    .elev span:first-child {
+      font-size: 0.66rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--tb-muted);
+      margin-right: 0.35rem;
     }
     .facts {
       display: grid;
@@ -181,6 +196,9 @@ import { WorldService } from '../../services/world.service';
         display: none;
       }
       .clock {
+        margin-bottom: 0.2rem;
+      }
+      .elev {
         margin-bottom: 0.4rem;
       }
     }
@@ -203,6 +221,8 @@ export class LocationPanelComponent {
     const loc = this.world.location();
     return `${loc.x.toFixed(1)}, ${loc.y.toFixed(1)}`;
   });
+
+  readonly elevationText = computed(() => formatMeters(this.world.location().elevationM));
 
   readonly nearby = computed(() => {
     const hud = this.world.simHud();

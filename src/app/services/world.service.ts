@@ -66,6 +66,7 @@ import { generateInterior, InteriorPlan } from '../engine/interior';
 import { StreetBuilding } from '../engine/buildings';
 import { createChatterState, NPC_BUBBLE_MS, stepNpcChatter } from '../engine/chatter';
 import { defaultPlayerStart, generateWorld } from '../engine/world-gen';
+import { elevationMetersAt } from '../engine/height-view';
 import { migrateWorldMapPrefs, PreferencesService } from './preferences.service';
 import { ChatBubble } from '../models/room.models';
 
@@ -168,6 +169,7 @@ export class WorldService {
         scale,
         uncharted: true,
         interiorLabel: null,
+        elevationM: 0,
       };
     }
     const biome = biomeAt(world, player.x, player.y);
@@ -200,6 +202,7 @@ export class WorldService {
       scale,
       uncharted: !inside && !rawHere,
       interiorLabel: this.interior()?.label ?? null,
+      elevationM: elevationMetersAt(world, player.x, player.y),
     };
   });
 

@@ -26,7 +26,7 @@ World clock: pause, play (slow), fast forward, fastest, **sync** (others move wh
 
 ## Persist
 
-`localStorage`: seed, generated nodes per seed, visited authored places (fog of war), discovered POI ids per seed, outline/POI/world-marker toggles, zone overlay, cloud fog, sim mode, planet view, adventure flags, world setup, hero name/look, theme. Chunks are in-memory for the session. “Clear detail” forgets generated places and baked tiles; authored nodes stay (visited holes remain). A prefs version bump resets stale setup/adventure/planet keys once, then keeps persisting new choices.
+`localStorage`: seed, generated nodes per seed, visited authored places (fog of war), discovered POI ids per seed, outline/POI/world-marker toggles, height overlay and contour toggles (off by default), zone overlay, cloud fog, sim mode, planet view, adventure flags, world setup, hero name/look, theme. Chunks are in-memory for the session. “Clear detail” forgets generated places and baked tiles; authored nodes stay (visited holes remain). A prefs version bump resets stale setup/adventure/planet keys once, then keeps persisting new choices.
 
 ## Assets and layout
 

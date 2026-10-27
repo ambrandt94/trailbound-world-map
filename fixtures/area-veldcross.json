@@ -1305,10 +1305,10 @@
         0.63709,
         0.63831
       ],
-      "reliefBaseMeters": 6,
+      "reliefBaseMeters": 15,
       "reliefBiomeMultiplier": 1,
       "reliefBiome": "Plains",
-      "reliefMeters": 6,
+      "reliefMeters": 15,
       "note": "raw samples are WorldData.heights (normalized, one value per world tile) averaged onto world-tile corners, plus a 1-tile apron. Local height in metres is (raw - min) / (max - min) * reliefMeters, bilinear between corners. Sample [0] is originCorner. Water stays flat at layers.water.level."
     },
     "water": {
@@ -2413,11 +2413,11 @@
     "exportedAt": "2026-10-26T00:00:00.000Z",
     "timeOfDayHours": 8,
     "season": "summer",
-    "hash": "sha1:1a34411ae55827e1a426edf2ebeeb8cfeb9e19d9",
+    "hash": "sha1:06bc6667a87a957d81dcc79990700179eacc04d5",
     "notes": [
       "Street chunks are regenerated in (y, x) order for two passes. Edges do not depend on which neighbour the session generated first.",
       "Spawn is the road or dirt cell nearest the place centroid, otherwise the nearest walkable cell. The live walker is not baked in, so the same seed and place hash the same.",
-      "reliefMeters is 6 times the highest per-biome multiplier among the place biome and its world tiles. Hills and mountains are taller than the 6 m base. This is not the continental elevationMeters scale.",
+      "reliefMeters is 15 times the highest per-biome multiplier among the place biome and its world tiles. Hills use 2 and mountains use 3, so they rise above the 15 m base. This is not the continental elevationMeters scale.",
       "Water level is derived. See layers.water.note. world-map does not store a water line or depth.",
       "Road polylines are not traced in 0.1.0. Ground classes road and dirt are the road mask. roads.worldTiles are the coarse world-grid flags.",
       "Neighbours are metadata only. The grids cover this isolated place, not places that merely touch it.",
