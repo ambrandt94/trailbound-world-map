@@ -1,9 +1,11 @@
 /**
- * AreaExport v0.2 — deterministic place payload for the Trailbound controller.
+ * AreaExport v0.3 — deterministic place payload for the Trailbound controller.
  * Engine-only (no Angular). Types in this file are the schema source of truth.
  *
  * Street chunks are baked here in (y, x) order, twice, so shared edges do not
  * depend on which neighbour the live session happened to generate first.
+ * v0.3 adds a visual border ring and a 2 m height lattice sampled from the
+ * world-gen FBM. New fields are always written; 0.2 readers should ignore them.
  */
 import {
   Biome,
@@ -32,10 +34,31 @@ import {
   type RoofStyle,
 } from './building-templates';
 import { generateChunk, neighborMap } from './chunk-gen';
+import { hash2 } from './noise';
 import { SEASON, biomeSeason } from './tileset';
+import { worldHeightSampler } from './world-gen';
 
 /** Schema version. The controller rejects an unknown major version. */
-export const AREA_EXPORT_VERSION = '0.2.0';
+export const AREA_EXPORT_VERSION = '0.3.0';
+/**
+ * Visual continuation around the playable place, in world tiles.
+ * 4 × ZONE_SCALE = 32 inner tiles = 32 m on each side. Not walkable.
+ */
+export const BORDER_WORLD_TILES = 4;
+/** Height lattice spacing. One inner tile is 1 m, so this is 2 m. */
+export const HEIGHT_SUBDIV_METERS = 2;
+/** Optional controller micro-relief amplitude. Not baked into `raw`. */
+export const HEIGHT_DETAIL_METERS = 0.4;
+/**
+ * Minimum normalized window for the relief remap. A place whose continental
+ * delta is smaller than this is not stretched across the full reliefMeters.
+ */
+export const HEIGHT_SOFT_MIN_SPAN = 0.12;
+/** Percentile clip of the height lattice before the span is widened. */
+export const HEIGHT_PERCENTILE_LO = 0.02;
+export const HEIGHT_PERCENTILE_HI = 0.98;
+/** Extra fraction of the span added on each side of the remap window. */
+export const HEIGHT_RANGE_PAD = 0.05;
 /** Date stamped into `source.build` (not a git sha). */
 export const AREA_EXPORT_BUILD = '2026-10-27';
 /** Alex: 1 inner tile = 1 metre. */
@@ -139,13 +162,22 @@ export interface AreaExport {
     kind: MapNode['kind'];
     origin: MapNode['origin'];
     biome: string;
-    /** This export is the isolated place only. */
+    /** Playable place. The visual ring is grid data, not another node. */
     nodeIds: string[];
-    /** Inclusive world-tile bounds (MapNode x1/y1 are exclusive). */
+    /** Inclusive world-tile bounds of the playable place (MapNode x1/y1 are exclusive). */
     worldBounds: { x0: number; y0: number; x1: number; y1: number };
     worldTiles: [number, number][];
+    /**
+     * North-west inner tile of the expanded grid (place AABB plus the border ring).
+     * Equals `grid.originInner`. Absolute building and entry coordinates are unchanged.
+     */
     innerOrigin: { x: number; y: number };
     placeSeed: number;
+    /**
+     * Visual ring width in world tiles. Readers of older payloads should treat a
+     * missing value as 0. v0.3 writes 4 (32 m).
+     */
+    borderWorldTiles: number;
   };
   units: {
     zoneScale: number;
@@ -154,25 +186,53 @@ export interface AreaExport {
     gridAxes: 'x-right,y-down';
     seaLevel: number;
   };
-  grid: { w: number; h: number; mask: EncodedU8 };
+  grid: {
+    w: number;
+    h: number;
+    /** Absolute inner tile of cell (0, 0). Equals `area.innerOrigin`. */
+    originInner: { x: number; y: number };
+    /** 1 = playable place tile, 0 = otherwise. */
+    mask: EncodedU8;
+    /**
+     * Same encoding as `mask`. 1 = border-ring cell with world terrain, 0 = not ring
+     * (playable or void). Missing on 0.2 payloads (no ring).
+     */
+    borderMask: EncodedU8;
+  };
   layers: {
     biome: EncodedU8;
     ground: EncodedU8;
     height: {
-      sampling: 'world-tile-corners';
+      /** v0.2 was `world-tile-corners`. v0.3 writes `world-subdiv`. */
+      sampling: 'world-tile-corners' | 'world-subdiv';
+      /** Present for `world-subdiv`. Spacing of `raw` in metres (inner tiles). */
+      subdivMeters: number;
       w: number;
       h: number;
-      /** World-tile corner of sample [0]. Includes a 1-tile apron. */
+      /**
+       * Sample [0], absolute inner-tile metres. v0.2 stored a world-tile corner.
+       * v0.3 stores the same point as `originInner` (one subdiv sample outside the grid).
+       */
       originCorner: { x: number; y: number };
+      /** Lattice origin in absolute inner-tile metres. Equals `originCorner` in v0.3. */
+      originInner: { x: number; y: number };
+      /** Normalized samples, row-major `i + j * w`. */
       raw: number[];
+      /** v0.3 writes `normalized`. Metres come from minRaw/maxRaw and reliefMeters. */
+      heightUnit: 'normalized';
+      /** Remap window. Not necessarily the min/max of `raw`. */
+      minRaw: number;
+      maxRaw: number;
       reliefBaseMeters: number;
       reliefBiomeMultiplier: number;
       reliefBiome: string;
       reliefMeters: number;
+      /** Optional micro-relief amplitude in metres. Not included in `raw`. */
+      detailMeters: number;
       note: string;
     };
     water: {
-      /** Local metres above the area's lowest corner sample. */
+      /** Local metres above height.minRaw, using the same remap as the terrain. */
       level: number;
       /** Normalized height the surface was taken from. */
       raw: number;
@@ -300,7 +360,8 @@ const NOTES = [
   `reliefMeters is ${RELIEF_METERS} times the highest per-biome multiplier among the place biome and its world tiles. Hills use ${RELIEF_BIOME_MULT[Biome.Hills]} and mountains use ${RELIEF_BIOME_MULT[Biome.Mountain]}, so they rise above the ${RELIEF_METERS} m base. This is not the continental elevationMeters scale.`,
   'Water level is derived. See layers.water.note. world-map does not store a water line or depth.',
   'Road polylines are not traced in 0.1.0. Ground classes road and dirt are the road mask. roads.worldTiles are the coarse world-grid flags.',
-  'Neighbours are metadata only. The grids cover this isolated place, not places that merely touch it.',
+  'The border ring is visual only. Walkable cells are grid.mask (1 = place tile). grid.borderMask uses the same encoding (1 = ring cell with world terrain, 0 = void or playable) and is not walkable. The controller should use Catmull-Rom on layers.height.',
+  'The ring copies the world-tile biome and a simplified ground (grass, sand, rock, dirt, water, and road along world paths). It has no buildings and no props. Neighbour names stay metadata. Void cells are 0 in both masks; ignore their biome and ground bytes.',
   'Desert maps to ground class sand. Mountain maps to rock. Other dry land is grass unless a path, lot, plaza, or yard overrides it. Snow stays grass.',
   'v0.2 buildings add a human-scale structure inside a larger plot. footW/footD are the structure AABB. tiles is the world-aligned mask (yard, floor, wall, door, window, tower). rotation is 0, 90, 180, or 270. door and doorCell are the opening after that rotation.',
   'Season is the tileset row for the place biome (summer, autumn, winter, lush), not a simulated calendar.',
@@ -308,9 +369,12 @@ const NOTES = [
 ];
 
 const HEIGHT_NOTE =
-  'raw samples are WorldData.heights (normalized, one value per world tile) averaged onto world-tile corners, plus a 1-tile apron. ' +
-  'Local height in metres is (raw - min) / (max - min) * reliefMeters, bilinear between corners. ' +
-  'Sample [0] is originCorner. Water stays flat at layers.water.level.';
+  'sampling is world-subdiv. raw is normalized (heightUnit normalized): the world-gen FBM plus land-mask evaluated at fractional world-tile coordinates, not a bilinear of stored WorldData.heights. ' +
+  `Samples are every ${HEIGHT_SUBDIV_METERS} m. Sample [0] is originInner in absolute inner-tile metres, and originCorner equals originInner. ` +
+  'The lattice covers the expanded grid plus one subdiv sample of apron on each side. ' +
+  'Controller: Catmull-Rom across the lattice, then y = clamp((raw - minRaw) / (maxRaw - minRaw), 0, 1) * reliefMeters. ' +
+  `minRaw/maxRaw are the percentile clip from ${HEIGHT_PERCENTILE_LO} to ${HEIGHT_PERCENTILE_HI}, widened so the span is at least ${HEIGHT_SOFT_MIN_SPAN}, then padded by ${HEIGHT_RANGE_PAD * 100}% of that span on each side, so a small continental delta does not become a full reliefMeters cliff. ` +
+  `detailMeters (${HEIGHT_DETAIL_METERS}) is optional micro-relief amplitude and is not baked into raw. Water stays flat at layers.water.level.`;
 
 /**
  * Fold one inner tile into a surface class.
@@ -347,16 +411,21 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
   const y0 = bounds.y0;
   const x1 = bounds.x1;
   const y1 = bounds.y1;
-  const spanX = x1 - x0;
-  const spanY = y1 - y0;
-  const gw = spanX * ZONE_SCALE;
-  const gh = spanY * ZONE_SCALE;
-  const originX = x0 * ZONE_SCALE;
-  const originY = y0 * ZONE_SCALE;
+  const border = BORDER_WORLD_TILES;
+  const gx0 = x0 - border;
+  const gy0 = y0 - border;
+  const gx1 = x1 + border;
+  const gy1 = y1 + border;
+  const gw = (gx1 - gx0) * ZONE_SCALE;
+  const gh = (gy1 - gy0) * ZONE_SCALE;
+  const originX = gx0 * ZONE_SCALE;
+  const originY = gy0 * ZONE_SCALE;
+  const originInner = { x: originX, y: originY };
   const inPlace = new Set(tiles.map((t) => tileKey(t.x, t.y)));
   const chunks = bakeAreaChunks(world, tiles);
 
   const mask = new Uint8Array(gw * gh);
+  const borderMask = new Uint8Array(gw * gh);
   const biomeGrid = new Uint8Array(gw * gh);
   const ground = new Uint8Array(gw * gh);
   const buildings: AreaBuilding[] = [];
@@ -374,20 +443,48 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
       plazaFloor = chunk.plazaFloor;
       floorsTaken = true;
     }
-    const ox = (t.x - x0) * ZONE_SCALE;
-    const oy = (t.y - y0) * ZONE_SCALE;
+    const ox = (t.x - gx0) * ZONE_SCALE;
+    const oy = (t.y - gy0) * ZONE_SCALE;
     const worldRoad = inWorld(world, t.x, t.y) && world.paths[t.x + t.y * world.width] === 1;
     for (let ly = 0; ly < ZONE_SCALE; ly++) {
       for (let lx = 0; lx < ZONE_SCALE; lx++) {
         const li = lx + ly * ZONE_SCALE;
         const gi = ox + lx + (oy + ly) * gw;
         mask[gi] = 1;
+        borderMask[gi] = 0;
         const biome = (chunk.tiles[li] ?? Biome.Plains) as Biome;
         biomeGrid[gi] = biome;
         ground[gi] = groundClass(biome, chunk.paths[li] === 1, chunk.cobble[li] ?? 0, worldRoad);
       }
     }
     for (const spr of chunk.sprites) pushSprite(buildings, props, seenBuildings, t, spr);
+  }
+
+  for (let wy = gy0; wy < gy1; wy++) {
+    for (let wx = gx0; wx < gx1; wx++) {
+      if (inPlace.has(tileKey(wx, wy))) continue;
+      const ox = (wx - gx0) * ZONE_SCALE;
+      const oy = (wy - gy0) * ZONE_SCALE;
+      const inside = inWorld(world, wx, wy);
+      const biome = inside ? ((world.biomes[wx + wy * world.width] ?? Biome.Plains) as Biome) : Biome.Water;
+      for (let ly = 0; ly < ZONE_SCALE; ly++) {
+        for (let lx = 0; lx < ZONE_SCALE; lx++) {
+          const gi = ox + lx + (oy + ly) * gw;
+          if (!inside) {
+            mask[gi] = 0;
+            borderMask[gi] = 0;
+            biomeGrid[gi] = 0;
+            ground[gi] = 0;
+            continue;
+          }
+          mask[gi] = 0;
+          borderMask[gi] = 1;
+          biomeGrid[gi] = biome;
+          const road = ringRoadCell(world, wx, wy, lx, ly);
+          ground[gi] = groundClass(biome, road, 0, road);
+        }
+      }
+    }
   }
 
   buildings.sort((a, b) => a.y - b.y || a.x - b.x || a.type.localeCompare(b.type));
@@ -397,10 +494,9 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
   props.sort((a, b) => a.y - b.y || a.x - b.x || a.type.localeCompare(b.type));
 
   const relief = reliefFor(world, place, tiles);
-  const height = sampleCorners(world, x0, y0, x1, y1);
-  const rawMin = height.raw.reduce((m, v) => Math.min(m, v), Number.POSITIVE_INFINITY);
-  const rawMax = height.raw.reduce((m, v) => Math.max(m, v), Number.NEGATIVE_INFINITY);
-  const water = deriveWater(world, x0, y0, x1, y1, ground, mask, rawMin, rawMax, relief.meters);
+  const height = sampleSubdiv(world, originInner, gw, gh);
+  const range = softHeightRange(height.raw);
+  const water = deriveWater(world, gx0, gy0, gx1, gy1, ground, mask, range.minRaw, range.maxRaw, relief.meters);
   const entries = deriveEntries(originX, originY, gw, gh, mask, ground);
   const season = seasonFor(place.biome);
 
@@ -431,8 +527,9 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
       nodeIds: [place.id],
       worldBounds: { x0, y0, x1: x1 - 1, y1: y1 - 1 },
       worldTiles: tiles.map((t) => [t.x, t.y]),
-      innerOrigin: { x: originX, y: originY },
+      innerOrigin: originInner,
       placeSeed: place.seed,
+      borderWorldTiles: border,
     },
     units: {
       zoneScale: ZONE_SCALE,
@@ -441,20 +538,32 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
       gridAxes: 'x-right,y-down',
       seaLevel: SEA_LEVEL,
     },
-    grid: { w: gw, h: gh, mask: encodeLayer(mask) },
+    grid: {
+      w: gw,
+      h: gh,
+      originInner,
+      mask: encodeLayer(mask),
+      borderMask: encodeLayer(borderMask),
+    },
     layers: {
       biome: encodeLayer(biomeGrid, [...BIOME_NAMES]),
       ground: encodeLayer(ground, [...GROUND_CLASSES]),
       height: {
-        sampling: 'world-tile-corners',
+        sampling: 'world-subdiv',
+        subdivMeters: HEIGHT_SUBDIV_METERS,
         w: height.w,
         h: height.h,
-        originCorner: height.originCorner,
+        originCorner: height.originInner,
+        originInner: height.originInner,
         raw: height.raw,
+        heightUnit: 'normalized',
+        minRaw: range.minRaw,
+        maxRaw: range.maxRaw,
         reliefBaseMeters: RELIEF_METERS,
         reliefBiomeMultiplier: relief.mult,
         reliefBiome: biomeName(relief.biome),
         reliefMeters: relief.meters,
+        detailMeters: HEIGHT_DETAIL_METERS,
         note: HEIGHT_NOTE,
       },
       water,
@@ -652,40 +761,120 @@ function reliefFor(world: WorldData, place: MapNode, tiles: Vec2[]): { biome: Bi
   return { biome, mult, meters: round3(RELIEF_METERS * mult) };
 }
 
-function sampleCorners(
+/**
+ * Height lattice for the expanded grid. Sample [0] sits one `subdivMeters`
+ * step outside the grid on both axes (the apron). Spacing is inner-tile metres.
+ */
+function sampleSubdiv(
   world: WorldData,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-): { w: number; h: number; originCorner: { x: number; y: number }; raw: number[] } {
-  const originCorner = { x: x0 - 1, y: y0 - 1 };
-  const w = x1 - x0 + 3;
-  const h = y1 - y0 + 3;
+  gridOrigin: { x: number; y: number },
+  gw: number,
+  gh: number,
+): { w: number; h: number; originInner: { x: number; y: number }; raw: number[] } {
+  const step = HEIGHT_SUBDIV_METERS;
+  const originInner = { x: gridOrigin.x - step, y: gridOrigin.y - step };
+  const w = gw / step + 3;
+  const h = gh / step + 3;
+  if (!Number.isInteger(w) || !Number.isInteger(h)) {
+    throw new Error('height lattice is not aligned to subdivMeters');
+  }
+  const sample = worldHeightSampler(world);
   const raw: number[] = [];
   for (let j = 0; j < h; j++) {
-    for (let i = 0; i < w; i++) raw.push(round5(cornerHeight(world, originCorner.x + i, originCorner.y + j)));
+    const wy = (originInner.y + j * step) / ZONE_SCALE;
+    for (let i = 0; i < w; i++) {
+      const wx = (originInner.x + i * step) / ZONE_SCALE;
+      raw.push(round5(sample(wx, wy)));
+    }
   }
-  return { w, h, originCorner, raw };
+  return { w, h, originInner, raw };
 }
 
-function cornerHeight(world: WorldData, cx: number, cy: number): number {
-  const cells: Array<[number, number]> = [
-    [cx - 1, cy - 1],
-    [cx, cy - 1],
-    [cx - 1, cy],
-    [cx, cy],
-  ];
-  let sum = 0;
-  let n = 0;
-  for (const [x, y] of cells) {
-    if (!inWorld(world, x, y)) continue;
-    sum += world.heights[x + y * world.width] ?? 0;
-    n++;
-  }
-  return n ? sum / n : SEA_LEVEL;
+/** Percentile clip, then widen so a tiny local delta is not the full relief. */
+export function softHeightRange(raw: readonly number[]): { minRaw: number; maxRaw: number } {
+  if (!raw.length) return { minRaw: 0, maxRaw: round5(HEIGHT_SOFT_MIN_SPAN) };
+  const sorted = [...raw].sort((a, b) => a - b);
+  const lo = percentile(sorted, HEIGHT_PERCENTILE_LO);
+  const hi = percentile(sorted, HEIGHT_PERCENTILE_HI);
+  const mid = (lo + hi) / 2;
+  const span = Math.max(hi - lo, HEIGHT_SOFT_MIN_SPAN);
+  const pad = span * HEIGHT_RANGE_PAD;
+  let minRaw = round5(mid - span / 2 - pad);
+  let maxRaw = round5(mid + span / 2 + pad);
+  if (!(maxRaw > minRaw)) maxRaw = round5(minRaw + HEIGHT_SOFT_MIN_SPAN);
+  return { minRaw, maxRaw };
 }
 
+function percentile(sorted: readonly number[], p: number): number {
+  const last = sorted.length - 1;
+  const idx = last * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  const a = sorted[lo] ?? 0;
+  const b = sorted[hi] ?? a;
+  if (lo === hi) return a;
+  const t = idx - lo;
+  return a * (1 - t) + b * t;
+}
+
+/** Half-width of a ring road, close to the wilderness path radius in chunk-gen. */
+const RING_ROAD_RADIUS = 0.9;
+
+/**
+ * Cheap wilderness path: straight segments between the same hub and gates
+ * chunk-gen uses, so a ring road meets a place road at the shared edge.
+ * No lots, yards, or buildings.
+ */
+function ringRoadCell(world: WorldData, wx: number, wy: number, lx: number, ly: number): boolean {
+  if (!worldPathAt(world, wx, wy)) return false;
+  const size = ZONE_SCALE;
+  const seed = world.seed;
+  const hub = roadHub(wx, wy, size, seed);
+  const px = lx + 0.5;
+  const py = ly + 0.5;
+  const gates: Array<[number, number]> = [];
+  if (worldPathAt(world, wx, wy - 1)) gates.push([nsGateX(wx, wy, size, seed), 0]);
+  if (worldPathAt(world, wx, wy + 1)) gates.push([nsGateX(wx, wy + 1, size, seed), size]);
+  if (worldPathAt(world, wx - 1, wy)) gates.push([0, ewGateY(wx, wy, size, seed)]);
+  if (worldPathAt(world, wx + 1, wy)) gates.push([size, ewGateY(wx + 1, wy, size, seed)]);
+  if (!gates.length) return Math.hypot(px - hub.x, py - hub.y) <= 1.15;
+  for (const [gx, gy] of gates) {
+    if (distToSeg(px, py, hub.x, hub.y, gx, gy) <= RING_ROAD_RADIUS) return true;
+  }
+  return false;
+}
+
+function worldPathAt(world: WorldData, x: number, y: number): boolean {
+  return inWorld(world, x, y) && world.paths[x + y * world.width] === 1;
+}
+
+function roadHub(wx: number, wy: number, size: number, seed: number): { x: number; y: number } {
+  return {
+    x: size * 0.5 + (hash2(wx, wy, seed + 7) - 0.5) * 2.4,
+    y: size * 0.5 + (hash2(wx, wy, seed + 11) - 0.5) * 2.4,
+  };
+}
+
+function nsGateX(wx: number, southWy: number, size: number, seed: number): number {
+  return size * 0.5 + (hash2(wx, southWy, seed + 19) - 0.5) * size * 0.52;
+}
+
+function ewGateY(eastWx: number, wy: number, size: number, seed: number): number {
+  return size * 0.5 + (hash2(eastWx, wy, seed + 23) - 0.5) * size * 0.52;
+}
+
+function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 1e-8) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/** `x1` and `y1` are exclusive world-tile bounds of the exported grid. */
 function deriveWater(
   world: WorldData,
   x0: number,
@@ -706,8 +895,8 @@ function deriveWater(
     }
   }
   let waterRaw = Number.POSITIVE_INFINITY;
-  for (let y = y0 - 1; y <= y1; y++) {
-    for (let x = x0 - 1; x <= x1; x++) {
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
       if (!inWorld(world, x, y)) continue;
       if ((world.biomes[x + y * world.width] as Biome) !== Biome.Water) continue;
       waterRaw = Math.min(waterRaw, world.heights[x + y * world.width] ?? SEA_LEVEL);
@@ -718,9 +907,9 @@ function deriveWater(
   const level = toRelief(raw, rawMin, rawMax, reliefMeters);
   const note = present
     ? usedFallback
-      ? 'Water shows up on inner tiles (usually a coast edge) but no Water world tile sits in the area or its 1-tile apron. level is SEA_LEVEL (0.36) remapped into this area’s relief. world-map stores no water line.'
-      : 'Derived from the lowest WorldData.heights sample on a Water world tile in the area plus a 1-tile apron, then remapped with the same (raw - min) / (max - min) * reliefMeters curve. Those cells stay flat. world-map stores no water line or depth.'
-    : 'No water cells in this place. level is still SEA_LEVEL (0.36) remapped into the local relief so a controller has a water line. world-map stores no water line.';
+      ? 'Water shows up on playable inner tiles but no Water world tile sits in the exported grid (place plus border ring). level is SEA_LEVEL (0.36) remapped with height.minRaw, height.maxRaw, and reliefMeters. world-map stores no water line.'
+      : 'Derived from the lowest WorldData.heights sample on a Water world tile in the exported grid (place plus border ring), then remapped with (raw - minRaw) / (maxRaw - minRaw) * reliefMeters. Those cells stay flat. world-map stores no water line or depth.'
+    : 'No water cells in the playable mask. level is still SEA_LEVEL (0.36) remapped with height.minRaw and height.maxRaw so a controller has a water line. world-map stores no water line.';
   return { level, raw, fromBiome: true, present, note };
 }
 

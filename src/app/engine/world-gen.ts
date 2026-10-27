@@ -172,6 +172,59 @@ function styleMask(nx: number, ny: number, style: MapStyle, seed: number): numbe
   }
 }
 
+function heightBlend(style: MapStyle, sketch: Float32Array | null): { noiseW: number; maskW: number } {
+  const noiseW = sketch
+    ? 0.28
+    : style === 'continent' || style === 'isthmus'
+      ? 0.4
+      : style === 'archipelago' || style === 'shattered'
+        ? 0.58
+        : style === 'desert'
+          ? 0.36
+          : style === 'fjords'
+            ? 0.48
+            : 0.44;
+  return { noiseW, maskW: 1 - noiseW };
+}
+
+/** Normalized elevation and land mask at a fractional world-tile coordinate. */
+function elevationAt(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  freq: number,
+  seed: number,
+  style: MapStyle,
+  sketch: Float32Array | null,
+  noiseW: number,
+  maskW: number,
+): { height: number; mask: number } {
+  const nx = x / w;
+  const ny = y / h;
+  const mask = landMask(nx, ny, style, seed, sketch);
+  const height = fbm(nx * freq, ny * freq, seed, 5) * noiseW + mask * maskW;
+  return { height, mask };
+}
+
+/**
+ * Sampler for the same FBM + land-mask formula stored in `WorldData.heights`.
+ * `x` and `y` are world-tile coordinates and may be fractional. Integer coordinates
+ * match `heights[x + y * width]`. This does not bilinear the stored grid.
+ */
+export function worldHeightSampler(
+  world: Pick<WorldData, 'seed' | 'width' | 'height' | 'settings'>,
+): (x: number, y: number) => number {
+  const w = world.width;
+  const h = world.height;
+  const seed = world.seed;
+  const style = world.settings.mapStyle ?? 'continent';
+  const sketch = style === 'custom' ? prepareLandSketch(world.settings.landSketch) : null;
+  const freq = styleFreq(style, w / WORLD_BASE);
+  const { noiseW, maskW } = heightBlend(style, sketch);
+  return (x: number, y: number) => elevationAt(x, y, w, h, freq, seed, style, sketch, noiseW, maskW).height;
+}
+
 function styleFreq(style: MapStyle, geo: number): number {
   const g = Math.sqrt(geo);
   switch (style) {
@@ -300,26 +353,14 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
   const style = settings.mapStyle ?? 'continent';
   const sketch = style === 'custom' ? prepareLandSketch(settings.landSketch) : null;
   const freq = styleFreq(style, geo);
-  const noiseW = sketch
-    ? 0.28
-    : style === 'continent' || style === 'isthmus'
-      ? 0.4
-      : style === 'archipelago' || style === 'shattered'
-        ? 0.58
-        : style === 'desert'
-          ? 0.36
-          : style === 'fjords'
-            ? 0.48
-            : 0.44;
-  const maskW = 1 - noiseW;
+  const { noiseW, maskW } = heightBlend(style, sketch);
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
+      const { height, mask } = elevationAt(x, y, w, h, freq, seed, style, sketch, noiseW, maskW);
+      heights[idx(x, y, w)] = height;
       const nx = x / w;
       const ny = y / h;
-      const mask = landMask(nx, ny, style, seed, sketch);
-      const height = fbm(nx * freq, ny * freq, seed, 5) * noiseW + mask * maskW;
-      heights[idx(x, y, w)] = height;
       const moist = fbm(nx * (freq * 1.17) + 9.2, ny * (freq * 1.17), seed + 17, 4);
       const temp = fbm(nx * (freq * 0.74) - 2.1, ny * (freq * 0.83) + 4.4, seed + 53, 4);
       const river = ridged(nx * (freq * 1.54), ny * (freq * 1.54), seed + 31);
