@@ -1,4 +1,4 @@
-# AreaExport v0.1
+# AreaExport v0.2
 
 World-map is the authority for a place. The Trailbound controller does not invent geography. The TypeScript types in `src/app/engine/area-export.ts` are the schema. This note is the field guide; if they disagree, the types win.
 
@@ -56,6 +56,9 @@ Chunks are regenerated inside the exporter, not copied from the session. Tiles a
 | 5 | water | biome Water, after paths and cobble |
 | 6 | sand | biome Sand or Desert |
 | 7 | rock | biome Mountain |
+| 8 | yard | building plot that is not structure (cobble `3`). Streets and plaza are left in place |
+
+`lot` (3) is the old front-apron value. v0.2 yards use `yard` (8) so the earlier indexes stay put.
 
 `layers.biome` is the chunk biome id. `grid.mask` is 1 on inner cells that belong to the place and 0 in the bounding box outside the blob. Grids are base64 (`enc: "b64u8"`).
 
@@ -100,7 +103,33 @@ Spawn is not the live walker, so two peers with the same seed export the same po
 
 Edge entries are road or dirt cells on the mask boundary, one per side (`edge-n`, `edge-e`, `edge-s`, `edge-w`), each with `toWorldTile`. `roads.polylines` is empty in 0.1.0. `roads.worldTiles` is the coarse flag list. `roads.floors` is the place’s street and plaza floor ids.
 
-Buildings copy `PlacedSprite` rows that `isBuildingSprite` accepts. `x, y` is the door-sill anchor. The lot is `x ± footW/2`, `y - footD .. y`. `rotation` is 0 and `door` is `S`. Props are the other sprites; `class` is `tree`, `rock`, `plant`, or `prop` from the sprite name.
+Props are the non-building sprites. `class` is `tree`, `rock`, `plant`, or `prop` from the sprite name.
+
+### Buildings (v0.2)
+
+v0.1 fields are still present: `id`, `type`, `x`, `y`, `footW`, `footD`, `shape`, `rotation`, `door`, `label`.
+
+`x, y` is the south-centre of the **structure** axis-aligned box, in absolute inner tiles. The v0.1 rectangle `x ± footW/2`, `y - footD .. y` is that box. `footW` and `footD` are the structure size in metres, not the plot. A reader that ignores every new key still gets a human-scale box.
+
+The plot is larger. `plotX, plotY` is its north-west corner (minimum x, minimum y). `plotW, plotD` is its size. `structureX, structureY, structureW, structureD` is the structure box with the same corner rule. `structureW`/`structureD` match `footW`/`footD`.
+
+`rotation` is `0`, `90`, `180`, or `270` (clockwise). The stamp is rotated before export, so `tiles` is already world-aligned. `door` is the primary door's side after that rotation. `doorCell` is that door's absolute inner tile. `templateId` names the stamp. `storeys` and `wallHeightM` (`storeys × 2.8`) are the wall. `roof` is `{ style, ridge }` with `ridge` of `E-W` or `N-S` after rotation.
+
+`tiles` is `{ w, h, enc: "b64u8", data, legend }`. `w`/`h` match the plot. Each byte is a part:
+
+| Value | Part |
+| --- | --- |
+| 0 | void |
+| 1 | yard |
+| 2 | floor |
+| 3 | wall |
+| 4 | door |
+| 5 | window |
+| 6 | tower |
+
+`shape` is `rect` when the structure box is solid, and `mask` when it has a yard notch (L, T, wings). When `tiles` is present, the mask is the plan. Tower cells are one storey above `storeys`.
+
+Cottage structure is about 6×5 and one storey. A shop is about 7×6. Church, inn, and town hall stay within 10×8 and are two storeys. Rotation can swap the two sides.
 
 ## Fixtures
 
@@ -112,17 +141,17 @@ AREA_EXPORT_WRITE=1 npx tsx scripts/area-export-check.ts
 
 | File | Place | What it is |
 | --- | --- | --- |
-| `fixtures/area-veldcross.json` | Ironmarch | Town, streets and buildings. `sha1:2974973a12a56ab7dcc24ba252b72a9f49de84ed` |
-| `fixtures/area-hollowmere.json` | Shadowglen | Grove, trees, no buildings. `sha1:5dc29a9f7ed216149b3e12fd16b225613e22146d` |
-| `fixtures/area-jadewild.json` | Jadewild | Forest grove with water cells. `sha1:ac7ad5f00675ec260e36eb1dad6d2f37bb86c365` |
+| `fixtures/area-veldcross.json` | Ironmarch | Town, streets and buildings. `sha1:1a34411ae55827e1a426edf2ebeeb8cfeb9e19d9` |
+| `fixtures/area-hollowmere.json` | Shadowglen | Grove, trees, no buildings. `sha1:acd5f652efb88e6c15fc1f20bdd6344152f7d0e6` |
+| `fixtures/area-jadewild.json` | Jadewild | Forest grove with water cells. `sha1:2792100302e5ee90e855725488cf524bb3d5fc57` |
 
 Jadewild header (grids omitted):
 
 ```json
 {
   "type": "trailbound.area",
-  "version": "0.1.0",
-  "source": { "app": "world-map", "build": "2026-10-26", "seed": 7741, "worldScale": 8, "mapStyle": "continent", "zoneScale": 8 },
+  "version": "0.2.0",
+  "source": { "app": "world-map", "build": "2026-10-27", "seed": 7741, "worldScale": 8, "mapStyle": "continent", "zoneScale": 8 },
   "area": { "id": "jadewild", "name": "Jadewild", "kind": "grove", "origin": "authored", "biome": "Forest", "worldBounds": { "x0": 351, "y0": 615, "x1": 358, "y1": 626 }, "innerOrigin": { "x": 2808, "y": 4920 } },
   "units": { "zoneScale": 8, "metersPerTile": 1, "upAxis": "y", "gridAxes": "x-right,y-down", "seaLevel": 0.36 },
   "layers": {
@@ -130,6 +159,6 @@ Jadewild header (grids omitted):
     "water": { "level": 2.241, "raw": 0.37502, "fromBiome": true, "present": true }
   },
   "entries": [{ "id": "player", "kind": "spawn", "x": 2843.5, "y": 4977.5, "facing": "E" }],
-  "meta": { "hash": "sha1:ac7ad5f00675ec260e36eb1dad6d2f37bb86c365" }
+  "meta": { "hash": "sha1:2792100302e5ee90e855725488cf524bb3d5fc57" }
 }
 ```

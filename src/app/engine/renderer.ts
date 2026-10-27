@@ -6,6 +6,7 @@ import {
   DETAIL_START,
   MapEntity,
   MapNode,
+  PlacedSprite,
   POI_LABELS,
   PoiKind,
   PlayerState,
@@ -26,11 +27,43 @@ import { LOCAL_PLAYER_ID } from './hero';
 import { AssetLibrary, drawCharFrame } from './assets';
 import { armyVisibleFollowers, boatChar, kindColor } from './entities';
 import { buildingDrawOrigin, buildingDrawScale, buildingRoofFrac, isBuildingSprite } from './buildings';
+import { paintChunkRoofs } from './building-draw';
+import { placedMask, structureBounds, templateById, templatesForType } from './building-templates';
 import { CELL_DOOR, CELL_FLOOR, CELL_VOID, CELL_WALL, InteriorPlan, interiorWallFill, isShellWall } from './interior';
 import { hash2 } from './noise';
 import { biomeSeason, blobLocal, decoFor, FLOORS, GROUPS, overlayGroup, tileSrc } from './tileset';
 
 const PIXEL_FONT = 'Tiny5, "Press Start 2P", ui-monospace, monospace';
+
+function paintYard(ctx: CanvasRenderingContext2D, px: number, py: number, ix: number, iy: number): void {
+  ctx.fillStyle = 'rgba(124, 96, 52, 0.48)';
+  ctx.fillRect(px, py, TILE, TILE);
+  const n = hash2(ix, iy, 77);
+  ctx.fillStyle = n > 0.62 ? 'rgba(72, 52, 28, 0.7)' : 'rgba(186, 156, 92, 0.62)';
+  const ox = 2 + Math.floor(hash2(ix, iy, 3) * 10);
+  const oy = 2 + Math.floor(hash2(ix, iy, 9) * 10);
+  ctx.fillRect(px + ox, py + oy, 2, 2);
+  if (hash2(ix, iy, 11) > 0.45) {
+    ctx.fillStyle = 'rgba(78, 108, 48, 0.5)';
+    ctx.fillRect(px + ((ox + 6) % 12), py + ((oy + 8) % 12), 2, 2);
+  }
+}
+
+function spriteBuildingPose(spr: PlacedSprite, x: number, y: number): { x: number; y: number; footW?: number } {
+  const tmpl = (spr.templateId && templateById(spr.templateId)) || templatesForType(spr.sprite)[0];
+  const mask = tmpl ? placedMask(tmpl.id, spr.rotation ?? 0) : null;
+  if (!tmpl || !mask) return { x, y, footW: spr.footW };
+  const bounds = structureBounds(mask.parts, mask.w, mask.d);
+  const plotW = spr.footW ?? mask.w;
+  const plotD = spr.footD ?? mask.d;
+  const left = x - plotW / 2 / ZONE_SCALE;
+  const top = y - plotD / ZONE_SCALE;
+  return {
+    x: left + (bounds.x + bounds.w / 2) / ZONE_SCALE,
+    y: top + (bounds.y + bounds.d) / ZONE_SCALE,
+    footW: bounds.w,
+  };
+}
 
 type TagBox = { x: number; y: number; w: number; h: number };
 
@@ -306,6 +339,8 @@ export class WorldRenderer {
   worldBake: HTMLCanvasElement | null = null;
   zoneBake: HTMLCanvasElement | null = null;
   cloudBake: HTMLCanvasElement | null = null;
+  /** When false, chunk bakes omit tile roofs so Town Tale sprites can stand in. */
+  bakeRoofs = true;
   private readonly chunkBakes = new Map<string, HTMLCanvasElement>();
   private isoLayer: HTMLCanvasElement | null = null;
   private fogLayer: HTMLCanvasElement | null = null;
@@ -603,7 +638,9 @@ export class WorldRenderer {
           drawTile(ctx, g, src.sx, src.sy, x * TILE, y * TILE);
         }
         const floor = chunk.cobble[x + y * size];
-        if (floor && biome !== Biome.Water) {
+        if (floor === 3 && biome !== Biome.Water) {
+          paintYard(ctx, x * TILE, y * TILE, chunk.wx * size + x, chunk.wy * size + y);
+        } else if (floor && biome !== Biome.Water) {
           const src = floor === 2 ? plaza : street;
           drawTile(ctx, floors, src.sx, src.sy, x * TILE, y * TILE);
         } else if (chunk.paths[x + y * size] && biome !== Biome.Water) {
@@ -614,6 +651,7 @@ export class WorldRenderer {
       }
     }
 
+    if (this.bakeRoofs) paintChunkRoofs(ctx, chunk, neighbors);
     this.chunkBakes.set(chunkKey(chunk.wx, chunk.wy), canvas);
   }
 
@@ -657,6 +695,8 @@ export class WorldRenderer {
       localPeerId?: string | null;
       speechBubbles?: ChatBubble[];
       interior?: InteriorPlan | null;
+      /** Town Tale PNGs instead of tile roofs. Yards stay either way. */
+      spriteBuildings?: boolean;
     },
   ): void {
     this.tagScreenPx = NAMETAG_BASE_PX * clamp(opts.nametagScale ?? 2.5, 0.5, 4.5);
@@ -722,7 +762,7 @@ export class WorldRenderer {
       lctx.scale(camera.scale, camera.scale);
       lctx.translate(-camera.x * TILE, -camera.y * TILE);
       this.drawVisibleChunks(lctx, camera, viewW, viewH, world, 1, isoKeys);
-      this.drawChunkSprites(lctx, camera, viewW, viewH, world, 1, opts.chunks, isoKeys, opts.interior);
+      this.drawChunkSprites(lctx, camera, viewW, viewH, world, 1, opts.chunks, isoKeys, opts.interior, !!opts.spriteBuildings);
       if (opts.interior) this.drawInterior(lctx, opts.interior);
       this.drawOutlines(
         lctx,
@@ -807,7 +847,7 @@ export class WorldRenderer {
 
     if (detailT > 0.02) {
       this.drawVisibleChunks(ctx, camera, viewW, viewH, world, detailT);
-      this.drawChunkSprites(ctx, camera, viewW, viewH, world, detailT, opts.chunks, undefined, opts.interior);
+      this.drawChunkSprites(ctx, camera, viewW, viewH, world, detailT, opts.chunks, undefined, opts.interior, !!opts.spriteBuildings);
       if (opts.interior) this.drawInterior(ctx, opts.interior);
     }
 
@@ -929,6 +969,16 @@ export class WorldRenderer {
     const wall = interiorWallFill(plan.sprite);
     ctx.save();
     ctx.imageSmoothingEnabled = false;
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = '#000';
+    for (let r = 0; r < plan.rows; r++) {
+      for (let c = 0; c < plan.cols; c++) {
+        const cellKind = plan.cells[c + r * plan.cols]!;
+        if (cellKind !== CELL_FLOOR && cellKind !== CELL_DOOR) continue;
+        ctx.fillRect((plan.x0 + c / ZONE_SCALE) * TILE, (plan.y0 + r / ZONE_SCALE) * TILE, cell, cell);
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
     for (let r = 0; r < plan.rows; r++) {
       for (let c = 0; c < plan.cols; c++) {
         const cellKind = plan.cells[c + r * plan.cols]!;
@@ -1074,6 +1124,7 @@ export class WorldRenderer {
     chunks: Map<string, ChunkData> | undefined,
     allowed?: Set<string>,
     hide?: InteriorPlan | null,
+    spriteBuildings = false,
   ): void {
     if (!chunks) return;
     const halfW = viewW / (2 * camera.scale) / TILE;
@@ -1083,7 +1134,13 @@ export class WorldRenderer {
     const y0 = Math.max(0, Math.floor(camera.y - halfH - pad));
     const x1 = Math.min(world.width - 1, Math.floor(camera.x + halfW + pad));
     const y1 = Math.min(world.height - 1, Math.floor(camera.y + halfH + pad));
-    const drawn: Array<{ sprite: string; x: number; y: number; footW?: number; roofOnly?: boolean }> = [];
+    const drawn: Array<{
+      sprite: string;
+      x: number;
+      y: number;
+      footW?: number;
+      roofOnly?: boolean;
+    }> = [];
     for (let wy = y0; wy <= y1; wy++) {
       for (let wx = x0; wx <= x1; wx++) {
         if (allowed && !allowed.has(chunkKey(wx, wy))) continue;
@@ -1092,8 +1149,17 @@ export class WorldRenderer {
         for (const spr of chunk.sprites) {
           const x = wx + spr.x / chunk.size;
           const y = wy + spr.y / chunk.size;
-          const roofOnly = !!(hide && isBuildingSprite(spr.sprite) && Math.abs(x - hide.ax) < 0.04 && Math.abs(y - hide.ay) < 0.04);
-          drawn.push({ sprite: spr.sprite, x, y, footW: spr.footW, roofOnly });
+          const building = isBuildingSprite(spr.sprite);
+          const roofOnly = !!(hide && building && Math.abs(x - hide.ax) < 0.04 && Math.abs(y - hide.ay) < 0.04);
+          if (building && !spriteBuildings && ((spr.templateId && templateById(spr.templateId)) || templatesForType(spr.sprite)[0])) {
+            continue;
+          }
+          if (building) {
+            const pose = spriteBuildingPose(spr, x, y);
+            drawn.push({ sprite: spr.sprite, x: pose.x, y: pose.y, footW: pose.footW, roofOnly });
+          } else {
+            drawn.push({ sprite: spr.sprite, x, y, footW: spr.footW, roofOnly });
+          }
         }
       }
     }

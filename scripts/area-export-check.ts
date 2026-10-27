@@ -1,5 +1,5 @@
 /**
- * Determinism check and fixture writer for AreaExport v0.1.
+ * Determinism check and fixture writer for AreaExport v0.2.
  *   npx tsx scripts/area-export-check.ts
  * Writes fixtures/ when AREA_EXPORT_WRITE=1.
  */
@@ -16,6 +16,7 @@ import {
   decodeB64U8,
   type AreaExport,
 } from '../src/app/engine/area-export';
+import { PART_CODE, PART_LEGEND } from '../src/app/engine/building-templates';
 import { generateWorld } from '../src/app/engine/world-gen';
 import { DEFAULT_WORLD_SETTINGS, type MapNode, type WorldData } from '../src/app/models/world.models';
 
@@ -53,7 +54,27 @@ function checkShape(area: AreaExport, place: MapNode): void {
   assert(area.layers.height.raw.length === area.layers.height.w * area.layers.height.h, 'height size');
   assert(area.layers.height.reliefBaseMeters === 6, 'relief base');
   assert(area.entries.some((e) => e.kind === 'spawn'), 'spawn');
-  assert(area.buildings.every((b) => b.rotation === 0 && b.door === 'S'), 'doors face south');
+  const rotations = new Set([0, 90, 180, 270]);
+  for (const b of area.buildings) {
+    assert(rotations.has(b.rotation), `${b.id} rotation ${b.rotation}`);
+    assert(b.door === 'N' || b.door === 'E' || b.door === 'S' || b.door === 'W', `${b.id} door`);
+    assert(b.tiles.legend.join() === PART_LEGEND.join(), `${b.id} legend`);
+    assert(decodeB64U8(b.tiles.data).length === b.tiles.w * b.tiles.h, `${b.id} mask length`);
+    assert(b.tiles.w === b.plotW && b.tiles.h === b.plotD, `${b.id} plot mask`);
+    assert(b.footW === b.structureW && b.footD === b.structureD, `${b.id} foot is structure`);
+    const longSide = Math.max(b.structureW, b.structureD);
+    const shortSide = Math.min(b.structureW, b.structureD);
+    assert(longSide <= 10 && shortSide <= 8, `${b.id} structure ${b.structureW}x${b.structureD}`);
+    assert(b.structureX >= b.plotX && b.structureY >= b.plotY, `${b.id} structure origin`);
+    assert(b.structureX + b.structureW <= b.plotX + b.plotW, `${b.id} structure width`);
+    assert(b.structureY + b.structureD <= b.plotY + b.plotD, `${b.id} structure depth`);
+    assert(b.templateId.length > 0 && b.storeys >= 1, `${b.id} template`);
+    assert(b.roof.ridge === 'E-W' || b.roof.ridge === 'N-S', `${b.id} ridge`);
+    const mask = decodeB64U8(b.tiles.data);
+    const di = b.doorCell.x - b.plotX + (b.doorCell.y - b.plotY) * b.tiles.w;
+    assert(mask[di] === PART_CODE.door, `${b.id} door cell`);
+  }
+  assert(GROUND.yard === 8, 'yard class index');
   assert(area.meta.hash.startsWith('sha1:'), 'hash prefix');
   assert(contentHash(area) === area.meta.hash, 'hash matches content');
   const canonical = canonicalForHash(area);
@@ -101,6 +122,23 @@ const world = generateWorld(seed, DEFAULT_WORLD_SETTINGS);
 console.log(`nodes=${world.nodes.length} size=${world.width}`);
 
 const town = exportPlace(world, 'veldcross');
+assert(town.buildings.length > 0, 'town has buildings');
+assert(new Set(town.buildings.map((b) => b.rotation)).size >= 2, 'town doors face more than one way');
+assert(town.buildings.some((b) => b.shape === 'mask'), 'town has a non-rectangular building');
+assert(
+  town.buildings.some((b) => {
+    if (b.type !== 'shop' || b.storeys !== 1) return false;
+    const longSide = Math.max(b.structureW, b.structureD);
+    const shortSide = Math.min(b.structureW, b.structureD);
+    return longSide >= 6 && longSide <= 8 && shortSide >= 5 && shortSide <= 7;
+  }),
+  'shop is about 7x6',
+);
+assert(
+  town.buildings.some((b) => (b.type === 'church' || b.type === 'inn' || b.type === 'town-hall') && b.storeys === 2),
+  'civic building is two storeys',
+);
+assert([...decodeB64U8(town.layers.ground.data)].some((v) => v === GROUND.yard), 'town has yard ground');
 const wild = exportPlace(world, 'hollowmere');
 const hills = exportPlace(world, 'dunharrow');
 assert(hills.layers.height.reliefBiome === 'Hills', 'dunharrow biome');

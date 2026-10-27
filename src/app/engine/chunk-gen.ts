@@ -13,6 +13,7 @@ import {
 import {
   buildingInChunk,
   pointHitsBuilding,
+  stampBuildingYard,
   poiBuildingLayout,
   settlementLayout,
   settlementPlaza,
@@ -431,7 +432,7 @@ function applyNodeOverlay(
     const plaza = settlementPlaza(node.kind);
     stampRect(cobble, size, lx - plaza.w * 0.5, ly - plaza.h * 0.45, plaza.w, plaza.h, 2);
     stampCityStreets(node, wx, wy, size, paths);
-    placeSettlementSprites(node, worldSeed, wx, wy, size, cobble, sprites);
+    placeSettlementSprites(node, worldSeed, wx, wy, size, paths, cobble, sprites);
   } else if (node.kind === 'shore' && node.origin !== 'generated') {
     const shoreY = node.cy * size;
     for (let y = 0; y < size; y++) {
@@ -450,6 +451,7 @@ function placeSettlementSprites(
   wx: number,
   wy: number,
   size: number,
+  paths: Uint8Array,
   cobble: Uint8Array,
   sprites: PlacedSprite[],
 ): void {
@@ -457,15 +459,7 @@ function placeSettlementSprites(
   const originY = wy * size;
   const layout = settlementLayout(node, worldSeed);
   for (const b of layout) {
-    stampRect(
-      cobble,
-      size,
-      b.x - originX - b.footW * 0.38,
-      b.y - originY - 0.35,
-      b.footW * 0.76,
-      2.4,
-      1,
-    );
+    stampBuildingYard(cobble, paths, size, b, originX, originY);
     if (buildingInChunk(b, wx, wy, size)) sprites.push(toPlacedSprite(b, originX, originY));
   }
 
@@ -505,15 +499,7 @@ function stampPoiIntoChunk(
   const lx = midX - originX;
   const ly = midY - originY;
   for (const b of poiBuildingLayout(kind, midX, midY)) {
-    stampRect(
-      cobble,
-      size,
-      b.x - originX - b.footW * 0.38,
-      b.y - originY - 0.35,
-      b.footW * 0.76,
-      2.4,
-      1,
-    );
+    stampBuildingYard(cobble, paths, size, b, originX, originY);
     if (buildingInChunk(b, wx, wy, size)) sprites.push(toPlacedSprite(b, originX, originY));
   }
   const inChunk = lx > -14 && lx < size + 14 && ly > -16 && ly < size + 16;

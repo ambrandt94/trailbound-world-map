@@ -7,11 +7,10 @@
  */
 import { ZONE_SCALE } from '../models/world.models';
 import { Rng } from './noise';
+import { BuildingRotation, isStructure, placedMask } from './building-templates';
 import {
   BuildingShape,
   StreetBuilding,
-  doorCols,
-  footprintAt,
   inBuildingLot,
   inDoorway,
 } from './buildings';
@@ -46,6 +45,8 @@ export interface InteriorPlan {
   footW: number;
   footD: number;
   shape: BuildingShape;
+  templateId: string;
+  rotation: BuildingRotation;
   cols: number;
   rows: number;
   cells: Uint8Array;
@@ -55,12 +56,6 @@ export interface InteriorPlan {
 
 function idx(col: number, row: number, cols: number): number {
   return col + row * cols;
-}
-
-function occupied(cells: Uint8Array, cols: number, rows: number, c: number, r: number): boolean {
-  if (c < 0 || r < 0 || c >= cols || r >= rows) return false;
-  const v = cells[idx(c, r, cols)]!;
-  return v !== CELL_VOID;
 }
 
 function setWall(cells: Uint8Array, cols: number, rows: number, c0: number, r0: number, c1: number, r1: number): void {
@@ -104,46 +99,18 @@ function addFurn(
   list.push({ sprite, col, row });
 }
 
-function stampFootprint(cells: Uint8Array, cols: number, rows: number, shape: BuildingShape): void {
+function stampMask(cells: Uint8Array, cols: number, rows: number, b: StreetBuilding): void {
   cells.fill(CELL_VOID);
+  const mask = placedMask(b.templateId, b.rotation);
+  if (!mask) return;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (footprintAt(shape, c, r, cols, rows)) cells[idx(c, r, cols)] = CELL_FLOOR;
+      if (c >= mask.w || r >= mask.d) continue;
+      const part = mask.parts[r * mask.w + c]!;
+      if (part === 'door') cells[idx(c, r, cols)] = CELL_DOOR;
+      else if (part === 'floor') cells[idx(c, r, cols)] = CELL_FLOOR;
+      else if (isStructure(part)) cells[idx(c, r, cols)] = CELL_WALL;
     }
-  }
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (cells[idx(c, r, cols)] !== CELL_FLOOR) continue;
-      const edge =
-        !occupied(cells, cols, rows, c - 1, r) ||
-        !occupied(cells, cols, rows, c + 1, r) ||
-        !occupied(cells, cols, rows, c, r - 1) ||
-        !occupied(cells, cols, rows, c, r + 1);
-      if (edge) cells[idx(c, r, cols)] = CELL_WALL;
-    }
-  }
-}
-
-function placeSouthDoor(cells: Uint8Array, cols: number, rows: number, sprite: string): void {
-  const door = doorCols(cols, sprite);
-  for (let r = rows - 1; r >= 0; r--) {
-    let hit = false;
-    for (let i = 0; i < door.w; i++) {
-      const c = door.c0 + i;
-      if (c < 0 || c >= cols) continue;
-      if (cells[idx(c, r, cols)] !== CELL_VOID) {
-        hit = true;
-        break;
-      }
-    }
-    if (!hit) continue;
-    for (let i = 0; i < door.w; i++) {
-      const c = door.c0 + i;
-      if (c < 0 || c >= cols) continue;
-      if (cells[idx(c, r, cols)] === CELL_VOID) continue;
-      cells[idx(c, r, cols)] = CELL_DOOR;
-    }
-    break;
   }
 }
 
@@ -152,8 +119,7 @@ export function generateInterior(b: StreetBuilding): InteriorPlan {
   const rows = b.footD;
   const cells = new Uint8Array(cols * rows);
   const rng = new Rng(hashId(b.id));
-  stampFootprint(cells, cols, rows, b.shape);
-  placeSouthDoor(cells, cols, rows, b.sprite);
+  stampMask(cells, cols, rows, b);
 
   const furniture: InteriorFurnishing[] = [];
   const kind = b.sprite;
@@ -200,6 +166,16 @@ export function generateInterior(b: StreetBuilding): InteriorPlan {
     put('lantern', cols - 3, 2);
   }
 
+  if (!furniture.length) {
+    for (let r = 0; r < rows && furniture.length < 3; r++) {
+      for (let c = 0; c < cols && furniture.length < 3; c++) {
+        if (cells[idx(c, r, cols)] !== CELL_FLOOR) continue;
+        const sprite = furniture.length === 0 ? 'chest' : furniture.length === 1 ? 'bench' : 'lantern';
+        furniture.push({ sprite, col: c, row: r });
+      }
+    }
+  }
+
   return {
     id: b.id,
     sprite: b.sprite,
@@ -217,6 +193,8 @@ export function generateInterior(b: StreetBuilding): InteriorPlan {
     footW: b.footW,
     footD: b.footD,
     shape: b.shape,
+    templateId: b.templateId,
+    rotation: b.rotation,
     cols,
     rows,
     cells,
@@ -295,20 +273,19 @@ export function resolveInteriorWalk(
 
   if (!inside) {
     for (const b of buildings) {
-      if (inBuildingLot(x, y, b) && y < b.ay - 0.02) {
-        return { x, y, enter: b, leave: false };
-      }
-      if (inDoorway(x, y, b) && y <= b.ay) {
-        return { x, y, enter: b, leave: false };
-      }
+      if (inDoorway(x, y, b) && inBuildingLot(x, y, b)) return { x, y, enter: b, leave: false };
     }
     return { x, y, enter: null, leave: false };
   }
 
-  const south = y > inside.ay + 0.03;
-  const left = !inBuildingLot(x, y, inside) && !inDoorway(x, y, inside);
-  if (south && (inDoorway(x, y, inside) || left)) return { x, y, enter: null, leave: true };
+  const stillIn = inBuildingLot(x, y, inside);
+  if (!stillIn && inDoorway(x, y, inside)) return { x, y, enter: null, leave: true };
+  if (!stillIn && !inBuildingAabbLoose(x, y, inside)) return { x, y, enter: null, leave: true };
   return { x, y, enter: null, leave: false };
+}
+
+function inBuildingAabbLoose(x: number, y: number, b: { x0: number; x1: number; y0: number; y1: number }): boolean {
+  return x >= b.x0 - 0.2 && x < b.x1 + 0.2 && y >= b.y0 - 0.2 && y < b.y1 + 0.2;
 }
 
 /** Exterior ring — those cells are the Town Tale facade, not interior partitions. */

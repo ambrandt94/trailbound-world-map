@@ -1,4 +1,16 @@
 import { ChunkData, MapNode, NodeKind, PlacedSprite, PoiKind, TILE, ZONE_SCALE, hasNodeTile } from '../models/world.models';
+import {
+  BuildingPart,
+  BuildingRotation,
+  BuildingTemplate,
+  Cardinal,
+  isStructure,
+  placedMask,
+  rotationForFacing,
+  rotatedSize,
+  templateById,
+  templatesForType,
+} from './building-templates';
 import { Rng } from './noise';
 
 /**
@@ -42,6 +54,8 @@ export interface BuildingDef {
 export interface PlacedBuilding extends BuildingDef {
   x: number;
   y: number;
+  templateId: string;
+  rotation: BuildingRotation;
 }
 
 const COTTAGE_SHELL: BuildingShell = {
@@ -181,8 +195,13 @@ export interface StreetBuilding {
   id: string;
   sprite: string;
   label: string;
+  templateId: string;
+  rotation: BuildingRotation;
+  /** Primary door after rotation. */
+  door: Cardinal;
   ax: number;
   ay: number;
+  /** Axis-aligned plot, inner tiles. */
   footW: number;
   footD: number;
   shape: BuildingShape;
@@ -246,20 +265,26 @@ export function inBuildingAabb(x: number, y: number, b: { x0: number; x1: number
 
 export function makeStreetBuilding(wx: number, wy: number, spr: PlacedSprite, size: number): StreetBuilding | null {
   const def = BUILDINGS[spr.sprite];
-  if (!def && spr.footW == null) return null;
-  const footW = spr.footW ?? def?.footW ?? 14;
-  const footD = spr.footD ?? def?.footD ?? 10;
+  const tmpl = (spr.templateId && templateById(spr.templateId)) || templatesForType(spr.sprite)[0];
+  if (!def && !tmpl && spr.footW == null) return null;
+  const rotation: BuildingRotation = spr.rotation ?? 0;
+  const footW = spr.footW ?? tmpl?.w ?? def?.footW ?? 14;
+  const footD = spr.footD ?? tmpl?.d ?? def?.footD ?? 10;
   const shell = def?.shell ?? DEFAULT_SHELL;
   const ax = wx + spr.x / size;
   const ay = wy + spr.y / size;
   const worldW = footW / ZONE_SCALE;
   const worldD = footD / ZONE_SCALE;
   const x0 = ax - worldW / 2;
-  const { c0, w: doorW } = doorCols(footW, spr.sprite);
+  const y0 = ay - worldD;
+  const door = doorWorldRect(tmpl?.id, rotation, x0, y0, footW);
   return {
-    id: `${wx}:${wy}:${spr.sprite}:${spr.x.toFixed(2)}:${spr.y.toFixed(2)}`,
+    id: `${wx}:${wy}:${spr.sprite}:${spr.templateId ?? ''}:${spr.x.toFixed(2)}:${spr.y.toFixed(2)}`,
     sprite: spr.sprite,
     label: buildingLabel(spr.sprite),
+    templateId: tmpl?.id ?? spr.sprite,
+    rotation,
+    door: door.facing,
     ax,
     ay,
     footW,
@@ -267,13 +292,80 @@ export function makeStreetBuilding(wx: number, wy: number, spr: PlacedSprite, si
     shape: shell.shape,
     x0,
     x1: ax + worldW / 2,
-    y0: ay - worldD,
+    y0,
     y1: ay,
-    doorX0: x0 + c0 / ZONE_SCALE,
-    doorX1: x0 + (c0 + doorW) / ZONE_SCALE,
-    doorY0: ay - 2.2 / ZONE_SCALE,
-    doorY1: ay + 1.6 / ZONE_SCALE,
+    doorX0: door.x0,
+    doorX1: door.x1,
+    doorY0: door.y0,
+    doorY1: door.y1,
   };
+}
+
+function doorWorldRect(
+  templateId: string | undefined,
+  rotation: BuildingRotation,
+  x0: number,
+  y0: number,
+  footW: number,
+): { x0: number; x1: number; y0: number; y1: number; facing: Cardinal } {
+  const mask = templateId ? placedMask(templateId, rotation) : null;
+  const cell = 1 / ZONE_SCALE;
+  if (!mask) {
+    const { c0, w } = doorCols(footW);
+    return {
+      facing: 'S',
+      x0: x0 + c0 * cell,
+      x1: x0 + (c0 + w) * cell,
+      y0: y0 - 0.12,
+      y1: y0 + cell,
+    };
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let facing: Cardinal = 'S';
+  let count = 0;
+  for (let r = 0; r < mask.d; r++) {
+    for (let c = 0; c < mask.w; c++) {
+      if (mask.parts[r * mask.w + c] !== 'door') continue;
+      minX = Math.min(minX, c);
+      minY = Math.min(minY, r);
+      maxX = Math.max(maxX, c + 1);
+      maxY = Math.max(maxY, r + 1);
+      facing = openingSide(mask.parts, mask.w, mask.d, c, r);
+      count++;
+    }
+  }
+  if (!count) {
+    return { facing: 'S', x0: x0 + cell, x1: x0 + 3 * cell, y0: y0 + (mask.d - 1) * cell, y1: y0 + mask.d * cell };
+  }
+  const pad = 0.07;
+  const out = 0.18;
+  let dx0 = x0 + minX * cell - pad;
+  let dy0 = y0 + minY * cell - pad;
+  let dx1 = x0 + maxX * cell + pad;
+  let dy1 = y0 + maxY * cell + pad;
+  if (facing === 'S') dy1 += out;
+  else if (facing === 'N') dy0 -= out;
+  else if (facing === 'E') dx1 += out;
+  else dx0 -= out;
+  return { facing, x0: dx0, x1: dx1, y0: dy0, y1: dy1 };
+}
+
+function openingSide(parts: readonly BuildingPart[], w: number, d: number, x: number, y: number): Cardinal {
+  const opts: Array<{ dir: Cardinal; nx: number; ny: number }> = [
+    { dir: 'N', nx: x, ny: y - 1 },
+    { dir: 'E', nx: x + 1, ny: y },
+    { dir: 'S', nx: x, ny: y + 1 },
+    { dir: 'W', nx: x - 1, ny: y },
+  ];
+  for (const o of opts) {
+    if (o.nx < 0 || o.ny < 0 || o.nx >= w || o.ny >= d) return o.dir;
+    const part = parts[o.ny * w + o.nx]!;
+    if (part === 'void' || part === 'yard') return o.dir;
+  }
+  return 'S';
 }
 
 export function collectStreetBuildings(
@@ -308,11 +400,26 @@ export function inDoorway(x: number, y: number, b: { doorX0: number; doorX1: num
 export function inBuildingLot(
   x: number,
   y: number,
-  b: { x0: number; x1: number; y0: number; y1: number; shape: BuildingShape; footW: number; footD: number },
+  b: {
+    x0: number;
+    x1: number;
+    y0: number;
+    y1: number;
+    shape: BuildingShape;
+    footW: number;
+    footD: number;
+    templateId?: string;
+    rotation?: BuildingRotation;
+  },
 ): boolean {
   if (!inBuildingAabb(x, y, b)) return false;
-  const col = Math.floor((x - b.x0) * ZONE_SCALE);
-  const row = Math.floor((y - b.y0) * ZONE_SCALE);
+  const col = Math.floor((x - b.x0) * ZONE_SCALE + 1e-6);
+  const row = Math.floor((y - b.y0) * ZONE_SCALE + 1e-6);
+  const mask = b.templateId ? placedMask(b.templateId, b.rotation ?? 0) : null;
+  if (mask) {
+    if (col < 0 || row < 0 || col >= mask.w || row >= mask.d) return false;
+    return isStructure(mask.parts[row * mask.w + col]!);
+  }
   return footprintAt(b.shape, col, row, b.footW, b.footD);
 }
 
@@ -350,24 +457,6 @@ export function settlementPlaza(kind: NodeKind): { w: number; h: number } {
   if (kind === 'town') return { w: 12, h: 10 };
   if (kind === 'hamlet') return { w: 8, h: 7 };
   return { w: 6, h: 5 };
-}
-
-function scaledDef(def: BuildingDef, s: number): BuildingDef {
-  if (s >= 0.995) return def;
-  return {
-    sprite: def.sprite,
-    footW: Math.max(8, Math.round(def.footW * s)),
-    footD: Math.max(6, Math.round(def.footD * s)),
-    shell: def.shell,
-  };
-}
-
-function nodeLotScale(node: MapNode): number {
-  if (node.kind === 'city' || node.kind === 'town') return 1;
-  const n = node.tiles?.length ?? 24;
-  if (n < 16) return 0.7;
-  if (n < 28) return 0.85;
-  return 1;
 }
 
 function lotInside(node: MapNode, x: number, y: number, footW: number, footD: number): boolean {
@@ -475,32 +564,131 @@ export function settlementLayout(node: MapNode, worldSeed: number): PlacedBuildi
   if (hit) return hit;
   if (layoutCache.size > 48) layoutCache.clear();
   const rng = new Rng((node.seed ^ (worldSeed * 13) ^ 0xb10b1e) >>> 0);
-  const scale = nodeLotScale(node);
   const plaza = settlementPlaza(node.kind);
   const gap = node.kind === 'city' ? 1.8 : node.kind === 'town' ? 2.4 : 3.2;
-  const wanted = roster(node.kind, node.tiles?.length ?? 32, rng).map((d) => scaledDef(d, scale));
+  const wanted = roster(node.kind, node.tiles?.length ?? 32, rng);
   const slots = lotSlots(node, plaza, rng);
   const placed: PlacedBuilding[] = [];
-  for (const def of wanted) {
+  wanted.forEach((def, index) => {
+    const salt = (node.seed ^ Math.imul(worldSeed, 13) ^ Math.imul(index + 1, 0x9e3779b1)) >>> 0;
+    const ordered = orderedTemplates(def.sprite, salt);
+    const attempt = (x: number, y: number) => {
+      for (const tmpl of ordered) {
+        const built = placeTemplate(node, placed, def, tmpl, x, y, salt, gap);
+        if (!built) continue;
+        placed.push(built);
+        return true;
+      }
+      return false;
+    };
     let found = false;
     for (const slot of slots) {
-      if (!fits(node, placed, slot.x, slot.y, def.footW, def.footD, gap)) continue;
-      placed.push({ ...def, x: slot.x, y: slot.y });
-      found = true;
-      break;
+      if (attempt(slot.x, slot.y)) {
+        found = true;
+        break;
+      }
     }
     if (!found) {
       for (let i = 0; i < 18 && !found; i++) {
         const x = node.cx * ZONE_SCALE + rng.range(-node.radius * ZONE_SCALE * 0.7, node.radius * ZONE_SCALE * 0.7);
         const y = node.cy * ZONE_SCALE + rng.range(-node.radius * ZONE_SCALE * 0.55, node.radius * ZONE_SCALE * 0.45);
-        if (!fits(node, placed, x, y, def.footW, def.footD, gap)) continue;
-        placed.push({ ...def, x, y });
-        found = true;
+        if (attempt(x, y)) found = true;
       }
     }
-  }
+  });
   layoutCache.set(key, placed);
   return placed;
+}
+
+function orderedTemplates(type: string, salt: number): BuildingTemplate[] {
+  const variants = templatesForType(type);
+  if (variants.length < 2) return variants;
+  const start = new Rng(salt || 1).int(0, variants.length - 1);
+  return variants.map((_, i) => variants[(start + i) % variants.length]!);
+}
+
+function snapAnchor(x: number, y: number, w: number, d: number): { x: number; y: number } {
+  const x0 = Math.round(x - w / 2);
+  const y0 = Math.round(y - d);
+  return { x: x0 + w / 2, y: y0 + d };
+}
+
+/** Distance from a plot edge to the nearest street axis or plaza. Lower is closer. */
+function edgeDistance(node: MapNode, x: number, y: number, w: number, d: number, side: Cardinal): number {
+  const x0 = x - w / 2;
+  const y0 = y - d;
+  let px = x;
+  let py = y;
+  if (side === 'N') py = y0;
+  else if (side === 'E') {
+    px = x0 + w;
+    py = y0 + d / 2;
+  } else if (side === 'W') {
+    px = x0;
+    py = y0 + d / 2;
+  }
+  const mx = node.cx * ZONE_SCALE;
+  const my = node.cy * ZONE_SCALE;
+  const plaza = settlementPlaza(node.kind);
+  const rx0 = mx - plaza.w * 0.5;
+  const ry0 = my - plaza.h * 0.45;
+  const dx = Math.max(rx0 - px, 0, px - (rx0 + plaza.w));
+  const dy = Math.max(ry0 - py, 0, py - (ry0 + plaza.h));
+  return Math.min(Math.abs(py - my), Math.abs(px - mx), Math.hypot(dx, dy));
+}
+
+function facingOrder(node: MapNode, x: number, y: number, w: number, d: number, salt: number): Cardinal[] {
+  const scored = (['N', 'E', 'S', 'W'] as const).map((side) => ({
+    side,
+    score: edgeDistance(node, x, y, w, d, side),
+  }));
+  scored.sort((a, b) => a.score - b.score || a.side.localeCompare(b.side));
+  const best = scored[0]!.score;
+  const tied = scored.filter((s) => s.score <= best + 0.85);
+  const pick = tied.length > 1 ? new Rng((salt ^ Math.round(x * 8) ^ Math.round(y * 8)) >>> 0 || 1).pick(tied).side : scored[0]!.side;
+  return [pick, ...scored.map((s) => s.side).filter((s) => s !== pick)];
+}
+
+function placeTemplate(
+  node: MapNode,
+  placed: PlacedBuilding[],
+  def: BuildingDef,
+  tmpl: BuildingTemplate,
+  x: number,
+  y: number,
+  salt: number,
+  gap: number,
+): PlacedBuilding | null {
+  const seen = new Set<BuildingRotation>();
+  const facings = [
+    ...facingOrder(node, x, y, tmpl.w, tmpl.d, salt),
+    ...facingOrder(node, x, y, tmpl.d, tmpl.w, salt ^ 17),
+  ];
+  for (const facing of facings) {
+    const rotation = rotationForFacing(tmpl.doorFacing, facing);
+    if (seen.has(rotation)) continue;
+    seen.add(rotation);
+    const dim = rotatedSize(tmpl.w, tmpl.d, rotation);
+    const anchor = snapAnchor(x, y, dim.w, dim.d);
+    if (!fits(node, placed, anchor.x, anchor.y, dim.w, dim.d, gap)) continue;
+    return { ...def, footW: dim.w, footD: dim.d, x: anchor.x, y: anchor.y, templateId: tmpl.id, rotation };
+  }
+  return null;
+}
+
+function facingToward(fromX: number, fromY: number, toX: number, toY: number, salt: number): Cardinal {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const ax = Math.abs(dx);
+  const ay = Math.abs(dy);
+  if (Math.abs(ax - ay) < 1.25) {
+    const opts: Cardinal[] = [];
+    opts.push(dx >= 0 ? 'E' : 'W');
+    opts.push(dy >= 0 ? 'S' : 'N');
+    return new Rng(salt || 1).pick(opts);
+  }
+  if (ax > ay) return dx >= 0 ? 'E' : 'W';
+  return dy >= 0 ? 'S' : 'N';
 }
 
 function poiPair(kind: PoiKind): string[] {
@@ -552,19 +740,80 @@ export function poiBuildingLayout(kind: PoiKind, midX: number, midY: number): Pl
     .map((name) => BUILDINGS[name])
     .filter((d): d is BuildingDef => !!d);
   if (!defs.length) return [];
-  if (defs.length === 1) return [{ ...defs[0]!, x: midX, y: midY - 1 }];
-  const a = defs[0]!;
-  const b = defs[1]!;
-  const gap = 3.2;
-  const span = a.footW * 0.5 + gap + b.footW * 0.5;
-  return [
-    { ...a, x: midX - span * 0.5 + a.footW * 0.5, y: midY - 1 },
-    { ...b, x: midX + span * 0.5 - b.footW * 0.5, y: midY + 1.6 },
-  ];
+  const salt = (kind.length * 131 + Math.round(midX * 10) + Math.round(midY * 17)) >>> 0;
+  const specs = defs.map((def, i) => {
+    const tmpl = orderedTemplates(def.sprite, salt ^ (i + 3))[0] ?? templatesForType(def.sprite)[0];
+    return { def, tmpl };
+  }).filter((s): s is { def: BuildingDef; tmpl: BuildingTemplate } => !!s.tmpl);
+  if (!specs.length) return [];
+  const anchors =
+    specs.length === 1
+      ? [{ x: midX, y: midY - 1 }]
+      : (() => {
+          const gap = 3.2;
+          const aw = specs[0]!.tmpl.w;
+          const bw = specs[1]!.tmpl.w;
+          const span = aw * 0.5 + gap + bw * 0.5;
+          return [
+            { x: midX - span * 0.5 + aw * 0.5, y: midY - 1 },
+            { x: midX + span * 0.5 - bw * 0.5, y: midY + 1.6 },
+          ];
+        })();
+  return specs.map((spec, i) => {
+    const at = anchors[i]!;
+    const facing = facingToward(at.x, at.y - spec.tmpl.d / 2, midX, midY, salt ^ (i + 9));
+    const rotation = rotationForFacing(spec.tmpl.doorFacing, facing);
+    const dim = rotatedSize(spec.tmpl.w, spec.tmpl.d, rotation);
+    const anchor = snapAnchor(at.x, at.y, dim.w, dim.d);
+    return {
+      ...spec.def,
+      footW: dim.w,
+      footD: dim.d,
+      x: anchor.x,
+      y: anchor.y,
+      templateId: spec.tmpl.id,
+      rotation,
+    };
+  });
 }
 
 export function toPlacedSprite(b: PlacedBuilding, originX: number, originY: number): PlacedSprite {
-  return { sprite: b.sprite, x: b.x - originX, y: b.y - originY, footW: b.footW, footD: b.footD };
+  return {
+    sprite: b.sprite,
+    x: b.x - originX,
+    y: b.y - originY,
+    footW: b.footW,
+    footD: b.footD,
+    templateId: b.templateId,
+    rotation: b.rotation,
+  };
+}
+
+/** Stamp yard cells of a placed building into one chunk. Streets and plaza win. */
+export function stampBuildingYard(
+  cobble: Uint8Array,
+  paths: Uint8Array,
+  size: number,
+  b: PlacedBuilding,
+  originX: number,
+  originY: number,
+): void {
+  const mask = placedMask(b.templateId, b.rotation);
+  if (!mask) return;
+  const x0 = b.x - b.footW / 2;
+  const y0 = b.y - b.footD;
+  for (let r = 0; r < mask.d; r++) {
+    for (let c = 0; c < mask.w; c++) {
+      if (mask.parts[r * mask.w + c] !== 'yard') continue;
+      const ix = Math.floor(x0 + c - originX + 1e-6);
+      const iy = Math.floor(y0 + r - originY + 1e-6);
+      if (ix < 0 || iy < 0 || ix >= size || iy >= size) continue;
+      const i = ix + iy * size;
+      if (paths[i]) continue;
+      if (cobble[i] === 2) continue;
+      cobble[i] = 3;
+    }
+  }
 }
 
 export function buildingInChunk(b: PlacedBuilding, wx: number, wy: number, size: number): boolean {
@@ -585,4 +834,8 @@ export function pointHitsBuilding(x: number, y: number, sprites: PlacedSprite[],
     }
   }
   return false;
+}
+
+for (const name of Object.keys(BUILDINGS)) {
+  if (!templatesForType(name).length) throw new Error(`no building template for ${name}`);
 }
