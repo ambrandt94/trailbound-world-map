@@ -15,6 +15,7 @@ const CLOUD_OK = 'tb-world-map-cloud-cover-ok';
 const MARKERS_KEY = 'tb-world-map-world-markers';
 const NAMETAG_KEY = 'tb-world-map-nametag-scale';
 const CHATTER_KEY = 'tb-world-map-npc-chatter';
+const SPRITE_BUILDINGS_KEY = 'tb-world-map-sprite-buildings';
 const HERO_NAME_KEY = 'tb-world-map-hero-name';
 const HERO_SHEET_KEY = 'tb-world-map-hero-sheet';
 const HERO_CHAR_KEY = 'tb-world-map-hero-char';
@@ -57,6 +58,8 @@ export class PreferencesService {
   /** Size vs the original 10px pixel nametag. Default 1.5. */
   readonly nametagScale = signal(this.readNametagScale());
   readonly npcChatter = signal(this.readNpcChatter());
+  /** Town Tale PNGs at street zoom. Off draws tile roofs and wall edges. */
+  readonly spriteBuildings = signal(this.readSpriteBuildings());
   readonly heroName = signal(this.readHeroName());
   readonly heroSheet = signal(this.readHeroSheet());
   readonly heroChar = signal(this.readHeroChar());
@@ -95,6 +98,9 @@ export class PreferencesService {
     });
     effect(() => {
       localStorage.setItem(CHATTER_KEY, this.npcChatter() ? '1' : '0');
+    });
+    effect(() => {
+      localStorage.setItem(SPRITE_BUILDINGS_KEY, this.spriteBuildings() ? '1' : '0');
     });
     effect(() => {
       localStorage.setItem(HERO_NAME_KEY, this.heroName());
@@ -152,6 +158,10 @@ export class PreferencesService {
 
   setNpcChatter(on: boolean): void {
     this.npcChatter.set(on);
+  }
+
+  setSpriteBuildings(on: boolean): void {
+    this.spriteBuildings.set(on);
   }
 
   setHero(name: string, sheet: string, char: number): void {
@@ -212,6 +222,11 @@ export class PreferencesService {
   private readNpcChatter(): boolean {
     migrateWorldMapPrefs();
     return localStorage.getItem(CHATTER_KEY) !== '0';
+  }
+
+  private readSpriteBuildings(): boolean {
+    migrateWorldMapPrefs();
+    return localStorage.getItem(SPRITE_BUILDINGS_KEY) === '1';
   }
 
   private readHeroName(): string {

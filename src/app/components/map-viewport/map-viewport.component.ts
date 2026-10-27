@@ -1656,6 +1656,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       outlineAmt: this.prefs.zoneOverlay(),
       cloudAmt: this.prefs.fogCover(),
       nametagScale: this.prefs.nametagScale(),
+      spriteBuildings: this.prefs.spriteBuildings(),
       remotePlayers,
       localPeerId: this.room.connected() ? selfId : null,
       speechBubbles: [

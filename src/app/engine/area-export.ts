@@ -1,5 +1,5 @@
 /**
- * AreaExport v0.1 — deterministic place payload for the Trailbound controller.
+ * AreaExport v0.2 — deterministic place payload for the Trailbound controller.
  * Engine-only (no Angular). Types in this file are the schema source of truth.
  *
  * Street chunks are baked here in (y, x) order, twice, so shared edges do not
@@ -17,14 +17,27 @@ import {
   chunkKey,
   tileKey,
 } from '../models/world.models';
-import { BuildingShape, buildingDef, buildingLabel, isBuildingSprite } from './buildings';
+import { BuildingShape, buildingLabel, isBuildingSprite } from './buildings';
+import {
+  PART_CODE,
+  PART_LEGEND,
+  placedMask,
+  rotateCardinal,
+  rotateRidge,
+  structureBounds,
+  structureIsRect,
+  templateById,
+  templatesForType,
+  type BuildingRotation,
+  type RoofStyle,
+} from './building-templates';
 import { generateChunk, neighborMap } from './chunk-gen';
 import { SEASON, biomeSeason } from './tileset';
 
 /** Schema version. The controller rejects an unknown major version. */
-export const AREA_EXPORT_VERSION = '0.1.0';
+export const AREA_EXPORT_VERSION = '0.2.0';
 /** Date stamped into `source.build` (not a git sha). */
-export const AREA_EXPORT_BUILD = '2026-10-26';
+export const AREA_EXPORT_BUILD = '2026-10-27';
 /** Alex: 1 inner tile = 1 metre. */
 export const METERS_PER_TILE = 1;
 /**
@@ -78,7 +91,7 @@ export const BIOME_NAMES = [
   'Ashlands',
 ] as const;
 
-export const GROUND_CLASSES = ['grass', 'dirt', 'road', 'lot', 'plaza', 'water', 'sand', 'rock'] as const;
+export const GROUND_CLASSES = ['grass', 'dirt', 'road', 'lot', 'plaza', 'water', 'sand', 'rock', 'yard'] as const;
 export type GroundClass = (typeof GROUND_CLASSES)[number];
 
 export const GROUND: Record<GroundClass, number> = {
@@ -90,6 +103,7 @@ export const GROUND: Record<GroundClass, number> = {
   water: 5,
   sand: 6,
   rock: 7,
+  yard: 8,
 };
 
 export type Cardinal = 'N' | 'E' | 'S' | 'W';
@@ -193,17 +207,51 @@ export interface AreaRoadPolyline {
   points: [number, number][];
 }
 
+export interface AreaTiles {
+  w: number;
+  h: number;
+  enc: 'b64u8';
+  data: string;
+  /** Index order for the mask bytes. Same as `PART_LEGEND`. */
+  legend: string[];
+}
+
 export interface AreaBuilding {
   id: string;
+  /** Legacy roster key (`cottage-1`, `shop`, …). */
   type: string;
+  templateId: string;
+  /**
+   * South-centre of the structure AABB, absolute inner tiles.
+   * v0.1 used this same anchor for a solid lot whose door was always south.
+   */
   x: number;
   y: number;
+  /** Structure AABB size in metres. v0.1 readers extrude this box. */
   footW: number;
   footD: number;
-  shape: BuildingShape;
-  rotation: 0;
-  door: 'S';
+  /** North-west corner of the plot (minimum x, minimum y). */
+  plotX: number;
+  plotY: number;
+  plotW: number;
+  plotD: number;
+  /** North-west corner of the structure AABB. */
+  structureX: number;
+  structureY: number;
+  structureW: number;
+  structureD: number;
+  shape: BuildingShape | 'mask';
+  rotation: BuildingRotation;
+  /** Primary door after rotation. */
+  door: Cardinal;
+  /** Absolute inner tile of the primary door cell. */
+  doorCell: { x: number; y: number };
   label: string;
+  storeys: number;
+  wallHeightM: number;
+  roof: { style: RoofStyle; ridge: 'E-W' | 'N-S' };
+  /** World-aligned plot mask. Rotation is already applied. */
+  tiles: AreaTiles;
 }
 
 export interface AreaProp {
@@ -253,7 +301,8 @@ const NOTES = [
   'Water level is derived. See layers.water.note. world-map does not store a water line or depth.',
   'Road polylines are not traced in 0.1.0. Ground classes road and dirt are the road mask. roads.worldTiles are the coarse world-grid flags.',
   'Neighbours are metadata only. The grids cover this isolated place, not places that merely touch it.',
-  'Desert maps to ground class sand. Mountain maps to rock. Other dry land is grass unless a path, lot, or plaza overrides it. Snow stays grass.',
+  'Desert maps to ground class sand. Mountain maps to rock. Other dry land is grass unless a path, lot, plaza, or yard overrides it. Snow stays grass.',
+  'v0.2 buildings add a human-scale structure inside a larger plot. footW/footD are the structure AABB. tiles is the world-aligned mask (yard, floor, wall, door, window, tower). rotation is 0, 90, 180, or 270. door and doorCell are the opening after that rotation.',
   'Season is the tileset row for the place biome (summer, autumn, winter, lush), not a simulated calendar.',
   'meta.exportedAt and meta.timeOfDayHours are excluded from meta.hash.',
 ];
@@ -270,6 +319,7 @@ const HEIGHT_NOTE =
 export function groundClass(biome: Biome, path: boolean, cobble: number, worldRoad: boolean): number {
   if (cobble === 2) return GROUND.plaza;
   if (cobble === 1) return GROUND.lot;
+  if (cobble === 3) return GROUND.yard;
   if (path && worldRoad) return GROUND.road;
   if (path) return GROUND.dirt;
   if (biome === Biome.Water) return GROUND.water;
@@ -506,6 +556,68 @@ function uniqueTiles(tiles: Vec2[]): Vec2[] {
   return out;
 }
 
+function buildingRecord(spr: PlacedSprite, anchorX: number, anchorY: number): AreaBuilding {
+  const tmpl = (spr.templateId && templateById(spr.templateId)) || templatesForType(spr.sprite)[0];
+  if (!tmpl) throw new Error(`no template for ${spr.sprite}`);
+  const rotation: BuildingRotation = spr.rotation ?? 0;
+  const mask = placedMask(tmpl.id, rotation);
+  if (!mask) throw new Error(`no mask for ${tmpl.id}`);
+  const plotW = mask.w;
+  const plotD = mask.d;
+  const plotX = Math.round(anchorX - plotW / 2);
+  const plotY = Math.round(anchorY - plotD);
+  const bounds = structureBounds(mask.parts, mask.w, mask.d);
+  const structureX = plotX + bounds.x;
+  const structureY = plotY + bounds.y;
+  const bytes = new Uint8Array(mask.parts.length);
+  const doors: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i < mask.parts.length; i++) {
+    bytes[i] = PART_CODE[mask.parts[i]!]!;
+    if (mask.parts[i] === 'door') doors.push({ x: i % mask.w, y: Math.floor(i / mask.w) });
+  }
+  let doorX = structureX;
+  let doorY = structureY + Math.max(0, bounds.d - 1);
+  if (doors.length) {
+    const meanX = doors.reduce((sum, door) => sum + door.x, 0) / doors.length;
+    const meanY = doors.reduce((sum, door) => sum + door.y, 0) / doors.length;
+    doors.sort((a, b) => Math.hypot(a.x - meanX, a.y - meanY) - Math.hypot(b.x - meanX, b.y - meanY));
+    doorX = plotX + doors[0]!.x;
+    doorY = plotY + doors[0]!.y;
+  }
+  return {
+    id: '',
+    type: spr.sprite,
+    templateId: tmpl.id,
+    x: round3(structureX + bounds.w / 2),
+    y: round3(structureY + bounds.d),
+    footW: bounds.w,
+    footD: bounds.d,
+    plotX,
+    plotY,
+    plotW,
+    plotD,
+    structureX,
+    structureY,
+    structureW: bounds.w,
+    structureD: bounds.d,
+    shape: structureIsRect(mask.parts, mask.w) ? 'rect' : 'mask',
+    rotation,
+    door: rotateCardinal(tmpl.doorFacing, rotation),
+    doorCell: { x: doorX, y: doorY },
+    label: buildingLabel(spr.sprite),
+    storeys: tmpl.storeys,
+    wallHeightM: tmpl.wallHeightM,
+    roof: { style: tmpl.roof.style, ridge: rotateRidge(tmpl.roof.ridge, rotation) },
+    tiles: {
+      w: mask.w,
+      h: mask.d,
+      enc: 'b64u8',
+      data: encodeB64U8(bytes),
+      legend: [...PART_LEGEND],
+    },
+  };
+}
+
 function pushSprite(
   buildings: AreaBuilding[],
   props: AreaProp[],
@@ -516,22 +628,10 @@ function pushSprite(
   const x = round3(tile.x * ZONE_SCALE + spr.x);
   const y = round3(tile.y * ZONE_SCALE + spr.y);
   if (isBuildingSprite(spr.sprite)) {
-    const key = `${spr.sprite}:${x}:${y}`;
+    const key = `${spr.templateId ?? spr.sprite}:${x}:${y}`;
     if (seen.has(key)) return;
     seen.add(key);
-    const def = buildingDef(spr.sprite);
-    buildings.push({
-      id: '',
-      type: spr.sprite,
-      x,
-      y,
-      footW: spr.footW ?? def?.footW ?? 8,
-      footD: spr.footD ?? def?.footD ?? 6,
-      shape: def?.shell.shape ?? 'rect',
-      rotation: 0,
-      door: 'S',
-      label: buildingLabel(spr.sprite),
-    });
+    buildings.push(buildingRecord(spr, x, y));
     return;
   }
   props.push({ type: spr.sprite, class: propClass(spr.sprite), x, y });

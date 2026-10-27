@@ -71,7 +71,13 @@ import { RoomService } from '../../services/room.service';
         >
           NPC chatter
         </mat-slide-toggle>
-        <p class="note">Travelers, caravans, and hosts stay visible even off-screen isolation or fog. Chatter is occasional talk about places and people.</p>
+        <mat-slide-toggle
+          [checked]="prefs.spriteBuildings()"
+          (change)="prefs.setSpriteBuildings($event.checked)"
+        >
+          Sprite buildings
+        </mat-slide-toggle>
+        <p class="note">Travelers, caravans, and hosts stay visible even off-screen isolation or fog. Chatter is occasional talk about places and people. Sprite buildings swaps tile roofs for the old Town Tale pictures.</p>
         <div class="slider-row">
           <span>Zones</span>
           <mat-slider min="0" max="100" step="1" discrete class="overlay-slider">

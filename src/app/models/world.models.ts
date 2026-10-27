@@ -478,9 +478,13 @@ export interface PlacedSprite {
   sprite: string;
   x: number;
   y: number;
-  /** Inner-tile ground lot, set on street-scale buildings for interiors. */
+  /** Axis-aligned plot in inner tiles. Set on street-scale buildings. */
   footW?: number;
   footD?: number;
+  /** Stamp id from building-templates.ts. */
+  templateId?: string;
+  /** Quarter-turns clockwise so the door faces the street. */
+  rotation?: 0 | 90 | 180 | 270;
 }
 
 export interface ZoneData {
