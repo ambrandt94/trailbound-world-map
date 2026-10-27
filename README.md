@@ -6,9 +6,17 @@ Canvas renderer for the overworld and street zoom (Pixel Kingdom grasslands atla
 
 ## Live site
 
-https://ambrandt94.github.io/trailbound-world-map/
+- GitHub Pages: https://ambrandt94.github.io/trailbound-world-map/ (base href `/trailbound-world-map/`)
+- Cloudflare Pages: https://map.4thtower.com and https://trailbound-world-map.pages.dev (base href `/`)
 
-Deployed from `main` via GitHub Actions (`.github/workflows/deploy-pages.yml`). In the repo **Settings → Pages**, set **Source** to **GitHub Actions** (not “Deploy from a branch”).
+Both deploy from `main` via GitHub Actions (`.github/workflows/deploy-pages.yml`), on push and on workflow dispatch. In the repo **Settings → Pages**, set **Source** to **GitHub Actions** (not “Deploy from a branch”).
+
+Cloudflare Pages uploads `dist/world-map/browser` from `npm run build:cf`. The Cloudflare job skips when `CLOUDFLARE_API_TOKEN` is unset, so GitHub Pages still publishes. Add these repository secrets under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | API token with **Account → Cloudflare Pages → Edit** |
+| `CLOUDFLARE_ACCOUNT_ID` | `62ba5d132033ffc2e0cfc2a0a35c95a3` |
 
 Commit, push, and deploy in one step (message required when the tree is dirty):
 
@@ -25,10 +33,11 @@ npm start
 
 Open `http://localhost:4202/`.
 
-Production / Pages build:
+Production builds:
 
 ```bash
-npm run build:pages
+npm run build:pages   # GitHub Pages
+npm run build:cf      # Cloudflare Pages
 ```
 
 ## Controls
