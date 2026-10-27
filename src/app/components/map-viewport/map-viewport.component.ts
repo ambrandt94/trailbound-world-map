@@ -25,6 +25,7 @@ import {
   CLOSE_SCALE,
   CHUNK_STREAM_PER_FRAME,
   PlayerState,
+  playerWalkSpeed,
   SYNC_TURN_TILES,
   TILE,
   clamp,
@@ -1138,7 +1139,9 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     }
     const len = Math.hypot(mx, my) || 1;
     const sprinting = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
-    const speed = moveSpeed(this.moveSpeedBand(), sprinting);
+    const speed = this.showingGlobe()
+      ? moveSpeed('globe', sprinting)
+      : playerWalkSpeed(this.camera.scale, sprinting);
     const world = this.world.world();
     const width = world?.width ?? 192;
     const maxY = (world?.height ?? 192) - 0.5;
@@ -1552,13 +1555,6 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
 
   private usingWalker(): boolean {
     return this.prefs.adventureMode();
-  }
-
-  /** Fixed travel rates by view mode — not scaled by camera zoom. */
-  private moveSpeedBand(): 'iso' | 'overworld' | 'globe' {
-    if (this.showingGlobe()) return 'globe';
-    if (this.isolatePlaceId && !this.leavingIsolation) return 'iso';
-    return 'overworld';
   }
 
   private globeAllowed(): boolean {

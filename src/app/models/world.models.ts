@@ -68,20 +68,30 @@ export const ADVENTURE_POCKET_MAX = 16;
 export const MIN_ZONE_TILES = 8;
 export const FADE_START = 1.2;
 export const FADE_END = 3.9;
-/** Street / isolated-place walk speed (world tiles per second). Constant vs zoom. */
-export const WALK_SPEED_ISO = 0.48;
-/** Continent / overworld walk speed when not in an instance. */
-export const WALK_SPEED_OVERWORLD = 7.2;
+/** Far overworld walk speed (continent / kingdom), world tiles per second. */
+export const WALK_SPEED_OVERWORLD_FAR = 1.05;
+/** Near overworld walk speed (region / locale, below isolated detail). */
+export const WALK_SPEED_OVERWORLD_NEAR = 1.65;
+/** Isolated detail walk speed. Constant for every zoom at or above DETAIL_START. */
+export const WALK_SPEED_ISOLATED = 1.35;
+/** Scale at which overworld switches from far to near walk speed. */
+export const OVERWORLD_NEAR_SCALE = 0.95;
 /** Globe / space pan speed (map view; adventure does not use globe yet). */
 export const WALK_SPEED_GLOBE = 28;
 /** Sprint multiplier applied to every band. */
-export const SPRINT_MULT = 2.6;
+export const SPRINT_MULT = 1.75;
 
-export type MoveSpeedBand = 'iso' | 'overworld' | 'globe';
+export type MoveSpeedBand = 'iso' | 'overworld-far' | 'overworld-near' | 'globe';
 
 export function moveSpeed(band: MoveSpeedBand, sprinting: boolean): number {
   const base =
-    band === 'iso' ? WALK_SPEED_ISO : band === 'globe' ? WALK_SPEED_GLOBE : WALK_SPEED_OVERWORLD;
+    band === 'iso'
+      ? WALK_SPEED_ISOLATED
+      : band === 'globe'
+        ? WALK_SPEED_GLOBE
+        : band === 'overworld-near'
+          ? WALK_SPEED_OVERWORLD_NEAR
+          : WALK_SPEED_OVERWORLD_FAR;
   return base * (sprinting ? SPRINT_MULT : 1);
 }
 export const GAME_HOURS_PER_REAL_SEC = 8 / 60;
@@ -2190,6 +2200,13 @@ export function placeTouchesTile(place: MapNode, x: number, y: number): boolean 
     if (Math.abs(t.x - x) + Math.abs(t.y - y) <= 1) return true;
   }
   return false;
+}
+
+/** Discrete walk speed tiers: far overworld, near overworld, or isolated detail. */
+export function playerWalkSpeed(scale: number, sprint = false): number {
+  const band: MoveSpeedBand =
+    scale >= DETAIL_START ? 'iso' : scale >= OVERWORLD_NEAR_SCALE ? 'overworld-near' : 'overworld-far';
+  return moveSpeed(band, sprint);
 }
 
 export function scaleLabel(scale: number, width = WORLD_BASE): string {
