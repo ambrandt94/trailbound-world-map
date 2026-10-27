@@ -72,7 +72,7 @@ Chunks are regenerated inside the exporter, not copied from the session. Tiles a
 y = (raw - min) / (max - min) * reliefMeters
 ```
 
-bilinear between corners. `RELIEF_METERS` is **6**. `reliefMeters` is `6 × reliefBiomeMultiplier`. The multiplier is the highest entry below among the place’s own biome and the biomes of its world tiles:
+bilinear between corners. `RELIEF_METERS` is **15**. `reliefMeters` is `15 × reliefBiomeMultiplier`. The multiplier is the highest entry below among the place’s own biome and the biomes of its world tiles. Both values are named constants (`RELIEF_METERS`, `RELIEF_BIOME_MULT`). Those height fields were already on the export, so the relief change does not bump the version. Buildings do: the schema is **0.2.0**.
 
 | Biome | Multiplier |
 | --- | --- |
@@ -80,11 +80,11 @@ bilinear between corners. `RELIEF_METERS` is **6**. `reliefMeters` is `6 × reli
 | Forest, DarkForest, Desert, Jungle | 1.15 |
 | Heath, Taiga | 1.35 |
 | Ashlands | 1.5 |
-| Hills | 1.75 |
+| Hills | 2 |
 | Snow | 2.25 |
-| Mountain | 2.5 |
+| Mountain | 3 |
 
-On seed 7741, Dunharrow is Hills and exports `reliefMeters: 10.5`. Ironmarch’s site landed on Plains, so that town stays at 6 m. The check script asserts the Hills case.
+On seed 7741, Dunharrow is Hills and exports `reliefMeters: 30`. Ironmarch’s site landed on Plains, so that town stays at 15 m. The check script asserts the Hills case. Play in 3D and Download area JSON use these defaults; the map UI has no separate relief slider.
 
 ### Water level
 
@@ -141,9 +141,9 @@ AREA_EXPORT_WRITE=1 npx tsx scripts/area-export-check.ts
 
 | File | Place | What it is |
 | --- | --- | --- |
-| `fixtures/area-veldcross.json` | Ironmarch | Town, streets and buildings. `sha1:1a34411ae55827e1a426edf2ebeeb8cfeb9e19d9` |
-| `fixtures/area-hollowmere.json` | Shadowglen | Grove, trees, no buildings. `sha1:acd5f652efb88e6c15fc1f20bdd6344152f7d0e6` |
-| `fixtures/area-jadewild.json` | Jadewild | Forest grove with water cells. `sha1:2792100302e5ee90e855725488cf524bb3d5fc57` |
+| `fixtures/area-veldcross.json` | Ironmarch | Town, streets and buildings. `sha1:06bc6667a87a957d81dcc79990700179eacc04d5` |
+| `fixtures/area-hollowmere.json` | Shadowglen | Grove, trees, no buildings. `sha1:30311fc2070ce03e3e04f9661942e4ad28cd8410` |
+| `fixtures/area-jadewild.json` | Jadewild | Forest grove with water cells. `sha1:549079628cb80cc48f7d92846419a892308b806d` |
 
 Jadewild header (grids omitted):
 
@@ -155,10 +155,10 @@ Jadewild header (grids omitted):
   "area": { "id": "jadewild", "name": "Jadewild", "kind": "grove", "origin": "authored", "biome": "Forest", "worldBounds": { "x0": 351, "y0": 615, "x1": 358, "y1": 626 }, "innerOrigin": { "x": 2808, "y": 4920 } },
   "units": { "zoneScale": 8, "metersPerTile": 1, "upAxis": "y", "gridAxes": "x-right,y-down", "seaLevel": 0.36 },
   "layers": {
-    "height": { "sampling": "world-tile-corners", "reliefBaseMeters": 6, "reliefBiomeMultiplier": 1.15, "reliefBiome": "Forest", "reliefMeters": 6.9 },
-    "water": { "level": 2.241, "raw": 0.37502, "fromBiome": true, "present": true }
+    "height": { "sampling": "world-tile-corners", "reliefBaseMeters": 15, "reliefBiomeMultiplier": 1.15, "reliefBiome": "Forest", "reliefMeters": 17.25 },
+    "water": { "level": 5.6024, "raw": 0.37502, "fromBiome": true, "present": true }
   },
   "entries": [{ "id": "player", "kind": "spawn", "x": 2843.5, "y": 4977.5, "facing": "E" }],
-  "meta": { "hash": "sha1:2792100302e5ee90e855725488cf524bb3d5fc57" }
+  "meta": { "hash": "sha1:549079628cb80cc48f7d92846419a892308b806d" }
 }
 ```

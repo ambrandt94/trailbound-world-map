@@ -48,6 +48,7 @@ npm run build:cf      # Cloudflare Pages
 - **Planet view** (Settings): a globe you can zoom all the way into (on explored land). Off keeps a flat continent map.
 - Click a traveler in explored land to zoom in
 - Toolbar: Room (PIN lobby), Adventure, sim clock, recenter, zoom, settings, theme
+- Map dock **Elevation** (off by default) tints the flat map and street zoom with a height ramp. Settings can add contour lines. The location panel keeps the continental metre readout (height × 3200). The globe is unchanged.
 - In **sync** sim mode, Space waits a turn
 
 ## Online rooms
@@ -87,7 +88,7 @@ Overlay panel: continent scale (`1×`–`16×` of a 192-tile base), land shape (
 
 ## Persist
 
-`localStorage`: seed, generated nodes per seed, visited authored places, outline/POI toggles, sim mode, world setup, theme, planet view, adventure flags. Chunks are in-memory for the session. **Clear detail** forgets generated places and baked tiles; authored nodes stay. A prefs version bump clears stale setup/adventure/planet keys once, then keeps saving new choices.
+`localStorage`: seed, generated nodes per seed, visited authored places, outline/POI toggles, height and contour toggles, sim mode, world setup, theme, planet view, adventure flags. Chunks are in-memory for the session. **Clear detail** forgets generated places and baked tiles; authored nodes stay. A prefs version bump clears stale setup/adventure/planet keys once, then keeps saving new choices.
 
 ## Layout
 

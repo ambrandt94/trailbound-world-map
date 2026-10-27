@@ -11,6 +11,8 @@ import {
   AREA_EXPORT_VERSION,
   GROUND,
   GROUND_CLASSES,
+  RELIEF_BIOME_MULT,
+  RELIEF_METERS,
   buildAreaExport,
   contentHash,
   decodeB64U8,
@@ -18,7 +20,7 @@ import {
 } from '../src/app/engine/area-export';
 import { PART_CODE, PART_LEGEND } from '../src/app/engine/building-templates';
 import { generateWorld } from '../src/app/engine/world-gen';
-import { DEFAULT_WORLD_SETTINGS, type MapNode, type WorldData } from '../src/app/models/world.models';
+import { Biome, DEFAULT_WORLD_SETTINGS, type MapNode, type WorldData } from '../src/app/models/world.models';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const seed = 7741;
@@ -52,7 +54,10 @@ function checkShape(area: AreaExport, place: MapNode): void {
   assert(area.layers.biome.legend?.length === 15, 'biome legend');
   assert(area.layers.ground.legend?.join() === GROUND_CLASSES.join(), 'ground legend');
   assert(area.layers.height.raw.length === area.layers.height.w * area.layers.height.h, 'height size');
-  assert(area.layers.height.reliefBaseMeters === 6, 'relief base');
+  assert(RELIEF_METERS === 15, 'named relief base');
+  assert(RELIEF_BIOME_MULT[Biome.Hills] === 2, 'hills constant');
+  assert(RELIEF_BIOME_MULT[Biome.Mountain] === 3, 'mountain constant');
+  assert(area.layers.height.reliefBaseMeters === RELIEF_METERS, 'relief base');
   assert(area.entries.some((e) => e.kind === 'spawn'), 'spawn');
   const rotations = new Set([0, 90, 180, 270]);
   for (const b of area.buildings) {
@@ -142,8 +147,8 @@ assert([...decodeB64U8(town.layers.ground.data)].some((v) => v === GROUND.yard),
 const wild = exportPlace(world, 'hollowmere');
 const hills = exportPlace(world, 'dunharrow');
 assert(hills.layers.height.reliefBiome === 'Hills', 'dunharrow biome');
-assert(hills.layers.height.reliefMeters === 10.5, `hills relief ${hills.layers.height.reliefMeters}`);
-assert(hills.layers.height.reliefBiomeMultiplier === 1.75, 'hills multiplier');
+assert(hills.layers.height.reliefMeters === 30, `hills relief ${hills.layers.height.reliefMeters}`);
+assert(hills.layers.height.reliefBiomeMultiplier === 2, 'hills multiplier');
 
 let waterPick: AreaExport | null = null;
 let waterN = -1;

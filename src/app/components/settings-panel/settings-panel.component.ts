@@ -77,7 +77,20 @@ import { RoomService } from '../../services/room.service';
         >
           Sprite buildings
         </mat-slide-toggle>
-        <p class="note">Travelers, caravans, and hosts stay visible even off-screen isolation or fog. Chatter is occasional talk about places and people. Sprite buildings swaps tile roofs for the old Town Tale pictures.</p>
+        <mat-slide-toggle
+          [checked]="prefs.showHeight()"
+          (change)="prefs.setShowHeight($event.checked)"
+        >
+          Height
+        </mat-slide-toggle>
+        <mat-slide-toggle
+          [checked]="prefs.showContours()"
+          [disabled]="!prefs.showHeight()"
+          (change)="prefs.setShowContours($event.checked)"
+        >
+          Contour lines
+        </mat-slide-toggle>
+        <p class="note">Travelers, caravans, and hosts stay visible even off-screen isolation or fog. Chatter is occasional talk about places and people. Sprite buildings swaps tile roofs for the old Town Tale pictures. Height tints the flat map and street zoom; contours are optional.</p>
         <div class="slider-row">
           <span>Zones</span>
           <mat-slider min="0" max="100" step="1" discrete class="overlay-slider">

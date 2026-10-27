@@ -13,6 +13,8 @@ const OVERLAY_KEY = 'tb-world-map-zone-overlay';
 const CLOUD_KEY = 'tb-world-map-cloud-cover';
 const CLOUD_OK = 'tb-world-map-cloud-cover-ok';
 const MARKERS_KEY = 'tb-world-map-world-markers';
+const HEIGHT_KEY = 'tb-world-map-height';
+const CONTOUR_KEY = 'tb-world-map-contours';
 const NAMETAG_KEY = 'tb-world-map-nametag-scale';
 const CHATTER_KEY = 'tb-world-map-npc-chatter';
 const SPRITE_BUILDINGS_KEY = 'tb-world-map-sprite-buildings';
@@ -55,6 +57,10 @@ export class PreferencesService {
   readonly fogEnabled = FOG_OF_WAR_ENABLED;
   /** Always show traveler / caravan / host positions on the map. */
   readonly showWorldMarkers = signal(this.readWorldMarkers());
+  /** Elevation tint on the flat map and street zoom. Off until chosen. */
+  readonly showHeight = signal(this.readHeight());
+  /** Contour lines drawn with the height tint. */
+  readonly showContours = signal(this.readContours());
   /** Size vs the original 10px pixel nametag. Default 1.5. */
   readonly nametagScale = signal(this.readNametagScale());
   readonly npcChatter = signal(this.readNpcChatter());
@@ -92,6 +98,12 @@ export class PreferencesService {
     });
     effect(() => {
       localStorage.setItem(MARKERS_KEY, this.showWorldMarkers() ? '1' : '0');
+    });
+    effect(() => {
+      localStorage.setItem(HEIGHT_KEY, this.showHeight() ? '1' : '0');
+    });
+    effect(() => {
+      localStorage.setItem(CONTOUR_KEY, this.showContours() ? '1' : '0');
     });
     effect(() => {
       localStorage.setItem(NAMETAG_KEY, String(this.nametagScale()));
@@ -152,6 +164,14 @@ export class PreferencesService {
     this.showWorldMarkers.set(on);
   }
 
+  setShowHeight(on: boolean): void {
+    this.showHeight.set(on);
+  }
+
+  setShowContours(on: boolean): void {
+    this.showContours.set(on);
+  }
+
   setNametagScale(amt: number): void {
     this.nametagScale.set(Math.min(4.5, Math.max(0.5, amt)));
   }
@@ -210,6 +230,16 @@ export class PreferencesService {
   private readWorldMarkers(): boolean {
     migrateWorldMapPrefs();
     return localStorage.getItem(MARKERS_KEY) !== '0';
+  }
+
+  private readHeight(): boolean {
+    migrateWorldMapPrefs();
+    return localStorage.getItem(HEIGHT_KEY) === '1';
+  }
+
+  private readContours(): boolean {
+    migrateWorldMapPrefs();
+    return localStorage.getItem(CONTOUR_KEY) === '1';
   }
 
   private readNametagScale(): number {
