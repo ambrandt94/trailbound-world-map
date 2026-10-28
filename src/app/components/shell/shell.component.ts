@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -9,7 +9,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { PreferencesService } from '../../services/preferences.service';
 import { RoomService } from '../../services/room.service';
 import { WorldService } from '../../services/world.service';
-import { WorldSettings } from '../../models/world.models';
+import { WorldSettings, travelPaceHint } from '../../models/world.models';
 import { LocationPanelComponent } from '../location-panel/location-panel.component';
 import { MapViewportComponent } from '../map-viewport/map-viewport.component';
 import { SettingsPanelComponent } from '../settings-panel/settings-panel.component';
@@ -211,8 +211,8 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
         <app-location-panel class="loc-sheet" />
         <p class="hint">
           Scroll · drag
-          @if (prefs.adventureMode()) {
-            · WASD · Shift sprint
+          @if (paceHint()) {
+            · {{ paceHint() }}
           }
           @if (world.simMode() === 'sync') {
             · Space waits
@@ -409,7 +409,7 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
     }
     .hint {
       margin: 0;
-      max-width: 16rem;
+      max-width: 22rem;
       text-align: right;
       font-size: 0.7rem;
       color: var(--tb-muted);
@@ -560,6 +560,7 @@ export class ShellComponent {
   readonly heroOpen = signal(false);
   readonly heroMode = signal<'adventure' | 'room'>('adventure');
   readonly roomOpen = signal(false);
+  readonly paceHint = computed(() => (this.prefs.adventureMode() ? travelPaceHint(this.world.scale()) : ''));
   chatDraft = '';
 
   constructor() {

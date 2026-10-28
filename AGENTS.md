@@ -34,7 +34,7 @@ Overworld and street detail use Pixel Kingdom grasslands / Town Tale buildings u
 
 ## Controls
 
-Scroll zoom (out to space in planet view, in to street on explored land), drag pan / orbit. Adventure mode adds a walker (WASD, **Shift** to sprint) and stays on the fitted continent. Walker speed uses discrete tiers: far overworld 1.05 tiles/s, near overworld 1.65, isolated detail 1.35, with Shift sprint at 1.75×. Globe map pan keeps its own speed. Toolbar: **Room**, **Adventure**, clock, zoom, settings (overlays + clear/new seed), theme. Map dock: outlines, POIs, world markers.
+Scroll zoom (out to space in planet view, in to street on explored land), drag pan / orbit. Adventure mode adds a walker (WASD, **Shift** to sprint) and stays on the fitted continent. One world tile is 8 m (eight 1 m street tiles). Walk is **5 km/h** and sprint is **10 km/h**; overworld tiles/s comes from that pace and the game clock (`GAME_HOURS_PER_REAL_SEC`, about 83 tiles/s at sim rate 1). Closer overworld zoom caps on-screen pace so the map stays steerable, and never drops below the old 7.2 tiles/s. Isolated streets keep a human pace (2 m/s walk, 4 m/s sprint) while the clock runs at its normal rate. Globe map pan keeps `WALK_SPEED_GLOBE`. Toolbar: **Room**, **Adventure**, clock, zoom, settings (overlays + clear/new seed), theme. Map dock: outlines, POIs, world markers.
 
 ## Online rooms (P2P)
 

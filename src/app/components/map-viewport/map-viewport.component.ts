@@ -26,6 +26,7 @@ import {
   CHUNK_STREAM_PER_FRAME,
   PlayerState,
   playerWalkSpeed,
+  travelSpeedTilesPerSec,
   SYNC_TURN_TILES,
   TILE,
   clamp,
@@ -42,7 +43,6 @@ import {
   leaveScaleForFit,
   minScaleFor,
   knownPlaceAt,
-  moveSpeed,
   nodeContaining,
   boundsFromTiles,
   clampLatY,
@@ -1140,7 +1140,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const len = Math.hypot(mx, my) || 1;
     const sprinting = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
     const speed = this.showingGlobe()
-      ? moveSpeed('globe', sprinting)
+      ? travelSpeedTilesPerSec('globe', sprinting)
       : playerWalkSpeed(this.camera.scale, sprinting);
     const world = this.world.world();
     const width = world?.width ?? 192;
