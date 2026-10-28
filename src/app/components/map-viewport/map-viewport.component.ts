@@ -799,7 +799,10 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     if (!world || !id) return null;
     const place = world.nodes.find((n) => n.id === id);
     if (!place?.tiles?.length) return null;
-    return buildAreaExport(world, place, { timeOfDayHours: this.world.simHours() });
+    return buildAreaExport(world, place, {
+      timeOfDayHours: this.world.simHours(),
+      residents: this.world.residentExport(place.id),
+    });
   }
 
   reloadFromWorld(): void {
@@ -2136,7 +2139,10 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     if (!data) return null;
     const place = data.nodes.find((node) => node.id === stored.placeId);
     if (!place?.tiles?.length) return null;
-    const area = buildAreaExport(data, place, { timeOfDayHours: stored.clockHours });
+    const area = buildAreaExport(data, place, {
+      timeOfDayHours: stored.clockHours,
+      residents: this.world.residentExport(place.id),
+    });
     if (area.meta.hash !== stored.areaHash) return null;
     const payload: AreaExport = {
       ...area,

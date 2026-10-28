@@ -1,11 +1,21 @@
 import { Component, computed, inject } from '@angular/core';
+import { MatChipsModule } from '@angular/material/chips';
+import { residentCountFor } from '../../engine/entities';
 import { formatMeters } from '../../engine/height-view';
-import { ENTITY_LABELS, POI_LABELS, minScaleFor, zoomProgress } from '../../models/world.models';
+import {
+  crowdSize,
+  countDwellings,
+  isSettlementKind,
+  residentCensus,
+  resolveResidentParams,
+} from '../../engine/residents';
+import { ENTITY_LABELS, POI_LABELS, ResidentsMode, minScaleFor, zoomProgress } from '../../models/world.models';
 import { WorldService } from '../../services/world.service';
 
 @Component({
   selector: 'app-location-panel',
   standalone: true,
+  imports: [MatChipsModule],
   template: `
     <aside class="panel">
       <div class="eyebrow">Location</div>
@@ -36,6 +46,38 @@ import { WorldService } from '../../services/world.service';
           <dd>{{ world.simHud().wanderers }} · {{ world.simHud().caravans }} · {{ world.simHud().armies }} hosts</dd>
         </div>
       </dl>
+      @if (residents(); as row) {
+        <div class="residents">
+          <div class="label">Residents</div>
+          <mat-chip-set class="mode-set">
+            <mat-chip [highlighted]="row.override === null" (click)="useWorldDefault()">World default</mat-chip>
+            <mat-chip [highlighted]="row.override !== null && row.override.mode === 'perPlace'" (click)="useMode('perPlace')">Per place</mat-chip>
+            <mat-chip [highlighted]="row.override !== null && row.override.mode === 'perHouse'" (click)="useMode('perHouse')">Per house</mat-chip>
+          </mat-chip-set>
+          @if (row.override) {
+            <label class="avg">
+              Average
+              <input
+                type="number"
+                min="0"
+                [max]="row.override.mode === 'perHouse' ? 20 : 500"
+                [step]="row.override.mode === 'perHouse' ? 0.1 : 1"
+                [value]="row.override.avg"
+                (change)="onAvg($event)"
+              />
+            </label>
+          } @else {
+            <p class="note">{{ row.mode === 'perPlace' ? 'Per place' : 'Per house' }} · avg {{ row.avg }} · jitter ±25%</p>
+          }
+          <p class="count">
+            <span class="tb-mono">{{ row.count }}</span> residents
+            @if (row.mode === 'perHouse') {
+              · {{ row.houses }} houses
+            }
+            · crowd {{ row.crowd }} · {{ row.named }} named
+          </p>
+        </div>
+      }
       @if (heard(); as line) {
         <p class="heard"><span>{{ line.name }}</span> {{ line.text }}</p>
       }
@@ -184,6 +226,46 @@ import { WorldService } from '../../services/world.service';
       color: var(--tb-accent-strong);
       margin-bottom: 0.12rem;
     }
+    .residents {
+      margin: 0 0 0.7rem;
+    }
+    .residents .label {
+      font-size: 0.66rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--tb-muted);
+      margin-bottom: 0.28rem;
+    }
+    .mode-set {
+      margin: 0 0 0.35rem;
+    }
+    .note,
+    .count {
+      margin: 0.12rem 0 0;
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
+    .note {
+      color: var(--tb-muted);
+    }
+    .avg {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.1rem;
+      font-size: 0.78rem;
+      color: var(--tb-muted);
+    }
+    .avg input {
+      width: 4.4rem;
+      font: inherit;
+      color: var(--tb-ink);
+      background: transparent;
+      border: 1px solid color-mix(in srgb, var(--tb-ink) 18%, transparent);
+      border-radius: 8px;
+      padding: 0.15rem 0.35rem;
+    }
     @media (max-width: 800px) {
       .panel {
         width: min(16.5rem, 100%);
@@ -239,4 +321,64 @@ export class LocationPanelComponent {
     const list = this.world.npcBubbles();
     return list.length ? list[list.length - 1]! : null;
   });
+
+  readonly residents = computed(() => {
+    const world = this.world.world();
+    const loc = this.world.location();
+    const settings = this.world.settings();
+    const overrides = this.world.residentOverrides();
+    if (!world || !loc.nodeId || !isSettlementKind(loc.nodeKind)) return null;
+    const place = world.nodes.find((node) => node.id === loc.nodeId);
+    if (!place) return null;
+    const houses = countDwellings(place, world.seed);
+    const named = residentCountFor(place);
+    const override = overrides[place.id] ?? null;
+    const params = resolveResidentParams(settings, override);
+    const count = residentCensus({
+      seed: world.seed,
+      placeId: place.id,
+      mode: params.mode,
+      avg: params.avg,
+      houses,
+    });
+    return {
+      id: place.id,
+      override,
+      mode: params.mode,
+      avg: params.avg,
+      houses,
+      named,
+      count,
+      crowd: crowdSize(count, named),
+    };
+  });
+
+  useWorldDefault(): void {
+    const row = this.residents();
+    if (!row) return;
+    this.world.setResidentOverride(row.id, null);
+  }
+
+  useMode(mode: ResidentsMode): void {
+    const row = this.residents();
+    if (!row) return;
+    const settings = this.world.settings();
+    const avg =
+      row.override?.mode === mode
+        ? row.override.avg
+        : mode === 'perHouse'
+          ? settings.avgPerHouse
+          : settings.avgPerPlace;
+    this.world.setResidentOverride(row.id, { mode, avg });
+  }
+
+  onAvg(event: Event): void {
+    const row = this.residents();
+    const input = event.target;
+    if (!row?.override || !(input instanceof HTMLInputElement)) return;
+    const avg = Number(input.value);
+    this.world.setResidentOverride(row.id, { mode: row.override.mode, avg });
+    const saved = this.world.residentOverrides()[row.id];
+    if (saved) input.value = String(saved.avg);
+  }
 }
