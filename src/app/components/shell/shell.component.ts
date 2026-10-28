@@ -408,13 +408,20 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
       pointer-events: auto;
     }
     .hint {
+      position: absolute;
+      left: 11rem;
+      bottom: 0;
       margin: 0;
-      max-width: 22rem;
-      text-align: right;
+      max-width: min(26rem, calc(100% - 28rem));
+      text-align: left;
       font-size: 0.7rem;
+      line-height: 1.35;
       color: var(--tb-muted);
       text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
       pointer-events: none;
+      padding: 0.15rem 0.4rem;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--tb-panel) 78%, transparent);
     }
     .presence {
       position: absolute;
