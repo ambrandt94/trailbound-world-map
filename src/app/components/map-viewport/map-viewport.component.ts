@@ -24,8 +24,11 @@ import {
   MAX_SCALE,
   CLOSE_SCALE,
   CHUNK_STREAM_PER_FRAME,
+  METERS_PER_WORLD_TILE,
   PlayerState,
   playerWalkSpeed,
+  travelChargePaceMps,
+  travelSpeedTilesPerSec,
   SYNC_TURN_TILES,
   TILE,
   clamp,
@@ -42,7 +45,6 @@ import {
   leaveScaleForFit,
   minScaleFor,
   knownPlaceAt,
-  moveSpeed,
   nodeContaining,
   boundsFromTiles,
   clampLatY,
@@ -1085,10 +1087,14 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.lastT = t;
     this.syncWalkerMode();
     this.syncPlanetView();
+    const travelScale = this.camera.scale;
+    const sprinting = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    const ox = this.player.x;
+    const oy = this.player.y;
     this.stepPlayer(dt);
     this.confinePlayerToIsolation();
     if (this.world.interior() && this.camera.scale < DETAIL_START) this.world.leaveInterior();
-    this.stepSim(dt);
+    if (!this.chargeWalkerTravel(ox, oy, travelScale, sprinting)) this.stepSim(dt);
     this.stepCamera(dt);
     this.maybeGenerate();
     this.draw();
@@ -1140,7 +1146,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const len = Math.hypot(mx, my) || 1;
     const sprinting = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
     const speed = this.showingGlobe()
-      ? moveSpeed('globe', sprinting)
+      ? travelSpeedTilesPerSec('globe', sprinting)
       : playerWalkSpeed(this.camera.scale, sprinting);
     const world = this.world.world();
     const width = world?.width ?? 192;
@@ -1175,6 +1181,21 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
         turns += 1;
       }
     }
+  }
+
+  /**
+   * While the adventure walker actually moves, game time is distance ÷ pace
+   * and replaces the sim-rate tick. Sync mode keeps its turn clock instead,
+   * so a room on sync does not advance twice. Standing still uses the sim rate.
+   */
+  private chargeWalkerTravel(ox: number, oy: number, scale: number, sprinting: boolean): boolean {
+    if (!this.usingWalker() || this.showingGlobe()) return false;
+    if (this.world.simMode() === 'sync') return false;
+    const width = this.world.world()?.width ?? 192;
+    const tiles = Math.hypot(wrapDeltaX(ox, this.player.x, width), this.player.y - oy);
+    if (!(tiles > 1e-6)) return false;
+    this.world.advanceTravel(tiles * METERS_PER_WORLD_TILE, travelChargePaceMps(scale, sprinting));
+    return true;
   }
 
   private stepSim(dt: number): void {

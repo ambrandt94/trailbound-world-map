@@ -68,33 +68,130 @@ export const ADVENTURE_POCKET_MAX = 16;
 export const MIN_ZONE_TILES = 8;
 export const FADE_START = 1.2;
 export const FADE_END = 3.9;
-/** Far overworld walk speed (continent / kingdom), world tiles per second. */
-export const WALK_SPEED_OVERWORLD_FAR = 1.05;
-/** Near overworld walk speed (region / locale, below isolated detail). */
-export const WALK_SPEED_OVERWORLD_NEAR = 1.65;
-/** Isolated detail walk speed. Constant for every zoom at or above DETAIL_START. */
-export const WALK_SPEED_ISOLATED = 1.35;
-/** Scale at which overworld switches from far to near walk speed. */
-export const OVERWORLD_NEAR_SCALE = 0.95;
-/** Globe / space pan speed (map view; adventure does not use globe yet). */
+/** Globe / space pan speed (map view; adventure does not use the globe). World tiles per second. */
 export const WALK_SPEED_GLOBE = 28;
-/** Sprint multiplier applied to every band. */
-export const SPRINT_MULT = 1.75;
-
-export type MoveSpeedBand = 'iso' | 'overworld-far' | 'overworld-near' | 'globe';
-
-export function moveSpeed(band: MoveSpeedBand, sprinting: boolean): number {
-  const base =
-    band === 'iso'
-      ? WALK_SPEED_ISOLATED
-      : band === 'globe'
-        ? WALK_SPEED_GLOBE
-        : band === 'overworld-near'
-          ? WALK_SPEED_OVERWORLD_NEAR
-          : WALK_SPEED_OVERWORLD_FAR;
-  return base * (sprinting ? SPRINT_MULT : 1);
-}
 export const GAME_HOURS_PER_REAL_SEC = 8 / 60;
+/**
+ * Game seconds advanced per real second when the sim multiplier is 1 (Fast forward).
+ * `8/60` hours × 3600 = 480. Walker speed does not use Play/Fast/Fastest.
+ * While the walker is moving, game time comes from distance ÷ pace instead.
+ */
+export const GAME_SECONDS_PER_REAL_SEC = GAME_HOURS_PER_REAL_SEC * 3600;
+/**
+ * Largest rate-1 sim slice inside one `advanceTravel` call.
+ * `stepSimulation` treats this as seconds at sim rate 1.
+ */
+export const TRAVEL_SIM_STEP_SEC = 1 / 30;
+/**
+ * Most rate-1 sim time one `advanceTravel` call will run.
+ * 0.5 s × `GAME_HOURS_PER_REAL_SEC` = 4 game minutes, so a teleport cannot
+ * grind hours of NPC sim into a single frame. A walked frame stays under this.
+ */
+export const TRAVEL_SIM_BUDGET_SEC = 0.5;
+/**
+ * Horizontal metres. Matches AreaExport: 1 inner (street) tile = 1 m
+ * (`METERS_PER_TILE` in `area-export.ts`). One world tile is `ZONE_SCALE` inner
+ * tiles, so the overworld step is 8 m. The ×3200 elevation readout is vertical
+ * only and is not this scale.
+ *
+ * The walker always moves in world tiles. Below `DETAIL_START` (camera scale 4.2,
+ * District → Street) that step is an overworld tile. At and above it, the same
+ * step is 8 m of street.
+ */
+export const METERS_PER_INNER_TILE = 1;
+export const METERS_PER_WORLD_TILE = ZONE_SCALE * METERS_PER_INNER_TILE;
+/** Clock paces, easy to retune. Overworld tiles/s is derived from these. */
+export const WALK_PACE_KMH = 5;
+export const SPRINT_PACE_KMH = 10;
+/**
+ * Isolated street walk: metres of street per real second. Clock-true 5 km/h
+ * here is hundreds of metres per real second, so the street uses this human
+ * pace instead (sprint keeps the 10/5 ratio). Travel time on the street is
+ * distance ÷ this pace, so a stroll is clock-true at 2 or 4 m/s.
+ */
+export const STREET_WALK_MPS = 2;
+/**
+ * Overworld walk cap in CSS pixels per real second. One world tile is
+ * `scale * TILE` px. Clock speed is ~83 tiles/s (a 106 m town in ~0.16 s).
+ * That is readable at kingdom zoom and a blur once tiles are large, so closer
+ * overworld zoom uses the slower of the clock speed and this cap. Kingdom and
+ * low-region zoom stay on the raw clock. Walking charges distance ÷ pace, so
+ * the same metres cost the same game time on Play, Fast, or paused; the cap
+ * covers less ground per frame and so charges less time per frame.
+ * At `DETAIL_START` the cap is still above the old 7.2 tiles/s.
+ */
+export const OVERWORLD_MAX_WALK_PX_PER_SEC = 600;
+/** Backstop: closer overworld zoom never walks slower than the pre-tier 7.2 tiles/s. */
+export const OVERWORLD_MIN_WALK_TILES_PER_SEC = 7.2;
+
+export type TravelView = 'overworld' | 'street' | 'globe';
+
+export function sprintPaceRatio(): number {
+  return SPRINT_PACE_KMH / WALK_PACE_KMH;
+}
+
+/** Metres per game second at the overworld walk or sprint pace (5 or 10 km/h). */
+export function paceMps(sprint = false): number {
+  const kmh = sprint ? SPRINT_PACE_KMH : WALK_PACE_KMH;
+  return (kmh * 1000) / 3600;
+}
+
+/**
+ * Pace charged for travel time. Overworld is 5 or 10 km/h even when the
+ * screen cap slows the sprite. Street is 2 or 4 m/s.
+ */
+export function travelChargePaceMps(scale: number, sprint = false): number {
+  const ratio = sprint ? sprintPaceRatio() : 1;
+  if (scale >= DETAIL_START) return STREET_WALK_MPS * ratio;
+  return paceMps(sprint);
+}
+
+/** Game hours for a walk: distance ÷ pace. Zero when either input is not positive. */
+export function travelGameHours(distanceMeters: number, paceMpsValue: number): number {
+  if (!(distanceMeters > 0) || !(paceMpsValue > 0)) return 0;
+  return distanceMeters / paceMpsValue / 3600;
+}
+
+/**
+ * World tiles per real second from pace × game-seconds-per-real-second / metres per world tile.
+ * Ignores Play/Fast/Fastest so pause does not freeze the walker and fast-forward does not fling them.
+ */
+export function clockTravelTilesPerSec(sprint = false): number {
+  return (paceMps(sprint) * GAME_SECONDS_PER_REAL_SEC) / METERS_PER_WORLD_TILE;
+}
+
+/** Walker or map-pan speed. Globe pan stays on `WALK_SPEED_GLOBE` (Shift still sprints). */
+export function travelSpeedTilesPerSec(view: TravelView, sprint = false, scale = 1): number {
+  const ratio = sprint ? sprintPaceRatio() : 1;
+  if (view === 'globe') return WALK_SPEED_GLOBE * ratio;
+  if (view === 'street') return (STREET_WALK_MPS * ratio) / METERS_PER_WORLD_TILE;
+  const clock = clockTravelTilesPerSec(sprint);
+  const ppt = Math.max(1e-6, scale * TILE);
+  const screenCap = (OVERWORLD_MAX_WALK_PX_PER_SEC * ratio) / ppt;
+  const floor = OVERWORLD_MIN_WALK_TILES_PER_SEC * ratio;
+  return Math.max(floor, Math.min(clock, screenCap));
+}
+
+export function playerWalkSpeed(scale: number, sprint = false): number {
+  const view: TravelView = scale >= DETAIL_START ? 'street' : 'overworld';
+  return travelSpeedTilesPerSec(view, sprint, scale);
+}
+
+export function formatPaceKmh(kmh: number): string {
+  const n = Math.round(kmh * 10) / 10;
+  const text = Number.isInteger(n) ? String(n) : n.toFixed(1);
+  return `${text} km/h`;
+}
+
+/** Controls hint. Overworld shows the clock paces; the street shows on-screen km/h. */
+export function travelPaceHint(scale: number): string {
+  if (scale >= DETAIL_START) {
+    const walk = STREET_WALK_MPS * 3.6;
+    return `WASD ${formatPaceKmh(walk)} street · Shift ${formatPaceKmh(walk * sprintPaceRatio())}`;
+  }
+  return `WASD ${formatPaceKmh(WALK_PACE_KMH)} · Shift ${formatPaceKmh(SPRINT_PACE_KMH)}`;
+}
+
 export const PLAY_RATE = 0.125;
 export const FAST_RATE = 1;
 export const FASTEST_RATE = 8;
@@ -2200,13 +2297,6 @@ export function placeTouchesTile(place: MapNode, x: number, y: number): boolean 
     if (Math.abs(t.x - x) + Math.abs(t.y - y) <= 1) return true;
   }
   return false;
-}
-
-/** Discrete walk speed tiers: far overworld, near overworld, or isolated detail. */
-export function playerWalkSpeed(scale: number, sprint = false): number {
-  const band: MoveSpeedBand =
-    scale >= DETAIL_START ? 'iso' : scale >= OVERWORLD_NEAR_SCALE ? 'overworld-near' : 'overworld-far';
-  return moveSpeed(band, sprint);
 }
 
 export function scaleLabel(scale: number, width = WORLD_BASE): string {

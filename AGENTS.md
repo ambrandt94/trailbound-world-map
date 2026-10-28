@@ -22,7 +22,7 @@ Do not go back to continuous rectangle/polygon streaming that broke zoom isolati
 
 ## Simulation
 
-World clock: pause, play (slow), fast forward, fastest, **sync** (others move when you move; Space waits a turn). People use Time Fantasy character sheets under `public/assets/characters/` (townsfolk, knights, dwarves, elves, animals, horses, plus monsters, orcs, wizards, and beast tribes). On water they switch to a boat (one hull for the whole party) and sail until they beach. Armies carry a large marching roster; far zoom shows a compact marker/trail, and street zoom fills in many soldiers in formation.
+World clock: pause, play (slow), fast forward, fastest, **sync** (others move when you move; Space waits a turn). While the adventure walker is moving, that frame’s game time is distance ÷ pace (5 or 10 km/h on the overworld, 2 or 4 m/s on the street) and replaces the sim-rate tick, so a trip costs the same game time on Play, Fast, or paused. Standing still uses the sim rate. Sync turns are unchanged and are not charged twice. People use Time Fantasy character sheets under `public/assets/characters/` (townsfolk, knights, dwarves, elves, animals, horses, plus monsters, orcs, wizards, and beast tribes). On water they switch to a boat (one hull for the whole party) and sail until they beach. Armies carry a large marching roster; far zoom shows a compact marker/trail, and street zoom fills in many soldiers in formation.
 
 ## Persist
 
@@ -34,7 +34,7 @@ Overworld and street detail use Pixel Kingdom grasslands / Town Tale buildings u
 
 ## Controls
 
-Scroll zoom (out to space in planet view, in to street on explored land), drag pan / orbit. Adventure mode adds a walker (WASD, **Shift** to sprint) and stays on the fitted continent. Walker speed uses discrete tiers: far overworld 1.05 tiles/s, near overworld 1.65, isolated detail 1.35, with Shift sprint at 1.75×. Globe map pan keeps its own speed. Toolbar: **Room**, **Adventure**, clock, zoom, settings (overlays + clear/new seed), theme. Map dock: outlines, POIs, world markers.
+Scroll zoom (out to space in planet view, in to street on explored land), drag pan / orbit. Adventure mode adds a walker (WASD, **Shift** to sprint) and stays on the fitted continent. One world tile is 8 m (eight 1 m street tiles). Walk is **5 km/h** and sprint is **10 km/h**; overworld tiles/s comes from that pace and the game clock (`GAME_HOURS_PER_REAL_SEC`, about 83 tiles/s at sim rate 1). Closer overworld zoom caps on-screen pace so the map stays steerable, and never drops below the old 7.2 tiles/s. Isolated streets keep a human pace (2 m/s walk, 4 m/s sprint); that pace is what the clock charges there. Globe map pan keeps `WALK_SPEED_GLOBE`. Toolbar: **Room**, **Adventure**, clock, zoom, settings (overlays + clear/new seed), theme. Map dock: outlines, POIs, world markers.
 
 ## Online rooms (P2P)
 

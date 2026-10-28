@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -9,7 +9,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { PreferencesService } from '../../services/preferences.service';
 import { RoomService } from '../../services/room.service';
 import { WorldService } from '../../services/world.service';
-import { WorldSettings } from '../../models/world.models';
+import { WorldSettings, travelPaceHint } from '../../models/world.models';
 import { LocationPanelComponent } from '../location-panel/location-panel.component';
 import { MapViewportComponent } from '../map-viewport/map-viewport.component';
 import { SettingsPanelComponent } from '../settings-panel/settings-panel.component';
@@ -211,8 +211,8 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
         <app-location-panel class="loc-sheet" />
         <p class="hint">
           Scroll · drag
-          @if (prefs.adventureMode()) {
-            · WASD · Shift sprint
+          @if (paceHint()) {
+            · {{ paceHint() }}
           }
           @if (world.simMode() === 'sync') {
             · Space waits
@@ -408,13 +408,20 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
       pointer-events: auto;
     }
     .hint {
+      position: absolute;
+      left: 11rem;
+      bottom: 0;
       margin: 0;
-      max-width: 16rem;
-      text-align: right;
+      max-width: min(26rem, calc(100% - 28rem));
+      text-align: left;
       font-size: 0.7rem;
+      line-height: 1.35;
       color: var(--tb-muted);
       text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
       pointer-events: none;
+      padding: 0.15rem 0.4rem;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--tb-panel) 78%, transparent);
     }
     .presence {
       position: absolute;
@@ -560,6 +567,7 @@ export class ShellComponent {
   readonly heroOpen = signal(false);
   readonly heroMode = signal<'adventure' | 'room'>('adventure');
   readonly roomOpen = signal(false);
+  readonly paceHint = computed(() => (this.prefs.adventureMode() ? travelPaceHint(this.world.scale()) : ''));
   chatDraft = '';
 
   constructor() {
