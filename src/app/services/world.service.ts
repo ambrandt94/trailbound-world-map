@@ -68,6 +68,12 @@ import { clampHeroName, defaultPlayerState, findHeroLook, LOCAL_PLAYER_ID } from
 import { generateChunk, neighborMap } from '../engine/chunk-gen';
 import { generateInterior, InteriorPlan } from '../engine/interior';
 import { StreetBuilding } from '../engine/buildings';
+import {
+  clampResidentAvg,
+  parseResidentOverrides,
+  type ResidentDefaults,
+  type ResidentOverride,
+} from '../engine/residents';
 import { composeChatterLine, createChatterState, NPC_BUBBLE_MS, stepNpcChatter } from '../engine/chatter';
 import { AreaExport } from '../engine/area-export';
 import {
@@ -99,6 +105,8 @@ const visitedKey = (seed: number) => `tb-world-map-visited-v1-${seed}`;
 const discoveredPoisKey = (seed: number) => `tb-world-map-discovered-pois-v1-${seed}`;
 
 const SETTINGS_KEY = 'tb-world-map-setup';
+/** Per-place resident overrides. Keyed by place id, not by seed, so a new seed keeps them. */
+const RESIDENT_OVERRIDES_KEY = 'tb-world-map-resident-overrides';
 const SIM_KEY = 'tb-world-map-sim';
 const DEFAULT_SEED = 7741;
 const START_HOUR = 8;
@@ -119,6 +127,8 @@ export class WorldService {
   readonly ready = signal(false);
   readonly generating = signal(false);
   readonly settings = signal<WorldSettings>(this.readSettings());
+  /** Place-id overrides. Not cleared by a new seed or Clear detail. */
+  readonly residentOverrides = signal<Record<string, ResidentOverride>>(this.readResidentOverrides());
   readonly simMode = signal<SimMode>(this.readSimMode());
   /** True while a 3D live session owns the clock pace. */
   readonly liveLink = signal(false);
@@ -190,6 +200,7 @@ export class WorldService {
         inNode: false,
         atGate: false,
         nodeName: null,
+        nodeId: null,
         nodeKind: null,
         nodeOrigin: null,
         poiName: null,
@@ -223,6 +234,7 @@ export class WorldService {
       inNode: !!inside,
       atGate,
       nodeName: (inside ?? touching)?.name ?? null,
+      nodeId: (inside ?? touching)?.id ?? null,
       nodeKind: (inside ?? touching)?.kind ?? null,
       nodeOrigin: (inside ?? touching)?.origin ?? null,
       poiName: poi?.name ?? null,
@@ -955,6 +967,31 @@ export class WorldService {
     return next;
   }
 
+  /** World defaults plus this place's override, for the area export. */
+  residentExport(placeId: string): ResidentDefaults & { override: ResidentOverride | null } {
+    const settings = this.settings();
+    return {
+      residentsMode: settings.residentsMode,
+      avgPerHouse: settings.avgPerHouse,
+      avgPerPlace: settings.avgPerPlace,
+      override: this.residentOverrides()[placeId] ?? null,
+    };
+  }
+
+  setResidentOverride(placeId: string, override: ResidentOverride | null): void {
+    const next = { ...this.residentOverrides() };
+    if (override) {
+      const mode = override.mode === 'perHouse' ? 'perHouse' : 'perPlace';
+      next[placeId] = { mode, avg: clampResidentAvg(override.avg, mode) };
+    } else delete next[placeId];
+    this.residentOverrides.set(next);
+    try {
+      localStorage.setItem(RESIDENT_OVERRIDES_KEY, JSON.stringify(next));
+    } catch {
+      /* private mode / blocked storage */
+    }
+  }
+
   liveChunks(): Map<string, ChunkData> {
     return this.chunks;
   }
@@ -1285,6 +1322,14 @@ export class WorldService {
       sheet: look.sheet,
       char: look.char,
     };
+  }
+
+  private readResidentOverrides(): Record<string, ResidentOverride> {
+    try {
+      return parseResidentOverrides(localStorage.getItem(RESIDENT_OVERRIDES_KEY));
+    } catch {
+      return {};
+    }
   }
 
   private readSettings(): WorldSettings {

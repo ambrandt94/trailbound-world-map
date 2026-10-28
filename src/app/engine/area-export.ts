@@ -1,5 +1,5 @@
 /**
- * AreaExport v0.4 — deterministic place payload for the Trailbound controller.
+ * AreaExport v0.5 — deterministic place payload for the Trailbound controller.
  * Engine-only (no Angular). Types in this file are the schema source of truth.
  *
  * Street chunks are baked here in (y, x) order, twice, so shared edges do not
@@ -36,10 +36,20 @@ import {
 import { generateChunk, neighborMap } from './chunk-gen';
 import { hash2 } from './noise';
 import { SEASON, biomeSeason } from './tileset';
+import {
+  crowdHotspots,
+  dwellingHomes,
+  isDwellingType,
+  isSettlementKind,
+  residentCensus,
+  resolveResidentParams,
+  type ResidentDefaults,
+  type ResidentOverride,
+} from './residents';
 import { worldHeightSampler } from './world-gen';
 
 /** Schema version. The controller rejects an unknown major version. */
-export const AREA_EXPORT_VERSION = '0.4.0';
+export const AREA_EXPORT_VERSION = '0.5.0';
 /**
  * Visual continuation around the playable place, in world tiles.
  * 4 × ZONE_SCALE = 32 inner tiles = 32 m on each side. Not walkable.
@@ -259,6 +269,12 @@ export interface AreaExport {
   npcs?: AreaNpcSnapshot;
   /** Set only for a live session. Omitted from `meta.hash`. */
   session?: { sid: string; live: 1 };
+  /**
+   * Town census. Present for a city, town, or hamlet. Included in `meta.hash`.
+   * Older readers ignore it. Named residents are not crowd members:
+   * crowd = max(0, count − named).
+   */
+  population?: AreaPopulation;
   meta: {
     exportedAt: string;
     timeOfDayHours: number;
@@ -373,6 +389,20 @@ export interface AreaNpc {
   members?: { n: number; show: number; looks: { sheet: string; char: number }[] };
 }
 
+export interface AreaPopulation {
+  /** Census. Crowd size is max(0, count − named residents). */
+  count: number;
+  mode: ResidentDefaults['residentsMode'];
+  /** Average after the world default or the per-place override. */
+  avg: number;
+  /** World seed mixed into the jitter. */
+  seed: number;
+  /** Dwelling building indexes, repeated by structure size. */
+  homes: number[];
+  /** Plaza, market, tavern door, and well points in area metres (y down). */
+  hotspots: { x: number; y: number }[];
+}
+
 export interface AreaExportOptions {
   /** Stored on meta. Not part of the content hash. */
   exportedAt?: string;
@@ -380,6 +410,11 @@ export interface AreaExportOptions {
   timeOfDayHours?: number;
   /** Defaults to `world.nodes`. Used only for neighbour metadata. */
   nodes?: MapNode[];
+  /**
+   * World defaults plus an optional per-place override. When omitted, the
+   * world's settings are the defaults and no place override is applied.
+   */
+  residents?: ResidentDefaults & { override?: ResidentOverride | null };
 }
 
 const NOTES = [
@@ -394,6 +429,7 @@ const NOTES = [
   'v0.2 buildings add a human-scale structure inside a larger plot. footW/footD are the structure AABB. tiles is the world-aligned mask (yard, floor, wall, door, window, tower). rotation is 0, 90, 180, or 270. door and doorCell are the opening after that rotation.',
   'Season is the tileset row for the place biome (summer, autumn, winter, lush), not a simulated calendar.',
   'meta.exportedAt, meta.timeOfDayHours, npcs, and session are excluded from meta.hash.',
+  'population is the town census for a city, town, or hamlet, and it is part of meta.hash. count = round(avg × (the dwelling count when mode is perHouse, otherwise 1) × a seeded ±25% jitter from the world seed and place id). The jitter does not use the sim RNG. homes lists dwelling building indexes, repeated once per 30 m² of structure. hotspots are the plaza centre, market stands, tavern doors, and wells in area metres (offset from innerOrigin, y down). The 3–8 named residents are real map entities and are not part of the crowd. Crowd size is max(0, count − named). A missing population field means there is no crowd; v0.4 readers ignore the field.',
 ];
 
 const HEIGHT_NOTE =
@@ -527,6 +563,7 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
   const water = deriveWater(world, gx0, gy0, gx1, gy1, ground, mask, range.minRaw, range.maxRaw, relief.meters);
   const entries = deriveEntries(originX, originY, gw, gh, mask, ground);
   const season = seasonFor(place.biome);
+  const population = settlementPopulation(world, place, buildings, props, originX, originY, gw, gh, mask, ground, opts);
 
   const area: AreaExport = {
     type: 'trailbound.area',
@@ -606,6 +643,7 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
     pois: poisInside(world, inPlace),
     entries,
     neighbors: neighborMeta(opts.nodes ?? world.nodes, place, inPlace),
+    ...(population ? { population } : {}),
     meta: {
       exportedAt: opts.exportedAt ?? new Date().toISOString(),
       timeOfDayHours: round3(opts.timeOfDayHours ?? 8),
@@ -616,6 +654,74 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
   };
   area.meta.hash = contentHash(area);
   return area;
+}
+
+function settlementPopulation(
+  world: WorldData,
+  place: MapNode,
+  buildings: AreaBuilding[],
+  props: AreaProp[],
+  originX: number,
+  originY: number,
+  gw: number,
+  gh: number,
+  mask: Uint8Array,
+  ground: Uint8Array,
+  opts: AreaExportOptions,
+): AreaPopulation | undefined {
+  if (!isSettlementKind(place.kind)) return undefined;
+  const defaults: ResidentDefaults = opts.residents ?? {
+    residentsMode: world.settings.residentsMode === 'perHouse' ? 'perHouse' : 'perPlace',
+    avgPerHouse: world.settings.avgPerHouse,
+    avgPerPlace: world.settings.avgPerPlace,
+  };
+  const params = resolveResidentParams(defaults, opts.residents?.override ?? null);
+  const houses = buildings.filter((building) => isDwellingType(building.type)).length;
+  return {
+    count: residentCensus({
+      seed: world.seed,
+      placeId: place.id,
+      mode: params.mode,
+      avg: params.avg,
+      houses,
+    }),
+    mode: params.mode,
+    avg: params.avg,
+    seed: world.seed,
+    homes: dwellingHomes(buildings),
+    hotspots: crowdHotspots({
+      originX,
+      originY,
+      buildings,
+      props,
+      plaza: plazaCenter(originX, originY, gw, gh, mask, ground),
+    }),
+  };
+}
+
+/** Absolute inner-tile centre of playable plaza cells. */
+function plazaCenter(
+  originX: number,
+  originY: number,
+  gw: number,
+  gh: number,
+  mask: Uint8Array,
+  ground: Uint8Array,
+): { x: number; y: number } | null {
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let iy = 0; iy < gh; iy++) {
+    for (let ix = 0; ix < gw; ix++) {
+      const gi = ix + iy * gw;
+      if (!mask[gi] || ground[gi] !== GROUND.plaza) continue;
+      sx += originX + ix + 0.5;
+      sy += originY + iy + 0.5;
+      n++;
+    }
+  }
+  if (!n) return null;
+  return { x: sx / n, y: sy / n };
 }
 
 /** Bake every tile of a place in a fixed order, twice, into a fresh chunk map. */
@@ -634,6 +740,7 @@ export function bakeAreaChunks(world: WorldData, tiles: Vec2[]): Map<string, Chu
 /**
  * sha1 of the canonical payload. `exportedAt`, `timeOfDayHours`, `hash`, `npcs`,
  * and `session` are omitted, so a live snapshot does not change the place hash.
+ * `population` is included: a new resident count changes the hash.
  */
 export function contentHash(area: AreaExport): string {
   const copy = JSON.parse(JSON.stringify(area)) as AreaExport;

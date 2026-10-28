@@ -343,15 +343,21 @@ export class RoomService implements OnDestroy {
     if (!data?.pin || typeof data.seed !== 'number') return;
     const settings = clampSettings(data.settings ?? {});
     const seed = data.seed >>> 0;
-    const same =
-      !!this.meta &&
-      this.meta.seed === seed &&
-      this.meta.settings.worldScale === settings.worldScale &&
-      this.meta.settings.mapStyle === settings.mapStyle &&
-      this.meta.settings.poiCount === settings.poiCount &&
-      this.meta.settings.wanderers === settings.wanderers &&
-      this.meta.settings.caravans === settings.caravans &&
-      this.meta.settings.armies === settings.armies;
+    const prev = this.meta;
+    const sameMap =
+      !!prev &&
+      prev.seed === seed &&
+      prev.settings.worldScale === settings.worldScale &&
+      prev.settings.mapStyle === settings.mapStyle &&
+      prev.settings.poiCount === settings.poiCount &&
+      prev.settings.wanderers === settings.wanderers &&
+      prev.settings.caravans === settings.caravans &&
+      prev.settings.armies === settings.armies;
+    const sameResidents =
+      !!prev &&
+      prev.settings.residentsMode === settings.residentsMode &&
+      prev.settings.avgPerHouse === settings.avgPerHouse &&
+      prev.settings.avgPerPlace === settings.avgPerPlace;
     this.meta = {
       pin: data.pin,
       hostId: data.hostId,
@@ -359,8 +365,9 @@ export class RoomService implements OnDestroy {
       settings,
     };
     this.pin.set(data.pin);
-    if (same) return;
+    if (sameMap && sameResidents) return;
     this.world.applySettings(settings);
+    if (sameMap) return;
     this.world.rebuildForRoom(seed);
     this.prefs.setAdventureMode(true);
     this.worldSyncRev.update((n) => n + 1);

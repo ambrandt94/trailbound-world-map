@@ -273,7 +273,14 @@ export class WorldSetupComponent implements AfterViewInit {
   submit(newSeed: boolean): void {
     if (this.room.connected() && (newSeed || !this.room.hostControls())) return;
     this.commitSketch();
-    this.rebuilt.emit({ settings: this.draft(), newSeed });
+    const live = this.world.settings();
+    const settings = clampSettings({
+      ...this.draft(),
+      residentsMode: live.residentsMode,
+      avgPerHouse: live.avgPerHouse,
+      avgPerPlace: live.avgPerPlace,
+    });
+    this.rebuilt.emit({ settings, newSeed });
   }
 
   roomLocked(): boolean {

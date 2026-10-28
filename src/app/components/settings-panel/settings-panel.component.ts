@@ -4,6 +4,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { ResidentsMode } from '../../models/world.models';
 import { PlayMode, PreferencesService } from '../../services/preferences.service';
 import { WorldService } from '../../services/world.service';
 import { RoomService } from '../../services/room.service';
@@ -43,6 +44,51 @@ import { RoomService } from '../../services/room.service';
             Load adjacent regions
           </mat-slide-toggle>
         }
+      </div>
+
+      <div class="section">
+        <div class="label">Residents</div>
+        <mat-chip-set class="mode-set">
+          <mat-chip
+            [highlighted]="world.settings().residentsMode === 'perPlace'"
+            (click)="setResidentsMode('perPlace')"
+          >
+            Per place
+          </mat-chip>
+          <mat-chip
+            [highlighted]="world.settings().residentsMode === 'perHouse'"
+            (click)="setResidentsMode('perHouse')"
+          >
+            Per house
+          </mat-chip>
+        </mat-chip-set>
+        <div class="avg-grid">
+          <label>
+            Per place
+            <input
+              type="number"
+              min="0"
+              max="500"
+              step="1"
+              [value]="world.settings().avgPerPlace"
+              (change)="setResidentAvg('avgPerPlace', $event)"
+            />
+          </label>
+          <label>
+            Per house
+            <input
+              type="number"
+              min="0"
+              max="20"
+              step="0.1"
+              [value]="world.settings().avgPerHouse"
+              (change)="setResidentAvg('avgPerHouse', $event)"
+            />
+          </label>
+        </div>
+        <p class="note">
+          Default is 24 people per place. Per house uses 2.5. Each place jitters ±25% from the seed. The 3–8 named residents on the map are separate from the crowd.
+        </p>
       </div>
 
       <div class="section">
@@ -181,6 +227,32 @@ import { RoomService } from '../../services/room.service';
       line-height: 1.35;
       color: var(--tb-muted);
     }
+    .avg-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.45rem;
+    }
+    .avg-grid label {
+      display: grid;
+      gap: 0.2rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--tb-muted);
+    }
+    .avg-grid input {
+      font: inherit;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--tb-ink);
+      background: transparent;
+      border: 1px solid color-mix(in srgb, var(--tb-ink) 18%, transparent);
+      border-radius: 8px;
+      padding: 0.28rem 0.4rem;
+      width: 100%;
+    }
     .slider-row {
       display: grid;
       grid-template-columns: 3.4rem 1fr;
@@ -270,5 +342,19 @@ export class SettingsPanelComponent implements AfterViewInit {
     if (this.prefs.playMode() === mode) return;
     this.prefs.setPlayMode(mode);
     if (mode === 'planet') this.adventureOff.emit();
+  }
+
+  setResidentsMode(mode: ResidentsMode): void {
+    if (this.world.settings().residentsMode === mode) return;
+    this.world.applySettings({ ...this.world.settings(), residentsMode: mode });
+    this.room.republishMeta();
+  }
+
+  setResidentAvg(key: 'avgPerHouse' | 'avgPerPlace', event: Event): void {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) return;
+    this.world.applySettings({ ...this.world.settings(), [key]: Number(input.value) });
+    input.value = String(this.world.settings()[key]);
+    this.room.republishMeta();
   }
 }

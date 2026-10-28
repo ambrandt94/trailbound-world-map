@@ -211,6 +211,9 @@ export function zoneWalkPaceMps(): number {
   return paceMps(false);
 }
 
+/** How a place turns an average into a resident census. */
+export type ResidentsMode = 'perHouse' | 'perPlace';
+
 export interface WorldSettings {
   worldScale: WorldScale;
   mapStyle: MapStyle;
@@ -220,6 +223,16 @@ export interface WorldSettings {
   armies: number;
   /** Optional 0–1 silhouette used when `mapStyle` is `custom`. */
   landSketch: number[] | null;
+  /**
+   * World default for town population. `perPlace` uses `avgPerPlace` once.
+   * `perHouse` multiplies `avgPerHouse` by the dwelling count. Jitter is ±25%
+   * and is not a setting.
+   */
+  residentsMode: ResidentsMode;
+  /** People per dwelling when `residentsMode` is `perHouse`. */
+  avgPerHouse: number;
+  /** People in the place when `residentsMode` is `perPlace`. */
+  avgPerPlace: number;
 }
 
 /** Side length of `WorldSettings.landSketch`. */
@@ -250,6 +263,11 @@ export const MAP_STYLE_LABELS: Record<MapStyle, string> = {
   custom: 'Custom',
 };
 
+/** Default people per dwelling. Used when a place picks per-house. */
+export const DEFAULT_AVG_PER_HOUSE = 2.5;
+/** Default people in a town, village, or city. The world default mode. */
+export const DEFAULT_AVG_PER_PLACE = 24;
+
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   worldScale: 8,
   mapStyle: 'continent',
@@ -258,6 +276,9 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   caravans: 10,
   armies: 5,
   landSketch: null,
+  residentsMode: 'perPlace',
+  avgPerHouse: DEFAULT_AVG_PER_HOUSE,
+  avgPerPlace: DEFAULT_AVG_PER_PLACE,
 };
 
 export function worldExtent(scale: WorldScale): number {
@@ -380,7 +401,17 @@ export function clampSettings(raw: Partial<WorldSettings>): WorldSettings {
     caravans: clamp(Math.round(raw.caravans ?? DEFAULT_WORLD_SETTINGS.caravans), 0, 40),
     armies: clamp(Math.round(raw.armies ?? DEFAULT_WORLD_SETTINGS.armies), 0, 20),
     landSketch: normalizeLandSketch(raw.landSketch),
+    residentsMode: raw.residentsMode === 'perHouse' ? 'perHouse' : 'perPlace',
+    avgPerHouse: clampAvg(raw.avgPerHouse, DEFAULT_AVG_PER_HOUSE, 0, 20),
+    avgPerPlace: clampAvg(raw.avgPerPlace, DEFAULT_AVG_PER_PLACE, 0, 500),
   };
+}
+
+/** One decimal place. Non-finite values use `fallback`. */
+export function clampAvg(raw: unknown, fallback: number, min: number, max: number): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return clamp(Math.round(n * 10) / 10, min, max);
 }
 
 function normalizeLandSketch(raw: unknown): number[] | null {
@@ -775,6 +806,7 @@ export interface LocationInfo {
   inNode: boolean;
   atGate: boolean;
   nodeName: string | null;
+  nodeId: string | null;
   nodeKind: NodeKind | null;
   nodeOrigin: NodeOrigin | null;
   poiName: string | null;

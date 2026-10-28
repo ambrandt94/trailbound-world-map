@@ -1,5 +1,5 @@
 /**
- * Determinism check and fixture writer for AreaExport v0.4.
+ * Determinism check and fixture writer for AreaExport v0.5.
  *   npx tsx scripts/area-export-check.ts
  * Writes fixtures/ when AREA_EXPORT_WRITE=1.
  */
@@ -7,7 +7,9 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { residentCountFor } from '../src/app/engine/entities';
 import { forcedFixtureNpcs } from '../src/app/engine/live-link';
+import { countDwellings, crowdSize, isDwellingType, isSettlementKind, residentCensus } from '../src/app/engine/residents';
 import {
   AREA_EXPORT_VERSION,
   BORDER_WORLD_TILES,
@@ -64,8 +66,34 @@ const RING_GROUND = new Set<number>([GROUND.grass, GROUND.dirt, GROUND.road, GRO
 function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
   assert(area.type === 'trailbound.area', 'type');
   assert(area.version === AREA_EXPORT_VERSION, 'version');
-  assert(area.version === '0.4.0', 'version string');
+  assert(area.version === '0.5.0', 'version string');
   assert(area.npcs === undefined && area.session === undefined, 'builder leaves npcs and session off');
+  if (isSettlementKind(place.kind)) {
+    const pop = area.population;
+    assert(pop, `${place.id} missing population`);
+    if (!pop) return;
+    assert(pop.mode === 'perPlace' && pop.avg === 24 && pop.seed === world.seed, `${place.id} default population`);
+    const houses = area.buildings.filter((b) => isDwellingType(b.type)).length;
+    const census = residentCensus({ seed: world.seed, placeId: place.id, mode: pop.mode, avg: pop.avg, houses });
+    assert(pop.count === census, `${place.id} count ${pop.count} != ${census}`);
+    assert(pop.homes.length >= houses, `${place.id} homes shorter than dwellings`);
+    for (const index of pop.homes) {
+      const building = area.buildings[index];
+      assert(building && isDwellingType(building.type), `${place.id} home ${index} is not a dwelling`);
+    }
+    assert(countDwellings(place, world.seed) === houses, `${place.id} layout dwellings != export`);
+    const named = residentCountFor(place);
+    assert(named >= 3 && named <= 8, `${place.id} named ${named}`);
+    assert(crowdSize(pop.count, named) === Math.max(0, pop.count - named), `${place.id} crowd`);
+    const note = area.meta.notes.find((line) => line.startsWith('population '));
+    assert(!!note && /max\(0, count − named\)/.test(note), 'crowd note');
+    for (const spot of pop.hotspots) {
+      assert(Number.isFinite(spot.x) && Number.isFinite(spot.y), 'hotspot');
+      assert(spot.x >= 0 && spot.y >= 0 && spot.x <= area.grid.w && spot.y <= area.grid.h, `hotspot outside area ${spot.x},${spot.y}`);
+    }
+  } else {
+    assert(area.population === undefined, `${place.id} should omit population`);
+  }
   const withLive = {
     ...area,
     npcs: { frame: 'zone-m' as const, asOfHours: 8, list: [] },
@@ -76,11 +104,24 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
   legacy.version = '0.3.0';
   delete legacy.npcs;
   delete legacy.session;
-  legacy.meta.notes = legacy.meta.notes.map((note) =>
-    note.includes('npcs, and session')
-      ? 'meta.exportedAt and meta.timeOfDayHours are excluded from meta.hash.'
-      : note,
-  );
+  delete legacy.population;
+  legacy.meta.notes = legacy.meta.notes
+    .filter((note) => !note.startsWith('population '))
+    .map((note) =>
+      note.includes('npcs, and session')
+        ? 'meta.exportedAt and meta.timeOfDayHours are excluded from meta.hash.'
+        : note,
+    );
+  const v04 = JSON.parse(JSON.stringify(area)) as AreaExport;
+  v04.version = '0.4.0';
+  delete v04.population;
+  v04.meta.notes = v04.meta.notes.filter((note) => !note.startsWith('population '));
+  const v04Hash = contentHash(v04);
+  assert(v04Hash !== area.meta.hash, `${place.id} v0.4 shape did not change the hash`);
+  if (area.population) {
+    const bumped = { ...area, population: { ...area.population, count: area.population.count + 1 } };
+    assert(contentHash(bumped) !== area.meta.hash, `${place.id} count did not change the hash`);
+  }
   const legacyHash = contentHash(legacy);
   const previous = V03_HASH[place.id];
   if (previous) assert(legacyHash === previous, `${place.id} v0.3 hash drifted ${legacyHash}`);
@@ -274,6 +315,29 @@ console.log(`nodes=${world.nodes.length} size=${world.width}`);
 
 const town = exportPlace(world, 'veldcross');
 assert(town.buildings.length > 0, 'town has buildings');
+assert(town.population, 'town population');
+const townAgain = buildAreaExport(world, world.nodes.find((n) => n.id === 'veldcross')!, fixed);
+assert(townAgain.population?.count === town.population?.count, 'count changed across a reload');
+assert(townAgain.meta.hash === town.meta.hash, 'hash changed across a reload');
+const townOverride = buildAreaExport(world, world.nodes.find((n) => n.id === 'veldcross')!, {
+  ...fixed,
+  residents: {
+    residentsMode: 'perPlace',
+    avgPerHouse: 2.5,
+    avgPerPlace: 24,
+    override: { mode: 'perPlace', avg: 3 },
+  },
+});
+assert(townOverride.population?.count !== town.population?.count, 'override did not beat the default');
+assert(townOverride.population?.avg === 3 && townOverride.population?.mode === 'perPlace', 'override params');
+assert(townOverride.meta.hash !== town.meta.hash, 'override did not change the hash');
+const townHouse = buildAreaExport(world, world.nodes.find((n) => n.id === 'veldcross')!, {
+  ...fixed,
+  residents: { residentsMode: 'perHouse', avgPerHouse: 2.5, avgPerPlace: 24 },
+});
+assert(townHouse.population?.mode === 'perHouse' && townHouse.population?.avg === 2.5, 'per-house mode');
+assert(townHouse.meta.hash !== town.meta.hash, 'mode did not change the hash');
+assert((town.population?.hotspots.length ?? 0) > 0, 'town has crowd hotspots');
 assert(new Set(town.buildings.map((b) => b.rotation)).size >= 2, 'town doors face more than one way');
 assert(town.buildings.some((b) => b.shape === 'mask'), 'town has a non-rectangular building');
 assert(
@@ -291,6 +355,7 @@ assert(
 );
 assert([...decodeB64U8(town.layers.ground.data)].some((v) => v === GROUND.yard), 'town has yard ground');
 const wild = exportPlace(world, 'hollowmere');
+assert(wild.population === undefined, 'grove omits population');
 const shore = exportPlace(world, 'jadewild');
 assert(waterCells(shore) > 0, 'jadewild has water ground');
 const hills = exportPlace(world, 'dunharrow');
@@ -334,6 +399,7 @@ if (process.env['AREA_EXPORT_WRITE'] === '1') {
     [`area-${wild.area.id}.json`, wild],
     [`area-${shore.area.id}.json`, shore],
     ['area-hollowmere-v04.json', hollowmereV04],
+    [`area-${town.area.id}-v05.json`, town],
   ];
   for (const [name, area] of files) {
     const path = join(dir, name);

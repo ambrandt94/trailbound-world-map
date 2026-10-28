@@ -1,8 +1,8 @@
-# AreaExport v0.4
+# AreaExport v0.5
 
 World-map is the authority for a place. The Trailbound controller does not invent geography. The TypeScript types in `src/app/engine/area-export.ts` are the schema. This note is the field guide; if they disagree, the types win.
 
-`buildAreaExport(world, place, opts)` returns one `AreaExport`. Version is `0.4.0`. Every new field is optional for readers: a missing `borderWorldTiles` means 0, a missing `grid.borderMask` means no ring, and `layers.height.sampling` of `world-tile-corners` is the 0.2 lattice. v0.3 and v0.4 always write the ring. v0.4 adds optional `npcs` (zone metres) and `session` (`{ sid, live: 1 }` only while a live link is open). Older readers ignore both.
+`buildAreaExport(world, place, opts)` returns one `AreaExport`. Version is `0.5.0`. Every new field is optional for readers: a missing `borderWorldTiles` means 0, a missing `grid.borderMask` means no ring, and `layers.height.sampling` of `world-tile-corners` is the 0.2 lattice. v0.3 and later always write the ring. v0.4 adds optional `npcs` (zone metres) and `session` (`{ sid, live: 1 }` only while a live link is open). v0.5 adds optional `population` on a city, town, or hamlet. Older readers ignore every field they do not know. A grove or camp omits `population`.
 
 The playable place is still `MapNode.tiles` (`grid.mask`). Around that AABB the grids add a visual border ring of `area.borderWorldTiles` world tiles (4, which is 32 inner tiles, 32 m) on each side. The ring is not walkable. Neighbour names stay metadata. “Load adjacent regions” does not add those places’ buildings.
 
@@ -14,7 +14,7 @@ The playable place is still `MapNode.tiles` (`grid.mask`). Around that AABB the 
 2. `window.open` that URL as `tb-controller`.
 3. Post `{ type: 'tb-area-hello', version, live: [1] }` to the controller origin, and repeat until it answers or the window closes. A room omits `live` and stays one-shot.
 4. On `{ type: 'tb-area-ready' }` from that window, post `{ type: 'tb-area', payload }` where `payload` is the `AreaExport`.
-5. On `{ type: 'tb-area-ack', hash }`, compare `hash` to `meta.hash` (the `sha1:` prefix is optional). If both sides set `live: 1`, the channel stays open (`tb-session-open`, then `tb-sim` / `tb-player`). The named window `tb-controller` is reused on the next Play in 3D. Download JSON includes `npcs` and omits `session`.
+5. On `{ type: 'tb-area-ack', hash }`, compare `hash` to `meta.hash` (the `sha1:` prefix is optional). If both sides set `live: 1`, the channel stays open (`tb-session-open`, then `tb-sim` / `tb-player`). The named window `tb-controller` is reused on the next Play in 3D. Download JSON includes `npcs` and `population` and omits `session`.
 
 Every `postMessage` uses the controller origin as `targetOrigin`. Incoming messages must come from that same window and from an allowlisted origin. `'*'` is never used.
 
@@ -43,7 +43,7 @@ Set `localStorage['tb-controller-url']` to override (for example `http://127.0.0
 
 Chunks are regenerated inside the exporter, not copied from the session. Tiles are sorted by `(y, x)` and `generateChunk` runs twice (`AREA_CHUNK_PASSES`) so each edge is stitched against neighbours from that same order. Visit order cannot change the hash.
 
-`meta.hash` is `sha1:` plus the SHA-1 of the canonical JSON (keys sorted, UTF-8). `meta.exportedAt`, `meta.timeOfDayHours`, `meta.hash`, `npcs`, and `session` are left out, so the clock and a live snapshot do not change the hash. The same seed and place hash the same twice, including across v0.3 when `version` is the only other difference from the note text.
+`meta.hash` is `sha1:` plus the SHA-1 of the canonical JSON (keys sorted, UTF-8). `meta.exportedAt`, `meta.timeOfDayHours`, `meta.hash`, `npcs`, and `session` are left out, so the clock and a live snapshot do not change the hash. `population` is included: changing the resident count changes the hash. The same seed, place, and resident settings hash the same twice. A v0.4 reader that ignores `population` still loads the geography. Stripping `population` (and the population note) and setting `version` back to `0.4.0` is a compatible payload; it is a different hash.
 
 ### Ground classes
 
@@ -181,6 +181,46 @@ The plot is larger. `plotX, plotY` is its north-west corner (minimum x, minimum 
 
 Cottage structure is about 6×5 and one storey. A shop is about 7×6. Church, inn, and town hall stay within 10×8 and are two storeys. Rotation can swap the two sides.
 
+## Population (v0.5)
+
+Only a city, town, or hamlet writes `population`. It is the town census, not a list of people. The controller spawns the crowd locally from this block. Named residents are unchanged: each settlement still has 3–8 real map entities (home, routine, chatter, talk, and the live link). They are not crowd members and they are not repeated inside `population`.
+
+```
+count = round(avg × (dwelling count when mode is perHouse, otherwise 1) × jitter)
+jitter = seededJitter(worldSeed, placeId)   // in [0.75, 1.25], ±25%
+crowd = max(0, count − named)
+```
+
+`jitter` is a hash of the world seed and the place id. It does not draw from the sim RNG, so reloading the same seed returns the same count. `named` is `residentCountFor` (3–8). The crowd is everyone else.
+
+World defaults live with the other world settings: `residentsMode` is `perPlace` (average 24) or `perHouse` (average 2.5). A place panel can store an override (`mode` + `avg`) keyed by place id. That override is not inside the seed-scoped node list, so it survives a new seed. The export's `mode` and `avg` are the values after the override.
+
+| Field | Meaning |
+| --- | --- |
+| `count` | Census from the formula above |
+| `mode` | `perPlace` or `perHouse` |
+| `avg` | Average used for that mode |
+| `seed` | World seed mixed into the jitter |
+| `homes` | Building indexes of cottages, houses, and farms. A dwelling is repeated once per 30 m² of structure (at least once) so a larger house is chosen more often |
+| `hotspots` | Plaza centre, market stands, tavern doors, and wells. Area metres: offset from `area.innerOrigin`, x right, y down. `three.x = hotspot.x`, `three.z = hotspot.y` |
+
+Pool the crowd at `max(0, count − named)`, not at `count`. On seed 7741, Ironmarch's default census is 18 with 6 named residents, so the crowd is 12. A missing `population` means spawn no crowd.
+
+```json
+{
+  "count": 18,
+  "mode": "perPlace",
+  "avg": 24,
+  "seed": 7741,
+  "homes": [2, 2, 3, 3, 5, 5, 6, 6, 7, 8, 8, 9, 10, 11, 11],
+  "hotspots": [
+    { "x": 92.5, "y": 93 },
+    { "x": 51.5, "y": 36.5 },
+    { "x": 93.44, "y": 94.8 }
+  ]
+}
+```
+
 ## Fixtures
 
 Seed **7741**, default continent settings, `exportedAt` fixed at `2026-10-26T00:00:00.000Z` (not part of the hash). Regenerate with:
@@ -193,10 +233,11 @@ Two back-to-back runs of the check script write identical bytes. `meta.exportedA
 
 | File | Place | Bytes | Hash |
 | --- | --- | --- | --- |
-| `fixtures/area-veldcross.json` | Ironmarch, town, streets and buildings | 368480 | `sha1:0ec826e37f17b10b84fb0c02504f77b0daf2f6fc` |
-| `fixtures/area-hollowmere.json` | Shadowglen, grove, trees, no buildings | 214533 | `sha1:7ae9a2e1fc452e4da1a84bab986de0b010c03662` |
-| `fixtures/area-jadewild.json` | Jadewild, forest grove with water | 230782 | `sha1:712edad80205fd302e774c0737e6a4e2552eaba9` |
-| `fixtures/area-hollowmere-v04.json` | Shadowglen plus a forced NPC snapshot (hash unchanged) | 216490 | `sha1:7ae9a2e1fc452e4da1a84bab986de0b010c03662` |
+| `fixtures/area-veldcross.json` | Ironmarch, town, streets and buildings, population | 369590 | `sha1:0d274d4a5a7d6c2eb91bd2d0fd89980684fdff13` |
+| `fixtures/area-veldcross-v05.json` | Same Ironmarch payload, kept under the v0.5 name | 369590 | `sha1:0d274d4a5a7d6c2eb91bd2d0fd89980684fdff13` |
+| `fixtures/area-hollowmere.json` | Shadowglen, grove, trees, no buildings, no population | 215203 | `sha1:a426f8ce4218a4c4777161d084e0b578a7888207` |
+| `fixtures/area-jadewild.json` | Jadewild, forest grove with water, no population | 231452 | `sha1:2953aab5536436a680206b833e6b098024bd280a` |
+| `fixtures/area-hollowmere-v04.json` | Shadowglen plus a forced NPC snapshot (hash unchanged) | 217160 | `sha1:a426f8ce4218a4c4777161d084e0b578a7888207` |
 
 Most of the growth versus 0.2 is the expanded base64 grids (mask, borderMask, biome, ground). The height `raw` array is about 40–70 KB of the file. No extra quantization.
 
@@ -205,7 +246,7 @@ Jadewild header (grids and `raw` omitted):
 ```json
 {
   "type": "trailbound.area",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "source": { "app": "world-map", "build": "2026-10-27", "seed": 7741, "worldScale": 8, "mapStyle": "continent", "zoneScale": 8 },
   "area": {
     "id": "jadewild",
@@ -239,6 +280,6 @@ Jadewild header (grids and `raw` omitted):
     "water": { "level": 8.2709, "raw": 0.37502, "fromBiome": true, "present": true }
   },
   "entries": [{ "id": "player", "kind": "spawn", "x": 2843.5, "y": 4977.5, "facing": "E" }],
-  "meta": { "hash": "sha1:712edad80205fd302e774c0737e6a4e2552eaba9" }
+  "meta": { "hash": "sha1:2953aab5536436a680206b833e6b098024bd280a" }
 }
 ```
