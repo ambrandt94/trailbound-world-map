@@ -1,6 +1,6 @@
 {
   "type": "trailbound.area",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "source": {
     "app": "world-map",
     "build": "2026-10-27",
@@ -7096,7 +7096,7 @@
     "exportedAt": "2026-10-26T00:00:00.000Z",
     "timeOfDayHours": 8,
     "season": "summer",
-    "hash": "sha1:d16ff6014c7e9083c794030b916c2cf1a59541f7",
+    "hash": "sha1:712edad80205fd302e774c0737e6a4e2552eaba9",
     "notes": [
       "Street chunks are regenerated in (y, x) order for two passes. Edges do not depend on which neighbour the session generated first.",
       "Spawn is the road or dirt cell nearest the place centroid, otherwise the nearest walkable cell. The live walker is not baked in, so the same seed and place hash the same.",
@@ -7108,7 +7108,7 @@
       "Desert maps to ground class sand. Mountain maps to rock. Other dry land is grass unless a path, lot, plaza, or yard overrides it. Snow stays grass.",
       "v0.2 buildings add a human-scale structure inside a larger plot. footW/footD are the structure AABB. tiles is the world-aligned mask (yard, floor, wall, door, window, tower). rotation is 0, 90, 180, or 270. door and doorCell are the opening after that rotation.",
       "Season is the tileset row for the place biome (summer, autumn, winter, lush), not a simulated calendar.",
-      "meta.exportedAt and meta.timeOfDayHours are excluded from meta.hash."
+      "meta.exportedAt, meta.timeOfDayHours, npcs, and session are excluded from meta.hash."
     ]
   }
 }

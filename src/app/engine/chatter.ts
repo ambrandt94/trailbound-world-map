@@ -73,7 +73,7 @@ export function stepNpcChatter(
   return { speakerId: speaker.id, name: speaker.name, text };
 }
 
-function composeChatterLine(
+export function composeChatterLine(
   world: WorldData,
   entities: MapEntity[],
   speaker: MapEntity,

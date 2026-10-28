@@ -197,6 +197,19 @@ export const FAST_RATE = 1;
 export const FASTEST_RATE = 8;
 export const SYNC_TURN_TILES = 0.72;
 export const SYNC_TURN_HOURS = 0.12;
+/**
+ * Live 3D session. Idle time uses `ZONE_SIM_RATE` (about 1.44 game seconds per real
+ * second). Movement uses `advanceTravel` at `zoneWalkPaceMps()`, which is `paceMps(false)`
+ * (5 km/h). A 2 m/s street step (`STREET_WALK_MPS`) then matches that same clock.
+ */
+export const ZONE_WALK_MPS = STREET_WALK_MPS;
+export const ZONE_HONEST_KMH = WALK_PACE_KMH;
+export const ZONE_SIM_RATE = ZONE_WALK_MPS / (paceMps(false) * GAME_SECONDS_PER_REAL_SEC);
+
+/** In-zone walking pace charged for tb-player distance. Same 5 km/h as `paceMps(false)`. */
+export function zoneWalkPaceMps(): number {
+  return paceMps(false);
+}
 
 export interface WorldSettings {
   worldScale: WorldScale;
@@ -383,7 +396,7 @@ function normalizeLandSketch(raw: unknown): number[] | null {
   return ink ? out : null;
 }
 
-export type SimMode = 'paused' | 'play' | 'fast' | 'fastest' | 'sync';
+export type SimMode = 'paused' | 'play' | 'fast' | 'fastest' | 'sync' | 'zone';
 export type EntityKind = 'wanderer' | 'caravan' | 'army';
 export type Facing = 0 | 1 | 2 | 3;
 
@@ -413,6 +426,23 @@ export interface MapEntity {
   members: EntityMember[];
   /** True while the lead is on water (boat sprite, members hidden). */
   afloat: boolean;
+  /** Live-link session id while the 3D controller owns this entity. */
+  heldBy?: string;
+  /** Place-seeded resident. Routines do not use the overworld sim RNG. */
+  resident?: ResidentHome;
+}
+
+export interface ResidentHome {
+  placeId: string;
+  homeX: number;
+  homeY: number;
+  workX: number;
+  workY: number;
+  tavernX: number;
+  tavernY: number;
+  homeBuildingId?: string;
+  workBuildingId?: string;
+  tavernBuildingId?: string;
 }
 
 export interface SimHud {
@@ -440,6 +470,7 @@ export const SIM_LABELS: Record<SimMode, string> = {
   fast: 'Fast forward',
   fastest: 'Fastest',
   sync: 'Synchronized',
+  zone: 'Zone pace',
 };
 
 export function formatClock(hours: number): { day: number; clock: string } {

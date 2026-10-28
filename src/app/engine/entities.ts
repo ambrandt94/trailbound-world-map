@@ -5,6 +5,7 @@ import {
   Facing,
   MapEntity,
   MapNode,
+  ResidentHome,
   WorldData,
   biomeAt,
   clamp,
@@ -17,7 +18,7 @@ import {
   wrapDeltaX,
   wrapX,
 } from '../models/world.models';
-import { Rng } from './noise';
+import { hash2, Rng } from './noise';
 
 const WANDER_NAMES = [
   'Wren',
@@ -313,8 +314,9 @@ export function armyVisibleFollowers(scale: number, roster: number): number {
 export function stepEntities(world: WorldData, entities: MapEntity[], dt: number, rng: Rng): void {
   if (dt <= 0) return;
   for (const e of entities) {
+    if (e.heldBy) continue;
     const dist = Math.hypot(wrapDeltaX(e.x, e.destX, world.width), e.destY - e.y);
-    if (dist < 1.15) retarget(world, e, rng);
+    if (!e.resident && dist < 1.15) retarget(world, e, rng);
     const step = e.speed * dt * (e.afloat ? 1.15 : 1);
     const moved = moveToward(world, e, step);
     const wasAfloat = e.afloat;
@@ -340,9 +342,134 @@ export function stepEntities(world: WorldData, entities: MapEntity[], dt: number
       }
     } else {
       e.frame = 1;
-      retarget(world, e, rng);
+      if (!e.resident) retarget(world, e, rng);
     }
   }
+}
+
+const RESIDENT_ROLES = ['Baker', 'Cooper', 'Miller', 'Weaver', 'Herbalist', 'Mason', 'Fisher', 'Neighbor'] as const;
+const RESIDENT_SHEETS = ['townsfolk', 'farmer', 'household', 'elder', 'blacksmith', 'bard'] as const;
+
+/** 3–8 residents for a city, town, or hamlet. Larger places get more. */
+export function residentCountFor(node: MapNode): number {
+  if (node.kind !== 'city' && node.kind !== 'town' && node.kind !== 'hamlet') return 0;
+  const fromTiles = node.tiles?.length ? Math.sqrt(node.tiles.length / Math.PI) : 0;
+  const span = Math.max(node.radius, fromTiles);
+  const t = clamp((span - 4) / 7, 0, 1);
+  return 3 + Math.round(t * 5);
+}
+
+/**
+ * Ambient residents for every town and village. Positions come from `hash2(seed, place)`,
+ * never from the shared sim RNG.
+ */
+export function spawnResidents(world: WorldData, seed: number): MapEntity[] {
+  const out: MapEntity[] = [];
+  for (const node of world.nodes) {
+    const count = residentCountFor(node);
+    const tiles = node.tiles;
+    if (!count || !tiles?.length) continue;
+    for (let i = 0; i < count; i++) {
+      const home = pickTile(tiles, node.id, i, 1, seed);
+      const work = pickTile(tiles, node.id, i, 2, seed, home);
+      const tavern = pickTile(tiles, node.id, i, 3, seed, home, work);
+      const resident: ResidentHome = {
+        placeId: node.id,
+        homeX: home.x,
+        homeY: home.y,
+        workX: work.x,
+        workY: work.y,
+        tavernX: tavern.x,
+        tavernY: tavern.y,
+      };
+      const nameRoll = residentUnit(node.id, i, 4, seed);
+      const lookRoll = residentUnit(node.id, i, 5, seed);
+      const speedRoll = residentUnit(node.id, i, 6, seed);
+      const first = WANDER_NAMES[Math.floor(nameRoll * WANDER_NAMES.length)] ?? 'Ash';
+      const role = RESIDENT_ROLES[Math.floor(residentUnit(node.id, i, 7, seed) * RESIDENT_ROLES.length)] ?? 'Neighbor';
+      const sheet = RESIDENT_SHEETS[Math.floor(lookRoll * RESIDENT_SHEETS.length)] ?? 'townsfolk';
+      const id = residentId(node.id, i);
+      out.push({
+        id,
+        name: `${first} ${role}`.slice(0, 48),
+        kind: 'wanderer',
+        x: home.x,
+        y: home.y,
+        facing: (Math.floor(residentUnit(node.id, i, 8, seed) * 4) % 4) as Facing,
+        frame: 1,
+        anim: residentUnit(node.id, i, 9, seed) * 4,
+        speed: 1.2 + speedRoll * 0.3,
+        sheet,
+        char: Math.floor(residentUnit(node.id, i, 10, seed) * 8) % 8,
+        destX: home.x,
+        destY: home.y,
+        members: [],
+        afloat: false,
+        resident,
+      });
+    }
+  }
+  return out;
+}
+
+/** Home before 9 and after 22, work through the day, tavern in the evening. */
+export function residentAnchor(hours: number): 'home' | 'work' | 'tavern' {
+  const h = ((hours % 24) + 24) % 24;
+  if (h >= 9 && h < 17) return 'work';
+  if (h >= 17 && h < 22) return 'tavern';
+  return 'home';
+}
+
+export function stepResidentRoutines(entities: MapEntity[], hours: number): void {
+  const phase = residentAnchor(hours);
+  for (const e of entities) {
+    const home = e.resident;
+    if (!home || e.heldBy) continue;
+    if (phase === 'work') {
+      e.destX = home.workX;
+      e.destY = home.workY;
+    } else if (phase === 'tavern') {
+      e.destX = home.tavernX;
+      e.destY = home.tavernY;
+    } else {
+      e.destX = home.homeX;
+      e.destY = home.homeY;
+    }
+  }
+}
+
+function residentId(placeId: string, index: number): string {
+  const raw = `resident-${placeId}-${index}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+  return raw.slice(0, 40).replace(/-+$/g, '') || `resident-${index}`;
+}
+
+function residentUnit(placeId: string, index: number, salt: number, seed: number): number {
+  let h = 2166136261;
+  const text = placeId;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return hash2((h ^ Math.imul(index + 1, 0x9e3779b1)) >>> 0, salt + 1, (seed ^ 0x51ed7) >>> 0);
+}
+
+function pickTile(
+  tiles: MapNode['tiles'],
+  placeId: string,
+  index: number,
+  salt: number,
+  seed: number,
+  ...avoid: Array<{ x: number; y: number } | undefined>
+): { x: number; y: number } {
+  const list = tiles ?? [];
+  if (!list.length) return { x: 0.5, y: 0.5 };
+  const start = Math.floor(residentUnit(placeId, index, salt, seed) * list.length) % list.length;
+  for (let n = 0; n < list.length; n++) {
+    const tile = list[(start + n) % list.length]!;
+    const x = tile.x + 0.2 + residentUnit(placeId, index, salt + 20 + n, seed) * 0.6;
+    const y = tile.y + 0.2 + residentUnit(placeId, index, salt + 40 + n, seed) * 0.6;
+    const blocked = avoid.some((a) => a && Math.hypot(a.x - x, a.y - y) < 0.35);
+    if (!blocked) return { x, y };
+  }
+  const tile = list[start]!;
+  return { x: tile.x + 0.5, y: tile.y + 0.5 };
 }
 
 function pickPerson(rng: Rng): { sheet: string; char: number } {

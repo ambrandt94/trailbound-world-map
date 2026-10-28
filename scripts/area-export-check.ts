@@ -1,5 +1,5 @@
 /**
- * Determinism check and fixture writer for AreaExport v0.3.
+ * Determinism check and fixture writer for AreaExport v0.4.
  *   npx tsx scripts/area-export-check.ts
  * Writes fixtures/ when AREA_EXPORT_WRITE=1.
  */
@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { forcedFixtureNpcs } from '../src/app/engine/live-link';
 import {
   AREA_EXPORT_VERSION,
   BORDER_WORLD_TILES,
@@ -25,6 +26,12 @@ import {
 import { PART_CODE, PART_LEGEND } from '../src/app/engine/building-templates';
 import { generateWorld, worldHeightSampler } from '../src/app/engine/world-gen';
 import { Biome, DEFAULT_WORLD_SETTINGS, ZONE_SCALE, type MapNode, type WorldData } from '../src/app/models/world.models';
+
+const V03_HASH: Record<string, string> = {
+  hollowmere: 'sha1:d39734cf18ba4ba99b5063edee1fd40cd0e0eb68',
+  jadewild: 'sha1:d16ff6014c7e9083c794030b916c2cf1a59541f7',
+  veldcross: 'sha1:63e5aaf2bedf0ffb91eb091cd839ab45cea71e07',
+};
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const seed = 7741;
@@ -57,7 +64,26 @@ const RING_GROUND = new Set<number>([GROUND.grass, GROUND.dirt, GROUND.road, GRO
 function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
   assert(area.type === 'trailbound.area', 'type');
   assert(area.version === AREA_EXPORT_VERSION, 'version');
-  assert(area.version === '0.3.0', 'version string');
+  assert(area.version === '0.4.0', 'version string');
+  assert(area.npcs === undefined && area.session === undefined, 'builder leaves npcs and session off');
+  const withLive = {
+    ...area,
+    npcs: { frame: 'zone-m' as const, asOfHours: 8, list: [] },
+    session: { sid: 'sid-hash', live: 1 as const },
+  };
+  assert(contentHash(withLive) === area.meta.hash, 'npcs and session changed the hash');
+  const legacy = JSON.parse(JSON.stringify(area)) as AreaExport;
+  legacy.version = '0.3.0';
+  delete legacy.npcs;
+  delete legacy.session;
+  legacy.meta.notes = legacy.meta.notes.map((note) =>
+    note.includes('npcs, and session')
+      ? 'meta.exportedAt and meta.timeOfDayHours are excluded from meta.hash.'
+      : note,
+  );
+  const legacyHash = contentHash(legacy);
+  const previous = V03_HASH[place.id];
+  if (previous) assert(legacyHash === previous, `${place.id} v0.3 hash drifted ${legacyHash}`);
   assert(area.source.seed === seed, 'seed');
   assert(area.area.id === place.id, 'id');
   assert(area.units.metersPerTile === 1, 'metres');
@@ -292,6 +318,14 @@ const again = buildAreaExport(world, waterPlace, fixed);
 assert(again.meta.hash === waterPick.meta.hash, 'water place hash drifted');
 console.log(`water fixture: ${waterPick.area.name} (${waterPick.area.id}) cells=${waterN} hash=${waterPick.meta.hash}`);
 
+const hollowmereV04: AreaExport = {
+  ...wild,
+  npcs: { frame: 'zone-m', asOfHours: 8, list: forcedFixtureNpcs(wild, world.width, 8) },
+};
+delete hollowmereV04.session;
+assert(contentHash(hollowmereV04) === wild.meta.hash, 'v04 fixture hash');
+assert(hollowmereV04.npcs?.list.length === 3, 'forced npcs');
+
 if (process.env['AREA_EXPORT_WRITE'] === '1') {
   const dir = join(root, 'fixtures');
   mkdirSync(dir, { recursive: true });
@@ -299,6 +333,7 @@ if (process.env['AREA_EXPORT_WRITE'] === '1') {
     [`area-${town.area.id}.json`, town],
     [`area-${wild.area.id}.json`, wild],
     [`area-${shore.area.id}.json`, shore],
+    ['area-hollowmere-v04.json', hollowmereV04],
   ];
   for (const [name, area] of files) {
     const path = join(dir, name);

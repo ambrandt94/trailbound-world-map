@@ -17,6 +17,7 @@ import {
   MapNode,
   MIN_ZONE_TILES,
   PLAY_RATE,
+  ZONE_SIM_RATE,
   POI_LABELS,
   PointOfInterest,
   PlayerState,
@@ -62,12 +63,29 @@ import {
 } from '../models/world.models';
 import { Rng } from '../engine/noise';
 import { generatedName, kindForBiome } from '../engine/names';
-import { nearestEntity, spawnEntities, stepEntities } from '../engine/entities';
+import { nearestEntity, spawnEntities, spawnResidents, stepEntities, stepResidentRoutines } from '../engine/entities';
 import { clampHeroName, defaultPlayerState, findHeroLook, LOCAL_PLAYER_ID } from '../engine/hero';
 import { generateChunk, neighborMap } from '../engine/chunk-gen';
 import { generateInterior, InteriorPlan } from '../engine/interior';
 import { StreetBuilding } from '../engine/buildings';
-import { createChatterState, NPC_BUBBLE_MS, stepNpcChatter } from '../engine/chatter';
+import { composeChatterLine, createChatterState, NPC_BUBBLE_MS, stepNpcChatter } from '../engine/chatter';
+import { AreaExport } from '../engine/area-export';
+import {
+  applyNpcReport,
+  buildSimBody,
+  createDirector,
+  liveDraw,
+  NpcEvent,
+  NpcReportMsg,
+  NpcState,
+  releaseHolds,
+  resumeHolds,
+  setTalkIntent,
+  snapshotNpcs,
+  syncDirector,
+  type ClockState,
+  type LiveDirector,
+} from '../engine/live-link';
 import { defaultPlayerStart, generateWorld } from '../engine/world-gen';
 import { elevationMetersAt } from '../engine/height-view';
 import { migrateWorldMapPrefs, PreferencesService } from './preferences.service';
@@ -102,12 +120,20 @@ export class WorldService {
   readonly generating = signal(false);
   readonly settings = signal<WorldSettings>(this.readSettings());
   readonly simMode = signal<SimMode>(this.readSimMode());
+  /** True while a 3D live session owns the clock pace. */
+  readonly liveLink = signal(false);
   readonly adventureLock = signal<AdventureRegion | null>(null);
   readonly adventurePrompt = signal(false);
   readonly interior = signal<InteriorPlan | null>(null);
   private readonly interiorCache = new Map<string, InteriorPlan>();
   readonly npcBubbles = signal<ChatBubble[]>([]);
   private chatter = createChatterState();
+  private residentChatter = createChatterState();
+  private residentRng = new Rng(1);
+  private director: LiveDirector | null = null;
+  private savedSimMode: SimMode | null = null;
+  private lastSimAt = 0;
+  private chatterQueue: { bubbleId: string; speakerId: string; name: string; text: string; ms: number; replyTo?: number }[] = [];
   /** Bumps when fog-of-war holes change (visited places). */
   readonly fogRev = signal(0);
   readonly simHours = signal(START_HOUR);
@@ -272,14 +298,16 @@ export class WorldService {
     this.interiorCache.clear();
     this.interior.set(null);
     this.chatter = createChatterState();
+    this.residentChatter = createChatterState();
     this.npcBubbles.set([]);
     this.world.set(world);
     this.player.set(this.heroFromPrefs(defaultPlayerStart(world)));
     this.followPlayer.set(true);
     this.simHours.set(START_HOUR);
     this.clockHours = START_HOUR;
-    this.entities.set(spawnEntities(world, this.seed));
+    this.entities.set([...spawnEntities(world, this.seed), ...spawnResidents(world, this.seed)]);
     this.simRng = new Rng(this.seed ^ 0x91a2);
+    this.residentRng = new Rng((this.seed ^ 0x51a7) >>> 0);
     this.simTick.update((n) => n + 1);
     this.ready.set(true);
     this.clearAdventure();
@@ -410,8 +438,148 @@ export class WorldService {
   }
 
   setSimMode(mode: SimMode): void {
-    this.simMode.set(mode);
-    localStorage.setItem(SIM_KEY, mode);
+    if (this.liveLink()) {
+      if (mode === 'fast' || mode === 'fastest') return;
+      if (mode === 'play') {
+        this.simMode.set('zone');
+        return;
+      }
+      if (mode === 'paused' || mode === 'sync') {
+        this.simMode.set(mode);
+        return;
+      }
+    }
+    const stored = mode === 'zone' ? 'play' : mode;
+    this.simMode.set(stored);
+    localStorage.setItem(SIM_KEY, stored);
+  }
+
+  beginLive(area: AreaExport, sid: string): void {
+    const world = this.world();
+    if (!world) return;
+    if (!this.liveLink()) {
+      const current = this.simMode();
+      this.savedSimMode = current === 'zone' ? 'play' : current;
+    }
+    this.director = createDirector(area, sid, world.width);
+    this.liveLink.set(true);
+    this.simMode.set('zone');
+    syncDirector(this.director, this.entities(), this.clockHours, true);
+  }
+
+  endLive(): void {
+    if (this.director) {
+      for (const entity of this.entities()) {
+        if (entity.heldBy === this.director.sid) entity.heldBy = undefined;
+      }
+    }
+    this.director = null;
+    this.chatterQueue = [];
+    const restore = this.savedSimMode;
+    this.savedSimMode = null;
+    this.liveLink.set(false);
+    if (restore) this.setSimMode(restore);
+  }
+
+  clockState(): ClockState {
+    const mode = this.simMode();
+    return {
+      hours: this.clockHours,
+      rate: this.simRate() * GAME_HOURS_PER_REAL_SEC,
+      mode: mode === 'zone' ? 'zone' : mode,
+    };
+  }
+
+  clockNow(): number {
+    return this.clockHours;
+  }
+
+  restoreClock(hours: number): void {
+    if (!Number.isFinite(hours) || hours < 0) return;
+    this.clockHours = hours;
+    this.simHours.set(hours);
+  }
+
+  exportNpcSnapshot(area: AreaExport, sid: string) {
+    const world = this.world();
+    if (!world) return { frame: 'zone-m' as const, asOfHours: this.clockHours, list: [] };
+    return snapshotNpcs(area, this.entities(), this.player(), this.clockHours, sid, world.width);
+  }
+
+  buildLiveFrame(key: boolean): { ents: NpcState[]; events: NpcEvent[] } {
+    const director = this.director;
+    if (!director) return { ents: [], events: [] };
+    syncDirector(director, this.entities(), this.clockHours, true);
+    return buildSimBody(director, this.entities(), this.player(), key);
+  }
+
+  liveNearby(): number {
+    return this.director?.replicated.size ?? 0;
+  }
+
+  applyLiveNpc(report: NpcReportMsg): void {
+    if (!this.director) return;
+    applyNpcReport(this.director, this.entities(), report, this.clockHours);
+    this.simTick.update((n) => n + 1);
+  }
+
+  releaseLiveHolds(): void {
+    if (!this.director) return;
+    releaseHolds(this.director, this.entities());
+    this.simTick.update((n) => n + 1);
+  }
+
+  resumeLiveHolds(): void {
+    if (!this.director) return;
+    resumeHolds(this.director);
+  }
+
+  talkTo(id: string, replyTo?: number): void {
+    const world = this.world();
+    const director = this.director;
+    const entity = this.entities().find((item) => item.id === id);
+    if (!world || !director || !entity || !director.replicated.has(id)) return;
+    const rng = new Rng(Math.floor(liveDraw(director.sid, id, 9) * 1e9) || 1);
+    const text = composeChatterLine(world, this.entities(), entity, this.player(), rng);
+    if (!text) return;
+    this.publishChatter({ speakerId: entity.id, name: entity.name, text }, replyTo);
+    const rate = this.simRate() * GAME_HOURS_PER_REAL_SEC || ZONE_SIM_RATE * GAME_HOURS_PER_REAL_SEC;
+    setTalkIntent(director, entity, this.clockHours, NPC_BUBBLE_MS, rate);
+  }
+
+  pullChatter(): { bubbleId: string; speakerId: string; name: string; text: string; ms: number; replyTo?: number }[] {
+    const queued = this.chatterQueue;
+    this.chatterQueue = [];
+    return queued;
+  }
+
+  /** Forget wall-clock since the last sim step so a travel charge is not applied twice. */
+  consumeSimGap(now: number): void {
+    this.lastSimAt = now;
+  }
+
+  /**
+   * Advance the simulation from a wall clock. Live sessions catch up to 2s
+   * (message-driven, so a hidden tab still moves). The map's own frames share
+   * `lastSimAt`, so a message and a paint do not double-step.
+   * Moving frames should call `advanceTravel` instead of this.
+   */
+  advanceSim(now: number): void {
+    if (this.lastSimAt <= 0) {
+      this.lastSimAt = now;
+      return;
+    }
+    const elapsed = (now - this.lastSimAt) / 1000;
+    this.lastSimAt = now;
+    const rate = this.simRate();
+    if (rate <= 0 || elapsed <= 0) return;
+    const cap = this.liveLink() ? 2 : 0.05;
+    let remain = Math.min(cap, elapsed);
+    while (remain > 1e-8) {
+      const step = Math.min(0.05, remain);
+      this.stepSimulation(step * rate);
+      remain -= step;
+    }
   }
 
   liveEntities(): MapEntity[] {
@@ -422,21 +590,46 @@ export class WorldService {
     const world = this.world();
     if (!world || dt <= 0) return;
     const list = this.entities();
+    if (this.director && !this.director.fallback) syncDirector(this.director, list, this.clockHours, true);
+    stepResidentRoutines(list, this.clockHours);
     stepEntities(world, list, dt, this.simRng);
     this.clockHours += dt * GAME_HOURS_PER_REAL_SEC;
     if (this.prefs.npcChatter()) {
-      const line = stepNpcChatter(this.chatter, world, list, this.player(), Date.now(), this.clockHours, this.simRng);
-      if (line) {
-        const bubble: ChatBubble = {
-          id: `${line.speakerId}-${Date.now()}`,
-          peerId: line.speakerId,
-          name: line.name,
-          text: line.text,
-          until: Date.now() + NPC_BUBBLE_MS,
-        };
-        const now = Date.now();
-        this.npcBubbles.update((cur) => [...cur.filter((b) => b.peerId !== line.speakerId && b.until > now), bubble].slice(-8));
-      }
+      const travelers = list.filter((entity) => !entity.resident);
+      const residents = list.filter((entity) => !!entity.resident);
+      this.publishChatter(
+        stepNpcChatter(this.chatter, world, travelers, this.player(), Date.now(), this.clockHours, this.simRng),
+      );
+      this.publishChatter(
+        stepNpcChatter(this.residentChatter, world, residents, this.player(), Date.now(), this.clockHours, this.residentRng),
+      );
+    }
+  }
+
+  private publishChatter(
+    line: { speakerId: string; name: string; text: string } | null,
+    replyTo?: number,
+  ): void {
+    if (!line) return;
+    const text = line.text.slice(0, 160);
+    const bubble: ChatBubble = {
+      id: `${line.speakerId}-${Date.now()}`,
+      peerId: line.speakerId,
+      name: line.name,
+      text,
+      until: Date.now() + NPC_BUBBLE_MS,
+    };
+    const now = Date.now();
+    this.npcBubbles.update((cur) => [...cur.filter((b) => b.peerId !== line.speakerId && b.until > now), bubble].slice(-8));
+    if (this.director?.replicated.has(line.speakerId)) {
+      this.chatterQueue.push({
+        bubbleId: bubble.id,
+        speakerId: line.speakerId,
+        name: line.name.slice(0, 48),
+        text,
+        ms: NPC_BUBBLE_MS,
+        replyTo,
+      });
     }
   }
 
@@ -459,6 +652,8 @@ export class WorldService {
    * One call substeps at `TRAVEL_SIM_STEP_SEC` and stops after
    * `TRAVEL_SIM_BUDGET_SEC` of rate-1 sim (4 game minutes), so a teleport
    * cannot run hours of NPC sim. Returns the game hours actually applied.
+   * Map walking passes `travelChargePaceMps`. A live session passes `zoneWalkPaceMps`
+   * for tb-player distance, and uses `advanceSim` at `ZONE_SIM_RATE` while idle.
    */
   advanceTravel(distanceMeters: number, paceMps: number): number {
     const hours = travelGameHours(distanceMeters, paceMps);
@@ -480,6 +675,10 @@ export class WorldService {
 
   simRate(): number {
     const mode = this.simMode();
+    if (this.liveLink()) {
+      if (mode === 'paused' || mode === 'sync') return 0;
+      return ZONE_SIM_RATE;
+    }
     if (mode === 'play') return PLAY_RATE;
     if (mode === 'fast') return FAST_RATE;
     if (mode === 'fastest') return FASTEST_RATE;

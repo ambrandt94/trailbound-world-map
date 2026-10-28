@@ -29,6 +29,7 @@ import {
   playerWalkSpeed,
   travelChargePaceMps,
   travelSpeedTilesPerSec,
+  zoneWalkPaceMps,
   SYNC_TURN_TILES,
   TILE,
   clamp,
@@ -63,14 +64,30 @@ import {
   mapScaleBar,
   zoneRadiusFor,
 } from '../../models/world.models';
-import { buildAreaExport } from '../../engine/area-export';
+import { AreaExport, buildAreaExport } from '../../engine/area-export';
 import {
   CONTOUR_INTERVAL_M,
   ELEVATION_LEGEND_M,
   elevationRampCss,
   formatMeters,
 } from '../../engine/height-view';
-import { downloadAreaExport, openAreaInController, type AreaBridgeSession } from '../../engine/area-bridge';
+import {
+  downloadAreaExport,
+  installLiveResume,
+  openAreaInController,
+  type AreaBridgeSession,
+  type LiveHost,
+} from '../../engine/area-bridge';
+import {
+  facingToYaw,
+  frameOf,
+  placeWalkerFromExit,
+  worldFromZone,
+  yawToFacing,
+  zoneFromWorld,
+  type ExitMsg,
+  type PlayerMsg,
+} from '../../engine/live-link';
 import { AssetLibrary } from '../../engine/assets';
 import { nearestEntity } from '../../engine/entities';
 import { defaultPlayerState } from '../../engine/hero';
@@ -209,7 +226,7 @@ const ZOOM_CATCH = 0.18;
               </button>
             </div>
             @if (bridgeNote()) {
-              <p class="play3d-note">{{ bridgeNote() }}</p>
+              <p class="play3d-note" [class.live]="world.liveLink()">{{ bridgeNote() }}</p>
             }
           </div>
         }
@@ -391,6 +408,9 @@ const ZOOM_CATCH = 0.18;
       font-size: 0.72rem;
       line-height: 1.35;
       color: var(--tb-muted);
+    }
+    .play3d-note.live {
+      color: var(--tb-ink);
     }
     .boot {
       position: absolute;
@@ -617,6 +637,10 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   readonly isolatedPlaceId = signal<string | null>(null);
   readonly bridgeNote = signal('');
   private bridge: AreaBridgeSession | null = null;
+  private sessionArea: AreaExport | null = null;
+  private liveExitHold = false;
+  private liveDriving = false;
+  private removeResume: (() => void) | null = null;
   private leavingIsolation = false;
   private discoverArmed = false;
   /** Locked dive tile while zooming into uncharted land (avoids sliding into a neighbor place). */
@@ -677,6 +701,14 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
       this.renderer.cloudBake = null;
     }
     this.ngZone.run(() => this.world.generating.set(false));
+    this.removeResume = installLiveResume({
+      host: this.liveHost(),
+      onStatus: (message) => this.ngZone.run(() => this.bridgeNote.set(message)),
+      onSession: (session) => {
+        this.bridge?.close();
+        this.bridge = session;
+      },
+    });
 
     this.bindKeys();
     this.observeCanvas();
@@ -714,6 +746,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.unbindKeys();
     this.globe?.dispose();
     this.globe = null;
+    this.removeResume?.();
+    this.removeResume = null;
     this.bridge?.close();
     this.bridge = null;
   }
@@ -726,10 +760,22 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
         this.bridgeNote.set('Zoom into a place before playing it in 3D.');
         return;
       }
+      const live = !this.room.connected();
+      const sid = live ? crypto.randomUUID() : 'snapshot';
+      const payload: AreaExport = {
+        ...area,
+        npcs: this.world.exportNpcSnapshot(area, sid),
+        session: live ? { sid, live: 1 } : undefined,
+      };
+      this.sessionArea = payload;
       this.bridge?.close();
-      this.bridge = openAreaInController(area, {
+      this.liveDriving = false;
+      this.bridge = openAreaInController(payload, {
+        live,
+        host: live ? this.liveHost() : undefined,
         onStatus: (message) => this.ngZone.run(() => this.bridgeNote.set(message)),
       });
+      if (!live) this.bridgeNote.set('In a room the 3D link is one-shot. Waiting for the controller…');
     }, 0);
   }
 
@@ -741,7 +787,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
         this.bridgeNote.set('Zoom into a place before downloading it.');
         return;
       }
-      downloadAreaExport(area);
+      const payload: AreaExport = { ...area, npcs: this.world.exportNpcSnapshot(area, 'download') };
+      downloadAreaExport(payload);
       this.bridgeNote.set(`Saved area-${area.area.id}.json · ${area.meta.hash.slice(0, 19)}…`);
     }, 0);
   }
@@ -1094,7 +1141,12 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     this.stepPlayer(dt);
     this.confinePlayerToIsolation();
     if (this.world.interior() && this.camera.scale < DETAIL_START) this.world.leaveInterior();
-    if (!this.chargeWalkerTravel(ox, oy, travelScale, sprinting)) this.stepSim(dt);
+    const charged = !this.liveDriving && this.chargeWalkerTravel(ox, oy, travelScale, sprinting);
+    if (this.world.liveLink()) {
+      if (!this.liveDriving && !charged) this.world.advanceSim(t);
+    } else if (!charged) {
+      this.stepSim(dt);
+    }
     this.stepCamera(dt);
     this.maybeGenerate();
     this.draw();
@@ -1139,6 +1191,10 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) my += 1;
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) mx -= 1;
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) mx += 1;
+    if (this.liveDriving) {
+      if (this.usingWalker()) this.player.frame = 1;
+      return;
+    }
     if (!mx && !my) {
       if (this.usingWalker()) this.player.frame = 1;
       return;
@@ -1187,6 +1243,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
    * While the adventure walker actually moves, game time is distance ÷ pace
    * and replaces the sim-rate tick. Sync mode keeps its turn clock instead,
    * so a room on sync does not advance twice. Standing still uses the sim rate.
+   * A live 3D session charges `zoneWalkPaceMps` (5 km/h) instead of the street pace.
    */
   private chargeWalkerTravel(ox: number, oy: number, scale: number, sprinting: boolean): boolean {
     if (!this.usingWalker() || this.showingGlobe()) return false;
@@ -1194,7 +1251,8 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const width = this.world.world()?.width ?? 192;
     const tiles = Math.hypot(wrapDeltaX(ox, this.player.x, width), this.player.y - oy);
     if (!(tiles > 1e-6)) return false;
-    this.world.advanceTravel(tiles * METERS_PER_WORLD_TILE, travelChargePaceMps(scale, sprinting));
+    const pace = this.world.liveLink() ? zoneWalkPaceMps() : travelChargePaceMps(scale, sprinting);
+    this.world.advanceTravel(tiles * METERS_PER_WORLD_TILE, pace);
     return true;
   }
 
@@ -1497,6 +1555,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   }
 
   private confinePlayerToIsolation(): void {
+    if (this.liveExitHold) return;
     if (this.prefs.adventureMode()) return;
     if (this.camera.scale < DETAIL_START) return;
     const tiles = this.isolationTiles();
@@ -1563,6 +1622,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   }
 
   private leaveInstance(): void {
+    this.liveExitHold = false;
     this.isolatePlaceId = null;
     this.leavingIsolation = false;
     this.isoTilesCache = null;
@@ -2011,6 +2071,150 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     canvas.width = Math.floor(this.viewW * dpr);
     canvas.height = Math.floor(this.viewH * dpr);
     this.globe?.resize(this.viewW, this.viewH, dpr);
+  }
+
+  private liveHost(): LiveHost {
+    return {
+      now: () => performance.now(),
+      clock: () => this.world.clockState(),
+      placeName: () => this.sessionArea?.area.name ?? '',
+      nearbyCount: () => this.world.liveNearby(),
+      gridSpan: () => {
+        const area = this.sessionArea;
+        if (!area) return { maxX: 4096, maxZ: 4096 };
+        return {
+          maxX: area.grid.w * area.units.metersPerTile + 64,
+          maxZ: area.grid.h * area.units.metersPerTile + 64,
+        };
+      },
+      entryPlayer: () => {
+        const area = this.sessionArea;
+        const data = this.world.world();
+        if (!area || !data) return null;
+        const pt = zoneFromWorld(this.player.x, this.player.y, frameOf(area, data.width));
+        return {
+          x: Math.round(pt.x * 10) / 10,
+          z: Math.round(pt.z * 10) / 10,
+          yaw: facingToYaw(this.player.facing),
+        };
+      },
+      buildFrame: (key) => this.world.buildLiveFrame(key),
+      onOpen: (sid) => {
+        const area = this.sessionArea;
+        if (!area) return;
+        this.liveDriving = true;
+        this.ngZone.run(() => this.world.beginLive(area, sid));
+      },
+      onClose: () => {
+        this.liveDriving = false;
+        this.ngZone.run(() => this.world.endLive());
+      },
+      liveStep: (now) => this.world.advanceSim(now),
+      mirrorPlayer: (msg, now) => this.mirrorFromController(msg, now),
+      mirrorHeld: (npcs) => this.mirrorHeldNpcs(npcs),
+      onExit: (msg) => this.exitFromController(msg),
+      onNpc: (msg) => this.world.applyLiveNpc(msg),
+      onInteract: ({ id, seq }) => this.world.talkTo(id, seq),
+      onEnterBuilding: () => undefined,
+      onLeaveBuilding: () => undefined,
+      onRelease: () => {
+        this.liveDriving = false;
+        this.world.releaseLiveHolds();
+      },
+      onResumeHolds: () => this.world.resumeLiveHolds(),
+      onDriving: (driving) => {
+        this.liveDriving = driving;
+      },
+      pullChatter: () => this.world.pullChatter(),
+      rebuild: (stored) => this.rebuildLiveArea(stored),
+      restoreClock: (hours) => this.world.restoreClock(hours),
+    };
+  }
+
+  private rebuildLiveArea(stored: { sid: string; placeId: string; areaHash: string; controllerOrigin: string; clockHours: number }): AreaExport | null {
+    const data = this.world.world();
+    if (!data) return null;
+    const place = data.nodes.find((node) => node.id === stored.placeId);
+    if (!place?.tiles?.length) return null;
+    const area = buildAreaExport(data, place, { timeOfDayHours: stored.clockHours });
+    if (area.meta.hash !== stored.areaHash) return null;
+    const payload: AreaExport = {
+      ...area,
+      npcs: this.world.exportNpcSnapshot(area, stored.sid),
+      session: { sid: stored.sid, live: 1 },
+    };
+    this.sessionArea = payload;
+    return payload;
+  }
+
+  private mirrorFromController(msg: PlayerMsg, now: number): void {
+    const area = this.sessionArea;
+    const data = this.world.world();
+    if (!area || !data) return;
+    const spot = worldFromZone(msg.pos.x, msg.pos.z, frameOf(area, data.width));
+    const facing = yawToFacing(msg.yaw);
+    const distanceMeters =
+      Math.hypot(wrapDeltaX(this.player.x, spot.x, data.width), spot.y - this.player.y) * METERS_PER_WORLD_TILE;
+    if (this.world.simMode() === 'paused') {
+      this.world.consumeSimGap(now);
+    } else if (this.world.simMode() === 'sync') {
+      this.world.consumeSimGap(now);
+      this.syncAcc += distanceMeters / METERS_PER_WORLD_TILE;
+      let turns = 0;
+      while (this.syncAcc >= SYNC_TURN_TILES && turns < 8) {
+        this.syncAcc -= SYNC_TURN_TILES;
+        this.world.stepSyncTurn();
+        turns += 1;
+      }
+    } else if (msg.moving && distanceMeters > 0.05) {
+      this.world.consumeSimGap(now);
+      this.world.advanceTravel(distanceMeters, zoneWalkPaceMps());
+    } else {
+      this.world.advanceSim(now);
+    }
+    this.player.x = spot.x;
+    this.player.y = spot.y;
+    this.player.facing = facing;
+    if (msg.moving) {
+      this.player.anim += msg.sprint ? 0.35 : 0.2;
+      this.player.frame = [0, 1, 2, 1][Math.floor(this.player.anim) % 4]!;
+    } else {
+      this.player.frame = 1;
+    }
+    this.liveDriving = true;
+    this.world.setPlayer(spot.x, spot.y, { facing, frame: this.player.frame, anim: this.player.anim });
+  }
+
+  private mirrorHeldNpcs(npcs: { id: string; pos: { x: number; z: number } }[]): void {
+    const area = this.sessionArea;
+    const data = this.world.world();
+    if (!area || !data) return;
+    const frame = frameOf(area, data.width);
+    const list = this.world.liveEntities();
+    for (const npc of npcs) {
+      const entity = list.find((item) => item.id === npc.id);
+      if (!entity?.heldBy) continue;
+      const spot = worldFromZone(npc.pos.x, npc.pos.z, frame);
+      entity.x = spot.x;
+      entity.y = spot.y;
+    }
+  }
+
+  private exitFromController(msg: ExitMsg): void {
+    const area = this.sessionArea;
+    const data = this.world.world();
+    if (!area || !data) return;
+    const tiles = new Set(area.area.worldTiles.map(([x, y]) => `${x},${y}`));
+    const placed = placeWalkerFromExit(msg.pos, msg.side, msg.yaw, frameOf(area, data.width), tiles);
+    this.player.x = placed.x;
+    this.player.y = placed.y;
+    this.player.facing = placed.facing;
+    this.player.frame = 1;
+    this.liveDriving = false;
+    this.liveExitHold = true;
+    this.world.setPlayer(placed.x, placed.y, { facing: placed.facing, frame: 1, anim: this.player.anim });
+    this.noteAdventureEdge(data);
+    if (this.isolatePlaceId) this.applyZoom(Math.min(this.zoneLeaveScale() - 0.04, this.adventureCap()));
   }
 
   private isMoveKey(code: string): boolean {

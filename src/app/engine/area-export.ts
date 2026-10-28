@@ -1,5 +1,5 @@
 /**
- * AreaExport v0.3 — deterministic place payload for the Trailbound controller.
+ * AreaExport v0.4 — deterministic place payload for the Trailbound controller.
  * Engine-only (no Angular). Types in this file are the schema source of truth.
  *
  * Street chunks are baked here in (y, x) order, twice, so shared edges do not
@@ -39,7 +39,7 @@ import { SEASON, biomeSeason } from './tileset';
 import { worldHeightSampler } from './world-gen';
 
 /** Schema version. The controller rejects an unknown major version. */
-export const AREA_EXPORT_VERSION = '0.3.0';
+export const AREA_EXPORT_VERSION = '0.4.0';
 /**
  * Visual continuation around the playable place, in world tiles.
  * 4 × ZONE_SCALE = 32 inner tiles = 32 m on each side. Not walkable.
@@ -251,6 +251,14 @@ export interface AreaExport {
   pois: AreaPoi[];
   entries: AreaEntry[];
   neighbors: AreaNeighbor[];
+  /**
+   * People near the place, in zone metres. Omitted from `meta.hash`.
+   * A download includes this so standalone play has residents and travelers.
+   * Missing means the controller shows no NPCs.
+   */
+  npcs?: AreaNpcSnapshot;
+  /** Set only for a live session. Omitted from `meta.hash`. */
+  session?: { sid: string; live: 1 };
   meta: {
     exportedAt: string;
     timeOfDayHours: number;
@@ -345,6 +353,26 @@ export interface AreaNeighbor {
   side: Cardinal;
 }
 
+export interface AreaNpcSnapshot {
+  frame: 'zone-m';
+  asOfHours: number;
+  list: AreaNpc[];
+}
+
+export interface AreaNpc {
+  id: string;
+  name: string;
+  kind: 'wanderer' | 'caravan' | 'army';
+  look: { sheet: string; char: number };
+  phase: 'near' | 'in' | 'inside';
+  pos: { x: number; z: number };
+  yaw: number;
+  speed: number;
+  intent: object;
+  iv: number;
+  members?: { n: number; show: number; looks: { sheet: string; char: number }[] };
+}
+
 export interface AreaExportOptions {
   /** Stored on meta. Not part of the content hash. */
   exportedAt?: string;
@@ -365,7 +393,7 @@ const NOTES = [
   'Desert maps to ground class sand. Mountain maps to rock. Other dry land is grass unless a path, lot, plaza, or yard overrides it. Snow stays grass.',
   'v0.2 buildings add a human-scale structure inside a larger plot. footW/footD are the structure AABB. tiles is the world-aligned mask (yard, floor, wall, door, window, tower). rotation is 0, 90, 180, or 270. door and doorCell are the opening after that rotation.',
   'Season is the tileset row for the place biome (summer, autumn, winter, lush), not a simulated calendar.',
-  'meta.exportedAt and meta.timeOfDayHours are excluded from meta.hash.',
+  'meta.exportedAt, meta.timeOfDayHours, npcs, and session are excluded from meta.hash.',
 ];
 
 const HEIGHT_NOTE =
@@ -603,16 +631,19 @@ export function bakeAreaChunks(world: WorldData, tiles: Vec2[]): Map<string, Chu
   return chunks;
 }
 
-/** sha1 of the canonical payload. `exportedAt`, `timeOfDayHours`, and `hash` are omitted. */
+/**
+ * sha1 of the canonical payload. `exportedAt`, `timeOfDayHours`, `hash`, `npcs`,
+ * and `session` are omitted, so a live snapshot does not change the place hash.
+ */
 export function contentHash(area: AreaExport): string {
-  const copy = JSON.parse(JSON.stringify(area)) as {
-    meta: { hash?: string; exportedAt?: string; timeOfDayHours?: number };
-  };
+  const copy = JSON.parse(JSON.stringify(area)) as AreaExport;
+  delete copy.npcs;
+  delete copy.session;
   copy.meta = {
     ...copy.meta,
-    hash: undefined,
-    exportedAt: undefined,
-    timeOfDayHours: undefined,
+    hash: undefined as unknown as string,
+    exportedAt: undefined as unknown as string,
+    timeOfDayHours: undefined as unknown as number,
   };
   return `sha1:${sha1Hex(new TextEncoder().encode(stableStringify(copy)))}`;
 }
