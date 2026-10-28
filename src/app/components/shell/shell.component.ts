@@ -57,7 +57,7 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
         <button
           mat-icon-button
           type="button"
-          [class.active]="world.simMode() === 'play'"
+          [class.active]="world.simMode() === 'play' || world.simMode() === 'zone'"
           (click)="world.setSimMode('play')"
           matTooltip="Play (slow)"
         >
@@ -67,8 +67,9 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
           mat-icon-button
           type="button"
           [class.active]="world.simMode() === 'fast'"
+          [disabled]="world.liveLink()"
           (click)="world.setSimMode('fast')"
-          matTooltip="Fast"
+          [matTooltip]="world.liveLink() ? 'In 3D: zone pace' : 'Fast'"
         >
           <mat-icon>fast_forward</mat-icon>
         </button>
@@ -76,8 +77,9 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
           mat-icon-button
           type="button"
           [class.active]="world.simMode() === 'fastest'"
+          [disabled]="world.liveLink()"
           (click)="world.setSimMode('fastest')"
-          matTooltip="Fastest"
+          [matTooltip]="world.liveLink() ? 'In 3D: zone pace' : 'Fastest'"
         >
           <mat-icon>speed</mat-icon>
         </button>

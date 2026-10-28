@@ -1,8 +1,8 @@
-# AreaExport v0.3
+# AreaExport v0.4
 
 World-map is the authority for a place. The Trailbound controller does not invent geography. The TypeScript types in `src/app/engine/area-export.ts` are the schema. This note is the field guide; if they disagree, the types win.
 
-`buildAreaExport(world, place, opts)` returns one `AreaExport`. Version is `0.3.0`. Every new field is optional for readers: a missing `borderWorldTiles` means 0, a missing `grid.borderMask` means no ring, and `layers.height.sampling` of `world-tile-corners` is the 0.2 lattice. v0.3 always writes the new fields.
+`buildAreaExport(world, place, opts)` returns one `AreaExport`. Version is `0.4.0`. Every new field is optional for readers: a missing `borderWorldTiles` means 0, a missing `grid.borderMask` means no ring, and `layers.height.sampling` of `world-tile-corners` is the 0.2 lattice. v0.3 and v0.4 always write the ring. v0.4 adds optional `npcs` (zone metres) and `session` (`{ sid, live: 1 }` only while a live link is open). Older readers ignore both.
 
 The playable place is still `MapNode.tiles` (`grid.mask`). Around that AABB the grids add a visual border ring of `area.borderWorldTiles` world tiles (4, which is 32 inner tiles, 32 m) on each side. The ring is not walkable. Neighbour names stay metadata. “Load adjacent regions” does not add those places’ buildings.
 
@@ -12,9 +12,9 @@ The playable place is still `MapNode.tiles` (`grid.mask`). Around that AABB the 
 
 1. Resolve the controller URL (below) and append `?bridge=1`.
 2. `window.open` that URL as `tb-controller`.
-3. Post `{ type: 'tb-area-hello', version }` to the controller origin, and repeat until it answers or the window closes.
+3. Post `{ type: 'tb-area-hello', version, live: [1] }` to the controller origin, and repeat until it answers or the window closes. A room omits `live` and stays one-shot.
 4. On `{ type: 'tb-area-ready' }` from that window, post `{ type: 'tb-area', payload }` where `payload` is the `AreaExport`.
-5. On `{ type: 'tb-area-ack', hash }`, compare `hash` to `meta.hash` (the `sha1:` prefix is optional).
+5. On `{ type: 'tb-area-ack', hash }`, compare `hash` to `meta.hash` (the `sha1:` prefix is optional). If both sides set `live: 1`, the channel stays open (`tb-session-open`, then `tb-sim` / `tb-player`). The named window `tb-controller` is reused on the next Play in 3D. Download JSON includes `npcs` and omits `session`.
 
 Every `postMessage` uses the controller origin as `targetOrigin`. Incoming messages must come from that same window and from an allowlisted origin. `'*'` is never used.
 
@@ -43,7 +43,7 @@ Set `localStorage['tb-controller-url']` to override (for example `http://127.0.0
 
 Chunks are regenerated inside the exporter, not copied from the session. Tiles are sorted by `(y, x)` and `generateChunk` runs twice (`AREA_CHUNK_PASSES`) so each edge is stitched against neighbours from that same order. Visit order cannot change the hash.
 
-`meta.hash` is `sha1:` plus the SHA-1 of the canonical JSON (keys sorted, UTF-8). `meta.exportedAt`, `meta.timeOfDayHours`, and `meta.hash` are left out, so the clock does not change the hash. The same seed and place hash the same twice.
+`meta.hash` is `sha1:` plus the SHA-1 of the canonical JSON (keys sorted, UTF-8). `meta.exportedAt`, `meta.timeOfDayHours`, `meta.hash`, `npcs`, and `session` are left out, so the clock and a live snapshot do not change the hash. The same seed and place hash the same twice, including across v0.3 when `version` is the only other difference from the note text.
 
 ### Ground classes
 
@@ -193,9 +193,10 @@ Two back-to-back runs of the check script write identical bytes. `meta.exportedA
 
 | File | Place | Bytes | Hash |
 | --- | --- | --- | --- |
-| `fixtures/area-veldcross.json` | Ironmarch, town, streets and buildings | 368464 | `sha1:63e5aaf2bedf0ffb91eb091cd839ab45cea71e07` |
-| `fixtures/area-hollowmere.json` | Shadowglen, grove, trees, no buildings | 214517 | `sha1:d39734cf18ba4ba99b5063edee1fd40cd0e0eb68` |
-| `fixtures/area-jadewild.json` | Jadewild, forest grove with water | 230766 | `sha1:d16ff6014c7e9083c794030b916c2cf1a59541f7` |
+| `fixtures/area-veldcross.json` | Ironmarch, town, streets and buildings | 368480 | `sha1:0ec826e37f17b10b84fb0c02504f77b0daf2f6fc` |
+| `fixtures/area-hollowmere.json` | Shadowglen, grove, trees, no buildings | 214533 | `sha1:7ae9a2e1fc452e4da1a84bab986de0b010c03662` |
+| `fixtures/area-jadewild.json` | Jadewild, forest grove with water | 230782 | `sha1:712edad80205fd302e774c0737e6a4e2552eaba9` |
+| `fixtures/area-hollowmere-v04.json` | Shadowglen plus a forced NPC snapshot (hash unchanged) | 216490 | `sha1:7ae9a2e1fc452e4da1a84bab986de0b010c03662` |
 
 Most of the growth versus 0.2 is the expanded base64 grids (mask, borderMask, biome, ground). The height `raw` array is about 40–70 KB of the file. No extra quantization.
 
@@ -204,7 +205,7 @@ Jadewild header (grids and `raw` omitted):
 ```json
 {
   "type": "trailbound.area",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "source": { "app": "world-map", "build": "2026-10-27", "seed": 7741, "worldScale": 8, "mapStyle": "continent", "zoneScale": 8 },
   "area": {
     "id": "jadewild",
@@ -238,6 +239,6 @@ Jadewild header (grids and `raw` omitted):
     "water": { "level": 8.2709, "raw": 0.37502, "fromBiome": true, "present": true }
   },
   "entries": [{ "id": "player", "kind": "spawn", "x": 2843.5, "y": 4977.5, "facing": "E" }],
-  "meta": { "hash": "sha1:d16ff6014c7e9083c794030b916c2cf1a59541f7" }
+  "meta": { "hash": "sha1:712edad80205fd302e774c0737e6a4e2552eaba9" }
 }
 ```
