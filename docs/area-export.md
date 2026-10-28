@@ -191,13 +191,14 @@ jitter = seededJitter(worldSeed, placeId)   // in [0.75, 1.25], ±25%
 crowd = max(0, count − named)
 ```
 
-`jitter` is a hash of the world seed and the place id. It does not draw from the sim RNG, so reloading the same seed returns the same count. `named` is `residentCountFor` (3–8). The crowd is everyone else.
+`jitter` is a hash of the world seed and the place id. It does not draw from the sim RNG, so reloading the same seed returns the same count. `named` is `residentCountFor` (3–8), stored on the population block so the controller does not have to count the `npcs` list. The crowd is everyone else.
 
 World defaults live with the other world settings: `residentsMode` is `perPlace` (average 24) or `perHouse` (average 2.5). A place panel can store an override (`mode` + `avg`) keyed by place id. That override is not inside the seed-scoped node list, so it survives a new seed. The export's `mode` and `avg` are the values after the override.
 
 | Field | Meaning |
 | --- | --- |
 | `count` | Census from the formula above |
+| `named` | Named residents for this place (real map entities). Crowd = max(0, count − named) |
 | `mode` | `perPlace` or `perHouse` |
 | `avg` | Average used for that mode |
 | `seed` | World seed mixed into the jitter |
@@ -209,6 +210,7 @@ Pool the crowd at `max(0, count − named)`, not at `count`. On seed 7741, Ironm
 ```json
 {
   "count": 18,
+  "named": 6,
   "mode": "perPlace",
   "avg": 24,
   "seed": 7741,
@@ -231,13 +233,15 @@ AREA_EXPORT_WRITE=1 npx tsx scripts/area-export-check.ts
 
 Two back-to-back runs of the check script write identical bytes. `meta.exportedAt` is fixed in that script and is not part of the hash.
 
+`buildAreaExport` leaves `npcs` and `session` off. They are a clock snapshot, not part of `meta.hash`. **Download area JSON** adds that snapshot and still omits `session`. `fixtures/area-veldcross.json` is the builder payload. `fixtures/area-veldcross-v05.json` is the download for Ironmarch: the same hash, plus `npcs` and no `session`. The player in that snapshot stands at the place centroid with people freshly spawned at hour 8, which is the isolated-download case before the sim has stepped. All six named Ironmarch residents are in `npcs.list`.
+
 | File | Place | Bytes | Hash |
 | --- | --- | --- | --- |
-| `fixtures/area-veldcross.json` | Ironmarch, town, streets and buildings, population | 369590 | `sha1:0d274d4a5a7d6c2eb91bd2d0fd89980684fdff13` |
-| `fixtures/area-veldcross-v05.json` | Same Ironmarch payload, kept under the v0.5 name | 369590 | `sha1:0d274d4a5a7d6c2eb91bd2d0fd89980684fdff13` |
-| `fixtures/area-hollowmere.json` | Shadowglen, grove, trees, no buildings, no population | 215203 | `sha1:a426f8ce4218a4c4777161d084e0b578a7888207` |
-| `fixtures/area-jadewild.json` | Jadewild, forest grove with water, no population | 231452 | `sha1:2953aab5536436a680206b833e6b098024bd280a` |
-| `fixtures/area-hollowmere-v04.json` | Shadowglen plus a forced NPC snapshot (hash unchanged) | 217160 | `sha1:a426f8ce4218a4c4777161d084e0b578a7888207` |
+| `fixtures/area-veldcross.json` | Ironmarch builder payload, population.named = 6 | 369669 | `sha1:126d58f19b359c3456bea4a2e426112581f68856` |
+| `fixtures/area-veldcross-v05.json` | Ironmarch download: same payload plus `npcs`, no `session` | 374876 | `sha1:126d58f19b359c3456bea4a2e426112581f68856` |
+| `fixtures/area-hollowmere.json` | Shadowglen, grove, trees, no buildings, no population | 215266 | `sha1:793f9b131cfcb1e3e111d635aa697104dcb178fc` |
+| `fixtures/area-jadewild.json` | Jadewild, forest grove with water, no population | 231515 | `sha1:e2682534c614f3ebd1f0090fea96e5931cee0f2a` |
+| `fixtures/area-hollowmere-v04.json` | Shadowglen plus a forced NPC snapshot (hash unchanged) | 217223 | `sha1:793f9b131cfcb1e3e111d635aa697104dcb178fc` |
 
 Most of the growth versus 0.2 is the expanded base64 grids (mask, borderMask, biome, ground). The height `raw` array is about 40–70 KB of the file. No extra quantization.
 
@@ -280,6 +284,6 @@ Jadewild header (grids and `raw` omitted):
     "water": { "level": 8.2709, "raw": 0.37502, "fromBiome": true, "present": true }
   },
   "entries": [{ "id": "player", "kind": "spawn", "x": 2843.5, "y": 4977.5, "facing": "E" }],
-  "meta": { "hash": "sha1:2953aab5536436a680206b833e6b098024bd280a" }
+  "meta": { "hash": "sha1:e2682534c614f3ebd1f0090fea96e5931cee0f2a" }
 }
 ```

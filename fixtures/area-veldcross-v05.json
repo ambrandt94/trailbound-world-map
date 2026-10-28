@@ -11130,6 +11130,7 @@
   "neighbors": [],
   "population": {
     "count": 18,
+    "named": 6,
     "mode": "perPlace",
     "avg": 24,
     "seed": 7741,
@@ -11169,7 +11170,7 @@
     "exportedAt": "2026-10-26T00:00:00.000Z",
     "timeOfDayHours": 8,
     "season": "summer",
-    "hash": "sha1:0d274d4a5a7d6c2eb91bd2d0fd89980684fdff13",
+    "hash": "sha1:126d58f19b359c3456bea4a2e426112581f68856",
     "notes": [
       "Street chunks are regenerated in (y, x) order for two passes. Edges do not depend on which neighbour the session generated first.",
       "Spawn is the road or dirt cell nearest the place centroid, otherwise the nearest walkable cell. The live walker is not baked in, so the same seed and place hash the same.",
@@ -11182,7 +11183,259 @@
       "v0.2 buildings add a human-scale structure inside a larger plot. footW/footD are the structure AABB. tiles is the world-aligned mask (yard, floor, wall, door, window, tower). rotation is 0, 90, 180, or 270. door and doorCell are the opening after that rotation.",
       "Season is the tileset row for the place biome (summer, autumn, winter, lush), not a simulated calendar.",
       "meta.exportedAt, meta.timeOfDayHours, npcs, and session are excluded from meta.hash.",
-      "population is the town census for a city, town, or hamlet, and it is part of meta.hash. count = round(avg × (the dwelling count when mode is perHouse, otherwise 1) × a seeded ±25% jitter from the world seed and place id). The jitter does not use the sim RNG. homes lists dwelling building indexes, repeated once per 30 m² of structure. hotspots are the plaza centre, market stands, tavern doors, and wells in area metres (offset from innerOrigin, y down). The 3–8 named residents are real map entities and are not part of the crowd. Crowd size is max(0, count − named). A missing population field means there is no crowd; v0.4 readers ignore the field."
+      "population is the town census for a city, town, or hamlet, and it is part of meta.hash. count = round(avg × (the dwelling count when mode is perHouse, otherwise 1) × a seeded ±25% jitter from the world seed and place id). The jitter does not use the sim RNG. named is the count of named residents (real map entities) for this place, so crowd = max(0, count − named) does not depend on npcs. homes lists dwelling building indexes, repeated once per 30 m² of structure. hotspots are the plaza centre, market stands, tavern doors, and wells in area metres (offset from innerOrigin, y down). The named residents are not part of the crowd. A missing population field means there is no crowd; v0.4 readers ignore the field."
+    ]
+  },
+  "npcs": {
+    "frame": "zone-m",
+    "asOfHours": 8,
+    "list": [
+      {
+        "id": "resident-veldcross-3",
+        "name": "Dusk Mason",
+        "kind": "wanderer",
+        "look": {
+          "sheet": "farmer",
+          "char": 7
+        },
+        "phase": "in",
+        "pos": {
+          "x": 93.5,
+          "z": 123.7
+        },
+        "yaw": 3.141592653589793,
+        "speed": 1.3,
+        "intent": {
+          "kind": "visit",
+          "buildingId": "b11",
+          "door": {
+            "x": 79.5,
+            "z": 61.5
+          },
+          "dwellH": 0.53,
+          "pace": "walk"
+        },
+        "iv": 1
+      },
+      {
+        "id": "resident-veldcross-1",
+        "name": "Fox Neighbor",
+        "kind": "wanderer",
+        "look": {
+          "sheet": "household",
+          "char": 0
+        },
+        "phase": "in",
+        "pos": {
+          "x": 102,
+          "z": 53.1
+        },
+        "yaw": -1.5707963267948966,
+        "speed": 1.4,
+        "intent": {
+          "kind": "visit",
+          "buildingId": "b6",
+          "door": {
+            "x": 98.5,
+            "z": 49.5
+          },
+          "dwellH": 1.22,
+          "pace": "walk"
+        },
+        "iv": 1
+      },
+      {
+        "id": "resident-veldcross-4",
+        "name": "Wren Miller",
+        "kind": "wanderer",
+        "look": {
+          "sheet": "elder",
+          "char": 6
+        },
+        "phase": "in",
+        "pos": {
+          "x": 61.2,
+          "z": 61.8
+        },
+        "yaw": 0,
+        "speed": 1.5,
+        "intent": {
+          "kind": "visit",
+          "buildingId": "b8",
+          "door": {
+            "x": 50.5,
+            "z": 57.5
+          },
+          "dwellH": 1.01,
+          "pace": "walk"
+        },
+        "iv": 1
+      },
+      {
+        "id": "resident-veldcross-0",
+        "name": "Oats Mason",
+        "kind": "wanderer",
+        "look": {
+          "sheet": "bard",
+          "char": 5
+        },
+        "phase": "in",
+        "pos": {
+          "x": 89.6,
+          "z": 141.5
+        },
+        "yaw": 3.141592653589793,
+        "speed": 1.5,
+        "intent": {
+          "kind": "visit",
+          "buildingId": "b11",
+          "door": {
+            "x": 79.5,
+            "z": 61.5
+          },
+          "dwellH": 0.54,
+          "pace": "walk"
+        },
+        "iv": 1
+      },
+      {
+        "id": "resident-veldcross-2",
+        "name": "Sylva Fisher",
+        "kind": "wanderer",
+        "look": {
+          "sheet": "farmer",
+          "char": 6
+        },
+        "phase": "in",
+        "pos": {
+          "x": 141.2,
+          "z": 76
+        },
+        "yaw": -1.5707963267948966,
+        "speed": 1.4,
+        "intent": {
+          "kind": "visit",
+          "buildingId": "b10",
+          "door": {
+            "x": 138.5,
+            "z": 63.5
+          },
+          "dwellH": 1.32,
+          "pace": "walk"
+        },
+        "iv": 1
+      },
+      {
+        "id": "resident-veldcross-5",
+        "name": "Sedge Weaver",
+        "kind": "wanderer",
+        "look": {
+          "sheet": "blacksmith",
+          "char": 2
+        },
+        "phase": "in",
+        "pos": {
+          "x": 109.1,
+          "z": 37.1
+        },
+        "yaw": 0,
+        "speed": 1.3,
+        "intent": {
+          "kind": "visit",
+          "buildingId": "b3",
+          "door": {
+            "x": 116.5,
+            "z": 35.5
+          },
+          "dwellH": 0.58,
+          "pace": "walk"
+        },
+        "iv": 1
+      },
+      {
+        "id": "caravan-3",
+        "name": "Ironmarch pilgrim procession",
+        "kind": "caravan",
+        "look": {
+          "sheet": "horse1",
+          "char": 7
+        },
+        "phase": "in",
+        "pos": {
+          "x": 148,
+          "z": 76
+        },
+        "yaw": 0,
+        "speed": 1.1,
+        "intent": {
+          "kind": "pass_through",
+          "from": "E",
+          "to": "S",
+          "exit": {
+            "x": 91.5,
+            "z": 151.5
+          },
+          "viaRoad": true,
+          "pace": "walk"
+        },
+        "iv": 1,
+        "members": {
+          "n": 2,
+          "show": 2,
+          "looks": [
+            {
+              "sheet": "horse1",
+              "char": 4
+            },
+            {
+              "sheet": "elf1",
+              "char": 2
+            }
+          ]
+        }
+      },
+      {
+        "id": "caravan-8",
+        "name": "Ironmarch silk caravan",
+        "kind": "caravan",
+        "look": {
+          "sheet": "horse1",
+          "char": 4
+        },
+        "phase": "in",
+        "pos": {
+          "x": 148,
+          "z": 132
+        },
+        "yaw": 0,
+        "speed": 1,
+        "intent": {
+          "kind": "pass_through",
+          "from": "E",
+          "to": "S",
+          "exit": {
+            "x": 91.5,
+            "z": 151.5
+          },
+          "viaRoad": true,
+          "pace": "walk"
+        },
+        "iv": 1,
+        "members": {
+          "n": 2,
+          "show": 2,
+          "looks": [
+            {
+              "sheet": "horse1",
+              "char": 5
+            },
+            {
+              "sheet": "animals2",
+              "char": 0
+            }
+          ]
+        }
+      }
     ]
   }
 }

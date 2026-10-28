@@ -196,6 +196,7 @@ const withPop = {
   version: '0.5.0',
   population: {
     count: 24,
+    named: 6,
     mode: 'perPlace' as const,
     avg: 24,
     seed: 7741,
@@ -209,8 +210,13 @@ const changedHash = contentHash({
   ...withPop,
   population: { ...withPop.population, count: 25 },
 } as AreaExport);
+const namedHash = contentHash({
+  ...withPop,
+  population: { ...withPop.population, named: 7 },
+} as AreaExport);
 assert(v04Hash.startsWith('sha1:') && v04Hash !== v05Hash, 'v0.4 payload without population still hashes');
 assert(changedHash !== v05Hash, 'changing the count changes the hash');
+assert(namedHash !== v05Hash, 'changing named changes the hash');
 const withNpcs = {
   ...withPop,
   npcs: { frame: 'zone-m' as const, asOfHours: 8, list: [] },

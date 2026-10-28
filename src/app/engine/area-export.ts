@@ -36,6 +36,7 @@ import {
 import { generateChunk, neighborMap } from './chunk-gen';
 import { hash2 } from './noise';
 import { SEASON, biomeSeason } from './tileset';
+import { residentCountFor } from './entities';
 import {
   crowdHotspots,
   dwellingHomes,
@@ -390,8 +391,13 @@ export interface AreaNpc {
 }
 
 export interface AreaPopulation {
-  /** Census. Crowd size is max(0, count − named residents). */
+  /** Census. Crowd size is max(0, count − named). */
   count: number;
+  /**
+   * Named residents for this place: the real map entities from `residentCountFor`.
+   * The controller computes crowd as max(0, count − named) without reading `npcs`.
+   */
+  named: number;
   mode: ResidentDefaults['residentsMode'];
   /** Average after the world default or the per-place override. */
   avg: number;
@@ -429,7 +435,7 @@ const NOTES = [
   'v0.2 buildings add a human-scale structure inside a larger plot. footW/footD are the structure AABB. tiles is the world-aligned mask (yard, floor, wall, door, window, tower). rotation is 0, 90, 180, or 270. door and doorCell are the opening after that rotation.',
   'Season is the tileset row for the place biome (summer, autumn, winter, lush), not a simulated calendar.',
   'meta.exportedAt, meta.timeOfDayHours, npcs, and session are excluded from meta.hash.',
-  'population is the town census for a city, town, or hamlet, and it is part of meta.hash. count = round(avg × (the dwelling count when mode is perHouse, otherwise 1) × a seeded ±25% jitter from the world seed and place id). The jitter does not use the sim RNG. homes lists dwelling building indexes, repeated once per 30 m² of structure. hotspots are the plaza centre, market stands, tavern doors, and wells in area metres (offset from innerOrigin, y down). The 3–8 named residents are real map entities and are not part of the crowd. Crowd size is max(0, count − named). A missing population field means there is no crowd; v0.4 readers ignore the field.',
+  'population is the town census for a city, town, or hamlet, and it is part of meta.hash. count = round(avg × (the dwelling count when mode is perHouse, otherwise 1) × a seeded ±25% jitter from the world seed and place id). The jitter does not use the sim RNG. named is the count of named residents (real map entities) for this place, so crowd = max(0, count − named) does not depend on npcs. homes lists dwelling building indexes, repeated once per 30 m² of structure. hotspots are the plaza centre, market stands, tavern doors, and wells in area metres (offset from innerOrigin, y down). The named residents are not part of the crowd. A missing population field means there is no crowd; v0.4 readers ignore the field.',
 ];
 
 const HEIGHT_NOTE =
@@ -685,6 +691,7 @@ function settlementPopulation(
       avg: params.avg,
       houses,
     }),
+    named: residentCountFor(place),
     mode: params.mode,
     avg: params.avg,
     seed: world.seed,
