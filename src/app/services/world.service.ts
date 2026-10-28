@@ -8,6 +8,9 @@ import {
   FAST_RATE,
   FASTEST_RATE,
   GAME_HOURS_PER_REAL_SEC,
+  TRAVEL_SIM_BUDGET_SEC,
+  TRAVEL_SIM_STEP_SEC,
+  travelGameHours,
   KIND_LABELS,
   LocationInfo,
   MapEntity,
@@ -445,6 +448,30 @@ export class WorldService {
       return next.length === list.length ? list : next;
     });
     this.simTick.update((n) => n + 1);
+  }
+
+  /**
+   * Charge a walk on the clock and step NPCs by that same game time.
+   * Game hours = distanceMetres / paceMps / 3600. The caller must not also
+   * `stepSimulation` for this frame. A later in-zone 3D session can call this
+   * with the pace in effect there.
+   *
+   * One call substeps at `TRAVEL_SIM_STEP_SEC` and stops after
+   * `TRAVEL_SIM_BUDGET_SEC` of rate-1 sim (4 game minutes), so a teleport
+   * cannot run hours of NPC sim. Returns the game hours actually applied.
+   */
+  advanceTravel(distanceMeters: number, paceMps: number): number {
+    const hours = travelGameHours(distanceMeters, paceMps);
+    if (hours <= 0) return 0;
+    const budgetHours = TRAVEL_SIM_BUDGET_SEC * GAME_HOURS_PER_REAL_SEC;
+    const applied = Math.min(hours, budgetHours);
+    let simSec = applied / GAME_HOURS_PER_REAL_SEC;
+    while (simSec > 1e-8) {
+      const step = Math.min(simSec, TRAVEL_SIM_STEP_SEC);
+      this.stepSimulation(step);
+      simSec -= step;
+    }
+    return applied;
   }
 
   stepSyncTurn(): void {

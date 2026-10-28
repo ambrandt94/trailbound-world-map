@@ -73,10 +73,21 @@ export const WALK_SPEED_GLOBE = 28;
 export const GAME_HOURS_PER_REAL_SEC = 8 / 60;
 /**
  * Game seconds advanced per real second when the sim multiplier is 1 (Fast forward).
- * `8/60` hours × 3600 = 480. Play mode multiplies the clock by `PLAY_RATE` (0.125)
- * and does not change walker speed.
+ * `8/60` hours × 3600 = 480. Walker speed does not use Play/Fast/Fastest.
+ * While the walker is moving, game time comes from distance ÷ pace instead.
  */
 export const GAME_SECONDS_PER_REAL_SEC = GAME_HOURS_PER_REAL_SEC * 3600;
+/**
+ * Largest rate-1 sim slice inside one `advanceTravel` call.
+ * `stepSimulation` treats this as seconds at sim rate 1.
+ */
+export const TRAVEL_SIM_STEP_SEC = 1 / 30;
+/**
+ * Most rate-1 sim time one `advanceTravel` call will run.
+ * 0.5 s × `GAME_HOURS_PER_REAL_SEC` = 4 game minutes, so a teleport cannot
+ * grind hours of NPC sim into a single frame. A walked frame stays under this.
+ */
+export const TRAVEL_SIM_BUDGET_SEC = 0.5;
 /**
  * Horizontal metres. Matches AreaExport: 1 inner (street) tile = 1 m
  * (`METERS_PER_TILE` in `area-export.ts`). One world tile is `ZONE_SCALE` inner
@@ -95,7 +106,8 @@ export const SPRINT_PACE_KMH = 10;
 /**
  * Isolated street walk: metres of street per real second. Clock-true 5 km/h
  * here is hundreds of metres per real second, so the street uses this human
- * pace instead (sprint keeps the 10/5 ratio). The world clock is not slowed.
+ * pace instead (sprint keeps the 10/5 ratio). Travel time on the street is
+ * distance ÷ this pace, so a stroll is clock-true at 2 or 4 m/s.
  */
 export const STREET_WALK_MPS = 2;
 /**
@@ -103,8 +115,10 @@ export const STREET_WALK_MPS = 2;
  * `scale * TILE` px. Clock speed is ~83 tiles/s (a 106 m town in ~0.16 s).
  * That is readable at kingdom zoom and a blur once tiles are large, so closer
  * overworld zoom uses the slower of the clock speed and this cap. Kingdom and
- * low-region zoom stay on the raw clock, so N km costs N/5 game hours at sim
- * rate 1. At `DETAIL_START` the cap is still above the old 7.2 tiles/s.
+ * low-region zoom stay on the raw clock. Walking charges distance ÷ pace, so
+ * the same metres cost the same game time on Play, Fast, or paused; the cap
+ * covers less ground per frame and so charges less time per frame.
+ * At `DETAIL_START` the cap is still above the old 7.2 tiles/s.
  */
 export const OVERWORLD_MAX_WALK_PX_PER_SEC = 600;
 /** Backstop: closer overworld zoom never walks slower than the pre-tier 7.2 tiles/s. */
@@ -116,10 +130,26 @@ export function sprintPaceRatio(): number {
   return SPRINT_PACE_KMH / WALK_PACE_KMH;
 }
 
-/** Metres per game second at the walk or sprint pace. */
+/** Metres per game second at the overworld walk or sprint pace (5 or 10 km/h). */
 export function paceMps(sprint = false): number {
   const kmh = sprint ? SPRINT_PACE_KMH : WALK_PACE_KMH;
   return (kmh * 1000) / 3600;
+}
+
+/**
+ * Pace charged for travel time. Overworld is 5 or 10 km/h even when the
+ * screen cap slows the sprite. Street is 2 or 4 m/s.
+ */
+export function travelChargePaceMps(scale: number, sprint = false): number {
+  const ratio = sprint ? sprintPaceRatio() : 1;
+  if (scale >= DETAIL_START) return STREET_WALK_MPS * ratio;
+  return paceMps(sprint);
+}
+
+/** Game hours for a walk: distance ÷ pace. Zero when either input is not positive. */
+export function travelGameHours(distanceMeters: number, paceMpsValue: number): number {
+  if (!(distanceMeters > 0) || !(paceMpsValue > 0)) return 0;
+  return distanceMeters / paceMpsValue / 3600;
 }
 
 /**
