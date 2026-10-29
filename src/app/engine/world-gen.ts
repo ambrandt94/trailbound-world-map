@@ -25,7 +25,7 @@ const AUTHORED: Array<Omit<MapNode, 'cx' | 'cy' | 'biome' | 'x0' | 'y0' | 'x1' |
   { id: 'hollowmere', name: 'Shadowglen', origin: 'authored', kind: 'grove', radius: 3.5, seed: 1102, want: Biome.Forest },
   { id: 'dunharrow', name: 'Dunharrow', origin: 'authored', kind: 'camp', radius: 3.3, seed: 1104, want: Biome.Mountain },
   { id: 'rowancopse', name: 'Mythwood', origin: 'authored', kind: 'grove', radius: 3.2, seed: 1106, want: Biome.DarkForest },
-  { id: 'sunspire', name: 'Sunspire', origin: 'authored', kind: 'town', radius: 5.8, seed: 1108, want: Biome.Desert },
+  { id: 'sunspire', name: 'Sunspire', origin: 'authored', kind: 'village', radius: 5.8, seed: 1108, want: Biome.Desert },
   { id: 'jadewild', name: 'Jadewild', origin: 'authored', kind: 'grove', radius: 3.6, seed: 1109, want: Biome.Jungle },
 ];
 
@@ -430,15 +430,6 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
     stampPath(paths, biomes, w, h, Math.floor(a.cx), Math.floor(a.cy), Math.floor(b.cx), Math.floor(b.cy), rng);
   }
 
-  for (const node of nodes) {
-    if (node.kind !== 'city' && node.kind !== 'town' && node.kind !== 'hamlet') continue;
-    for (const t of node.tiles) {
-      if (!inBounds(t.x, t.y, w, h)) continue;
-      if (biomes[idx(t.x, t.y, w)] === Biome.Water) continue;
-      biomes[idx(t.x, t.y, w)] = Biome.Plains;
-    }
-  }
-
   const features: WorldFeature[] = [];
   const keep = 1 / Math.max(1, settings.worldScale);
   const step = settings.worldScale >= 8 ? 2 : 1;
@@ -495,7 +486,7 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
   }
 
   for (const node of nodes) {
-    if (node.kind === 'city' || node.kind === 'town' || node.kind === 'hamlet' || node.kind === 'camp') {
+    if (node.kind === 'city' || node.kind === 'town' || node.kind === 'village' || node.kind === 'hamlet' || node.kind === 'camp') {
       features.push({
         kind: 'landmark',
         sprite: node.kind === 'city' ? 'town-hall' : node.kind === 'camp' ? 'farm' : 'house-1',

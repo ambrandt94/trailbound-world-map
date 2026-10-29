@@ -1,4 +1,5 @@
-import { ChunkData, MapNode, NodeKind, PlacedSprite, PoiKind, TILE, ZONE_SCALE, hasNodeTile } from '../models/world.models';
+import { ChunkData, MapNode, NodeKind, PlacedSprite, PoiKind, TILE, WorldData, ZONE_SCALE, hasNodeTile } from '../models/world.models';
+import { settlementPlan } from './layout-v2';
 import {
   BuildingPart,
   BuildingRotation,
@@ -56,6 +57,15 @@ export interface PlacedBuilding extends BuildingDef {
   y: number;
   templateId: string;
   rotation: BuildingRotation;
+  kit?: string;
+  label?: string;
+  family?: 'res' | 'shop' | 'work' | 'civic' | 'cap' | 'farm';
+  resTier?: 1 | 2 | 3 | 4 | 5;
+  specialty?: string;
+  style?: string;
+  district?: string;
+  lot?: { x: number; y: number; w: number; d: number };
+  frontageRank?: number;
 }
 
 const COTTAGE_SHELL: BuildingShell = {
@@ -558,7 +568,36 @@ function lotSlots(node: MapNode, plaza: { w: number; h: number }, rng: Rng): Arr
 /** Deterministic street layout for a place; every chunk of the node must agree. */
 const layoutCache = new Map<string, PlacedBuilding[]>();
 
-export function settlementLayout(node: MapNode, worldSeed: number): PlacedBuilding[] {
+export function settlementLayout(node: MapNode, world: WorldData): PlacedBuilding[] {
+  const plan = settlementPlan(world, node);
+  if (plan) {
+    return plan.buildings.map((b) => {
+      const def = BUILDINGS[b.legacy] ?? bldg('cottage-1');
+      return {
+        ...def,
+        sprite: b.legacy,
+        footW: b.footW,
+        footD: b.footD,
+        x: b.anchorX,
+        y: b.anchorY,
+        templateId: b.templateId,
+        rotation: b.rotation,
+        kit: b.kit,
+        label: b.label,
+        family: b.family,
+        ...(b.resTier ? { resTier: b.resTier } : {}),
+        specialty: b.specialty,
+        style: b.style,
+        district: b.district,
+        lot: b.lot,
+        frontageRank: b.frontageRank,
+      };
+    });
+  }
+  return legacySettlementLayout(node, world.seed);
+}
+
+function legacySettlementLayout(node: MapNode, worldSeed: number): PlacedBuilding[] {
   const key = `${node.id}:${worldSeed}:${node.tiles?.length ?? 0}:${node.cx.toFixed(2)}:${node.cy.toFixed(2)}`;
   const hit = layoutCache.get(key);
   if (hit) return hit;
@@ -786,6 +825,15 @@ export function toPlacedSprite(b: PlacedBuilding, originX: number, originY: numb
     footD: b.footD,
     templateId: b.templateId,
     rotation: b.rotation,
+    ...(b.kit ? { kit: b.kit } : {}),
+    ...(b.label ? { label: b.label } : {}),
+    ...(b.family ? { family: b.family } : {}),
+    ...(b.resTier ? { resTier: b.resTier } : {}),
+    ...(b.specialty ? { specialty: b.specialty } : {}),
+    ...(b.style ? { style: b.style } : {}),
+    ...(b.district ? { district: b.district } : {}),
+    ...(b.lot ? { lot: b.lot } : {}),
+    ...(b.frontageRank !== undefined ? { frontageRank: b.frontageRank } : {}),
   };
 }
 

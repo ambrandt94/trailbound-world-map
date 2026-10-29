@@ -1,8 +1,28 @@
-# AreaExport v0.5
+# AreaExport v0.6
 
 World-map is the authority for a place. The Trailbound controller does not invent geography. The TypeScript types in `src/app/engine/area-export.ts` are the schema. This note is the field guide; if they disagree, the types win.
 
-`buildAreaExport(world, place, opts)` returns one `AreaExport`. Version is `0.5.0`. Every new field is optional for readers: a missing `borderWorldTiles` means 0, a missing `grid.borderMask` means no ring, and `layers.height.sampling` of `world-tile-corners` is the 0.2 lattice. v0.3 and later always write the ring. v0.4 adds optional `npcs` (zone metres) and `session` (`{ sid, live: 1 }` only while a live link is open). v0.5 adds optional `population` on a city, town, or hamlet. Older readers ignore every field they do not know. A grove or camp omits `population`.
+`buildAreaExport(world, place, opts)` returns one `AreaExport`. Version is `0.6.0`. Every new field is optional for readers: a missing `borderWorldTiles` means 0, a missing `grid.borderMask` means no ring, and `layers.height.sampling` of `world-tile-corners` is the 0.2 lattice. v0.3 and later always write the ring. v0.4 adds optional `npcs` (zone metres) and `session` (`{ sid, live: 1 }` only while a live link is open). v0.5 adds optional `population` on a city, town, village, or hamlet. v0.6 adds settlement layout, a surface layer, kit fields, zones, fence segments, and minigame slots. Older readers ignore every field they do not know. A grove or camp omits `population`. A camp still writes `area.settlement`.
+
+## v0.6
+
+Layout v2 places roads, a wagon yard, districts, and 3 m lots before kit buildings. Doors face the lot's road. The stage seed is `hash(placeSeed, stageName)`, so props do not reshuffle buildings. Towns and cities are no longer flattened to Plains; `area.settlement.style` is the site biome's material style (`temperate`, `arid`, `coastal`, `tropical`, `alpine`, `wetland`, `volcanic`). `variant` is `default` until region data exists. City and capital rows are stubbed: a city node is labeled `city` and placed with the town row.
+
+`buildings[].type` stays the legacy sprite (`shop`, `tavern`, `church`, `cottage-1`, …) so a v0.5 reader keeps working. `specialty` is the catalog id (`general_store`, `tavern`, `healer`, …) and `kit` is the manifest name. `shape: "kit"` means the mask is a rectangular shell. Hand-authored stamps stay within 10×8 m. Kit shells go up to 15×15 m (town temple and guildhall). A market stall's 1.5 m depth is stored as 2 m in the 1 m mask; the kit name still says `3x1.5`.
+
+`layers.biome` legend is 27 names. Index 7 is `Badlands`. `legendAliases` is `{ "Heath": "Badlands" }` for one version. Ids 15–26 are reserved names and are not written into cells yet. `layers.ground` appends `9 park` and `10 field`. `layers.surface` is a new byte layer (0 none, 1 path, 2 lane_gravel, 3 street_cobble, 4 avenue_flagstone, 5 avenue_sandstone, 6 processional, 7 plaza_flagstone, 8 farmland, 9 park_grass, 10 boardwalk, 11 oasis_grass, 12 ice, 13 hotspring_rim). A 4.5 m street is painted 5 m wide on the 1 m grid.
+
+`roads.polylines[]` is `{ id, kind, rank, width, widthM, surface, points }`. Points are north-west corners of 3 m road cells, so every coordinate is divisible by 3. `width` copies `widthM`.
+
+`area.settlement` is `{ tier, style, variant, buildingCount, dropped, districts, respawnAnchor: { x, y, kind } }`. `kind` is `healer`, `temple`, `shrine`, or `campfire`. Towns respawn at the healer. Villages respawn at the shrine or small temple. Camps and hamlets respawn at the campfire. `dropped` counts catalog ids that did not fit, and `meta.notes` lists them.
+
+`zones[]` includes `wagon_yard` (`subtype` `yard` or `circle`, `slots` of 3×6 m on a full yard), `plaza` or `green`, and `district`. `segments[]` are 3 m fence chains. `meta.kitVersion` is `0.1-draft`.
+
+`minigameSlots[]` come from `src/app/engine/minigame-spawn-rules.json`. Schedules are hours. Unknown `gameId`s are emitted unchanged. `peeloff` is true on every `scope: "wild"` slot and on `ford_crossing`. The games themselves are not implemented.
+
+Wild props carry kit names. Forest and Mountain (and the other existing biomes) use the §3.1 lists. Trees get yaw and a scale in 0.9–1.1. Settlement interiors do not get that scatter; the border ring does. `props[].class` may also be `deco`, `civic`, `host`, `hero`, or `fence_post`.
+
+Tiers live in `src/app/engine/settlement-tiers.ts`: camp 0–3, hamlet 3–8, village 8–25, town 25–80. `NodeKind` includes `village`. Sunspire is a village.
 
 The playable place is still `MapNode.tiles` (`grid.mask`). Around that AABB the grids add a visual border ring of `area.borderWorldTiles` world tiles (4, which is 32 inner tiles, 32 m) on each side. The ring is not walkable. Neighbour names stay metadata. “Load adjacent regions” does not add those places’ buildings.
 
@@ -128,13 +148,13 @@ y = t * reliefMeters
 | --- | --- |
 | Water, Sand, Plains, Meadow, Marsh | 1 |
 | Forest, DarkForest, Desert, Jungle | 1.15 |
-| Heath, Taiga | 1.35 |
+| Badlands (was Heath), Taiga | 1.35 |
 | Ashlands | 1.5 |
 | Hills | 2 |
 | Snow | 2.25 |
 | Mountain | 3 |
 
-On seed 7741, Dunharrow is Hills and exports `reliefMeters: 30`. Ironmarch’s site landed on Plains, so that town stays at 15 m. The check script asserts the Hills case. Play in 3D and Download area JSON use these defaults; the map UI has no separate relief slider.
+On seed 7741, Dunharrow is Hills and exports `reliefMeters: 30`. The check script asserts the Hills case. Towns keep the biome they were sited on. Play in 3D and Download area JSON use these defaults; the map UI has no separate relief slider.
 
 ### Water level
 

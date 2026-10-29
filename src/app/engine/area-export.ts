@@ -48,9 +48,13 @@ import {
   type ResidentOverride,
 } from './residents';
 import { worldHeightSampler } from './world-gen';
+import { settlementPlan, type SettlementPlan } from './layout-v2';
+import { rollMinigameSlots, type MinigameSlot } from './minigame-slots';
+import { dressCell, isVegetation, labelLegacy, vegetationBudget } from './wild-props';
+import { SURFACE_LEGEND } from './settlement-tiers';
 
 /** Schema version. The controller rejects an unknown major version. */
-export const AREA_EXPORT_VERSION = '0.5.0';
+export const AREA_EXPORT_VERSION = '0.6.0';
 /**
  * Visual continuation around the playable place, in world tiles.
  * 4 × ZONE_SCALE = 32 inner tiles = 32 m on each side. Not walkable.
@@ -71,7 +75,9 @@ export const HEIGHT_PERCENTILE_HI = 0.98;
 /** Extra fraction of the span added on each side of the remap window. */
 export const HEIGHT_RANGE_PAD = 0.05;
 /** Date stamped into `source.build` (not a git sha). */
-export const AREA_EXPORT_BUILD = '2026-10-27';
+export const AREA_EXPORT_BUILD = '2026-10-29';
+/** Kit manifest the building and prop names were taken from. */
+export const KIT_VERSION = '0.1-draft';
 /** Alex: 1 inner tile = 1 metre. */
 export const METERS_PER_TILE = 1;
 /**
@@ -115,7 +121,7 @@ export const BIOME_NAMES = [
   'Forest',
   'DarkForest',
   'Hills',
-  'Heath',
+  'Badlands',
   'Marsh',
   'Mountain',
   'Snow',
@@ -123,9 +129,24 @@ export const BIOME_NAMES = [
   'Desert',
   'Jungle',
   'Ashlands',
+  'Moor',
+  'Savanna',
+  'Steppe',
+  'Tundra',
+  'AlpineMeadow',
+  'Fen',
+  'Mangrove',
+  'BasaltFields',
+  'SplinterWastes',
+  'EtherealGlade',
+  'SaltFlats',
+  'FungalGrove',
 ] as const;
 
-export const GROUND_CLASSES = ['grass', 'dirt', 'road', 'lot', 'plaza', 'water', 'sand', 'rock', 'yard'] as const;
+/** One version of compatibility for readers that still say Heath. */
+export const BIOME_LEGEND_ALIASES: Record<string, string> = { Heath: 'Badlands' };
+
+export const GROUND_CLASSES = ['grass', 'dirt', 'road', 'lot', 'plaza', 'water', 'sand', 'rock', 'yard', 'park', 'field'] as const;
 export type GroundClass = (typeof GROUND_CLASSES)[number];
 
 export const GROUND: Record<GroundClass, number> = {
@@ -138,6 +159,8 @@ export const GROUND: Record<GroundClass, number> = {
   sand: 6,
   rock: 7,
   yard: 8,
+  park: 9,
+  field: 10,
 };
 
 export type Cardinal = 'N' | 'E' | 'S' | 'W';
@@ -147,6 +170,8 @@ export interface EncodedU8 {
   enc: 'b64u8';
   data: string;
   legend?: string[];
+  /** Old name → current legend name. Heath maps to Badlands for one version. */
+  legendAliases?: Record<string, string>;
 }
 
 export interface AreaExport {
@@ -189,6 +214,12 @@ export interface AreaExport {
      * missing value as 0. v0.3 writes 4 (32 m).
      */
     borderWorldTiles: number;
+    /**
+     * Present on a camp, hamlet, village, town, or city. v0.5 readers ignore it.
+     * `variant` is `default` until region data exists. `type` on buildings stays
+     * the legacy sprite name.
+     */
+    settlement?: AreaSettlement;
   };
   units: {
     zoneScale: number;
@@ -242,6 +273,8 @@ export interface AreaExport {
       detailMeters: number;
       note: string;
     };
+    /** Road / plaza / park surface, one byte per inner tile. v0.5 readers keep using `ground`. */
+    surface: EncodedU8;
     water: {
       /** Local metres above height.minRaw, using the same remap as the terrain. */
       level: number;
@@ -259,6 +292,12 @@ export interface AreaExport {
   };
   buildings: AreaBuilding[];
   props: AreaProp[];
+  /** Fence and wall chains. Empty until a tier has a fence set. */
+  segments: AreaSegment[];
+  /** Districts, plaza, green, wagon yard. */
+  zones: AreaZone[];
+  /** Deterministic minigame hosts. Included in `meta.hash`. */
+  minigameSlots: AreaMinigameSlot[];
   pois: AreaPoi[];
   entries: AreaEntry[];
   neighbors: AreaNeighbor[];
@@ -282,13 +321,49 @@ export interface AreaExport {
     season: AreaSeason;
     hash: string;
     notes: string[];
+    /** Kit manifest the names in this payload refer to. */
+    kitVersion: string;
   };
 }
 
+export interface AreaSettlement {
+  tier: string;
+  subtype?: string;
+  style: string;
+  variant: string;
+  buildingCount: number;
+  dropped: number;
+  districts: Array<{ id: string; kind: string }>;
+  respawnAnchor: { x: number; y: number; kind: string };
+}
+
+export interface AreaSegment {
+  id: string;
+  kind: 'fence' | 'hedge' | 'wall' | 'palisade';
+  kit: string;
+  points: [number, number][];
+  gates: number[];
+}
+
+export interface AreaZone {
+  id: string;
+  kind: string;
+  subtype?: string;
+  rect?: { x: number; y: number; w: number; d: number };
+  slots?: Array<{ x: number; y: number; w: number; d: number; rot: number }>;
+}
+
+export type AreaMinigameSlot = MinigameSlot;
+
 export interface AreaRoadPolyline {
   id: string;
-  kind: 'street' | 'road';
+  /** Surface kind (`lane_gravel`, `path`, `street_cobble`, …). v0.5 left this list empty. */
+  kind: string;
+  /** Same as `widthM`. Kept so a reader that only knows `width` still has a number. */
   width: number;
+  rank: number;
+  widthM: number;
+  surface: number;
   points: [number, number][];
 }
 
@@ -325,7 +400,7 @@ export interface AreaBuilding {
   structureY: number;
   structureW: number;
   structureD: number;
-  shape: BuildingShape | 'mask';
+  shape: BuildingShape | 'mask' | 'kit';
   rotation: BuildingRotation;
   /** Primary door after rotation. */
   door: Cardinal;
@@ -337,13 +412,29 @@ export interface AreaBuilding {
   roof: { style: RoofStyle; ridge: 'E-W' | 'N-S' };
   /** World-aligned plot mask. Rotation is already applied. */
   tiles: AreaTiles;
+  /** Kit name. `type` stays the legacy sprite so v0.5 readers keep working. */
+  kit?: string;
+  family?: 'res' | 'shop' | 'work' | 'civic' | 'cap' | 'farm';
+  resTier?: 1 | 2 | 3 | 4 | 5;
+  /** §5 catalog id (`tavern`, `general_store`, …). */
+  specialty?: string;
+  style?: string;
+  district?: string;
+  lot?: { x: number; y: number; w: number; d: number };
+  frontageRank?: number;
 }
 
 export interface AreaProp {
+  id?: string;
   type: string;
-  class: 'tree' | 'rock' | 'plant' | 'prop';
+  class: 'tree' | 'rock' | 'plant' | 'prop' | 'deco' | 'civic' | 'host' | 'hero' | 'fence_post';
   x: number;
   y: number;
+  kit?: string;
+  rot?: number;
+  /** Trees only, 0.9–1.1. */
+  scale?: number;
+  variant?: string;
 }
 
 export interface AreaPoi {
@@ -428,14 +519,15 @@ const NOTES = [
   'Spawn is the road or dirt cell nearest the place centroid, otherwise the nearest walkable cell. The live walker is not baked in, so the same seed and place hash the same.',
   `reliefMeters is ${RELIEF_METERS} times the highest per-biome multiplier among the place biome and its world tiles. Hills use ${RELIEF_BIOME_MULT[Biome.Hills]} and mountains use ${RELIEF_BIOME_MULT[Biome.Mountain]}, so they rise above the ${RELIEF_METERS} m base. This is not the continental elevationMeters scale.`,
   'Water level is derived. See layers.water.note. world-map does not store a water line or depth.',
-  'Road polylines are not traced in 0.1.0. Ground classes road and dirt are the road mask. roads.worldTiles are the coarse world-grid flags.',
+  'roads.polylines are centerlines on the 3 m grid (north-west corner of each road cell). rank, widthM, and surface match layers.surface. roads.worldTiles stay the coarse world-grid flags. Ground classes road and dirt remain the v0.5 road mask.',
   'The border ring is visual only. Walkable cells are grid.mask (1 = place tile). grid.borderMask uses the same encoding (1 = ring cell with world terrain, 0 = void or playable) and is not walkable. The controller should use Catmull-Rom on layers.height.',
   'The ring copies the world-tile biome and a simplified ground (grass, sand, rock, dirt, water, and road along world paths). It has no buildings and no props. Neighbour names stay metadata. Void cells are 0 in both masks; ignore their biome and ground bytes.',
   'Desert maps to ground class sand. Mountain maps to rock. Other dry land is grass unless a path, lot, plaza, or yard overrides it. Snow stays grass.',
   'v0.2 buildings add a human-scale structure inside a larger plot. footW/footD are the structure AABB. tiles is the world-aligned mask (yard, floor, wall, door, window, tower). rotation is 0, 90, 180, or 270. door and doorCell are the opening after that rotation.',
   'Season is the tileset row for the place biome (summer, autumn, winter, lush), not a simulated calendar.',
   'meta.exportedAt, meta.timeOfDayHours, npcs, and session are excluded from meta.hash.',
-  'population is the town census for a city, town, or hamlet, and it is part of meta.hash. count = round(avg × (the dwelling count when mode is perHouse, otherwise 1) × a seeded ±25% jitter from the world seed and place id). The jitter does not use the sim RNG. named is the count of named residents (real map entities) for this place, so crowd = max(0, count − named) does not depend on npcs. homes lists dwelling building indexes, repeated once per 30 m² of structure. hotspots are the plaza centre, market stands, tavern doors, and wells in area metres (offset from innerOrigin, y down). The named residents are not part of the crowd. A missing population field means there is no crowd; v0.4 readers ignore the field.',
+  'population is the town census for a city, town, village, or hamlet, and it is part of meta.hash. count = round(avg × (the dwelling count when mode is perHouse, otherwise 1) × a seeded ±25% jitter from the world seed and place id). The jitter does not use the sim RNG. named is the count of named residents (real map entities) for this place, so crowd = max(0, count − named) does not depend on npcs. homes lists dwelling building indexes, repeated once per 30 m² of structure. hotspots are the plaza centre, market stands, tavern doors, and wells in area metres (offset from innerOrigin, y down). The named residents are not part of the crowd. A missing population field means there is no crowd; v0.4 readers ignore the field.',
+  'v0.6 is additive. buildings[].type stays the legacy sprite (shop, tavern, cottage-1, …). specialty is the §5 id and kit is the manifest name. layers.biome id 7 is Badlands; legendAliases.Heath is Badlands for one version. Ids 15–26 are reserved names and are not emitted yet. layers.surface, area.settlement, zones, segments, minigameSlots, and meta.kitVersion are new. A camp, hamlet, village, town, or city writes area.settlement with variant default. City layout is the town row until the city tier is built. minigameSlots are deterministic and part of the hash. Schedules are hours. peeloff is set on wild slots and ford_crossing.',
 ];
 
 const HEIGHT_NOTE =
@@ -557,11 +649,29 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
     }
   }
 
+  const plan = settlementPlan(world, place);
+  const surface = new Uint8Array(gw * gh);
+  const notes = [...NOTES];
+  if (plan) {
+    paintSettlement(plan, surface, ground, mask, originX, originY, gw, gh);
+    notes.push(...plan.notes);
+    if (plan.dropNotes.length) notes.push(`dropped ${plan.dropped}: ${plan.dropNotes.slice(0, 8).join('; ')}`);
+    for (const warning of plan.warnings) notes.push(`layout: ${warning}`);
+  }
+  for (let i = 0; i < ground.length; i++) {
+    if (surface[i] === 0 && (ground[i] === GROUND.road || ground[i] === GROUND.dirt)) surface[i] = 1;
+  }
+  tagLegacyProps(props, biomeGrid, originX, originY, gw);
+  addWildProps(props, biomeGrid, ground, surface, mask, borderMask, originX, originY, gw, gh, place.seed, buildings, plan);
+
   buildings.sort((a, b) => a.y - b.y || a.x - b.x || a.type.localeCompare(b.type));
   buildings.forEach((b, i) => {
     b.id = `b${i}`;
   });
   props.sort((a, b) => a.y - b.y || a.x - b.x || a.type.localeCompare(b.type));
+  props.forEach((prop, i) => {
+    prop.id = `p${i}`;
+  });
 
   const relief = reliefFor(world, place, tiles);
   const height = sampleSubdiv(world, originInner, gw, gh);
@@ -570,6 +680,12 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
   const entries = deriveEntries(originX, originY, gw, gh, mask, ground);
   const season = seasonFor(place.biome);
   const population = settlementPopulation(world, place, buildings, props, originX, originY, gw, gh, mask, ground, opts);
+  const minigameSlots = emitMinigames(world, place, plan, buildings, props, biomeGrid, ground, surface, mask, borderMask, originX, originY, gw, gh);
+  props.sort((a, b) => a.y - b.y || a.x - b.x || a.type.localeCompare(b.type) || (a.kit ?? '').localeCompare(b.kit ?? ''));
+  props.forEach((prop, i) => {
+    prop.id = `p${i}`;
+  });
+  resolveSlotRefs(minigameSlots, buildings, props);
 
   const area: AreaExport = {
     type: 'trailbound.area',
@@ -601,6 +717,23 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
       innerOrigin: originInner,
       placeSeed: place.seed,
       borderWorldTiles: border,
+      ...(plan
+        ? {
+            settlement: {
+              tier: plan.tier,
+              style: plan.style,
+              variant: plan.variant,
+              buildingCount: plan.buildingCount,
+              dropped: plan.dropped,
+              districts: plan.districts,
+              respawnAnchor: {
+                x: round3(plan.respawnAnchor.x),
+                y: round3(plan.respawnAnchor.y),
+                kind: plan.respawnAnchor.kind,
+              },
+            },
+          }
+        : {}),
     },
     units: {
       zoneScale: ZONE_SCALE,
@@ -617,7 +750,7 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
       borderMask: encodeLayer(borderMask),
     },
     layers: {
-      biome: encodeLayer(biomeGrid, [...BIOME_NAMES]),
+      biome: encodeLayer(biomeGrid, [...BIOME_NAMES], BIOME_LEGEND_ALIASES),
       ground: encodeLayer(ground, [...GROUND_CLASSES]),
       height: {
         sampling: 'world-subdiv',
@@ -637,15 +770,45 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
         detailMeters: HEIGHT_DETAIL_METERS,
         note: HEIGHT_NOTE,
       },
+      surface: encodeLayer(surface, [...SURFACE_LEGEND]),
       water,
     },
     roads: {
       worldTiles: tiles.filter((t) => inWorld(world, t.x, t.y) && world.paths[t.x + t.y * world.width] === 1).map((t) => [t.x, t.y]),
-      polylines: [],
+      polylines: plan
+        ? plan.roads.map((road) => ({
+            id: road.id,
+            kind: road.kind,
+            width: road.widthM,
+            rank: road.rank,
+            widthM: road.widthM,
+            surface: road.surface,
+            points: road.points,
+          }))
+        : [],
       floors: { street: streetFloor, plaza: plazaFloor },
     },
     buildings,
     props,
+    segments: plan
+      ? plan.segments.map((segment) => ({
+          id: segment.id,
+          kind: segment.kind,
+          kit: segment.kit,
+          points: segment.points,
+          gates: segment.gates,
+        }))
+      : [],
+    zones: plan
+      ? plan.zones.map((zone) => ({
+          id: zone.id,
+          kind: zone.kind,
+          ...(zone.subtype ? { subtype: zone.subtype } : {}),
+          rect: zone.rect,
+          ...(zone.slots ? { slots: zone.slots } : {}),
+        }))
+      : [],
+    minigameSlots,
     pois: poisInside(world, inPlace),
     entries,
     neighbors: neighborMeta(opts.nodes ?? world.nodes, place, inPlace),
@@ -655,11 +818,240 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
       timeOfDayHours: round3(opts.timeOfDayHours ?? 8),
       season,
       hash: '',
-      notes: NOTES,
+      notes,
+      kitVersion: KIT_VERSION,
     },
   };
   area.meta.hash = contentHash(area);
   return area;
+}
+
+function paintSettlement(
+  plan: SettlementPlan,
+  surface: Uint8Array,
+  ground: Uint8Array,
+  mask: Uint8Array,
+  originX: number,
+  originY: number,
+  gw: number,
+  gh: number,
+): void {
+  const paint = (absX: number, absY: number, surfaceId: number, groundId?: number) => {
+    const ix = Math.floor(absX - originX);
+    const iy = Math.floor(absY - originY);
+    if (ix < 0 || iy < 0 || ix >= gw || iy >= gh) return;
+    const gi = ix + iy * gw;
+    if (!mask[gi]) return;
+    surface[gi] = surfaceId;
+    if (groundId !== undefined) ground[gi] = groundId;
+  };
+  for (const cell of plan.roadCells) {
+    const pad = cell.widthM >= 4.5 ? 1 : 0;
+    for (let y = -pad; y < 3 + pad; y++) {
+      for (let x = -pad; x < 3 + pad; x++) paint(cell.gx * 3 + x, cell.gy * 3 + y, cell.surface);
+    }
+  }
+  for (const zone of plan.zones) {
+    if (zone.kind !== 'plaza' && zone.kind !== 'green') continue;
+    const surfaceId = zone.kind === 'plaza' ? 7 : 9;
+    const groundId = zone.kind === 'plaza' ? GROUND.plaza : GROUND.park;
+    for (let y = 0; y < zone.rect.d; y++) {
+      for (let x = 0; x < zone.rect.w; x++) paint(zone.rect.x + x, zone.rect.y + y, surfaceId, groundId);
+    }
+  }
+}
+
+function tagLegacyProps(props: AreaProp[], biomeGrid: Uint8Array, originX: number, originY: number, gw: number): void {
+  for (const prop of props) {
+    if (prop.kit) continue;
+    if (prop.class !== 'tree' && prop.class !== 'rock' && prop.class !== 'plant') continue;
+    const ix = Math.floor(prop.x - originX);
+    const iy = Math.floor(prop.y - originY);
+    const biome = biomeGrid[ix + iy * gw] ?? 0;
+    const labeled = labelLegacy(biome, prop.x, prop.y, prop.class);
+    if (!labeled) continue;
+    prop.kit = labeled.kit;
+    prop.rot = labeled.rot;
+    prop.variant = 'default';
+    if (labeled.propClass === 'tree' && labeled.scale !== undefined) prop.scale = labeled.scale;
+  }
+}
+
+function addWildProps(
+  props: AreaProp[],
+  biomeGrid: Uint8Array,
+  ground: Uint8Array,
+  surface: Uint8Array,
+  mask: Uint8Array,
+  borderMask: Uint8Array,
+  originX: number,
+  originY: number,
+  gw: number,
+  gh: number,
+  placeSeed: number,
+  buildings: AreaBuilding[],
+  plan: SettlementPlan | null,
+): void {
+  const budget = vegetationBudget();
+  let vegetation = props.filter((prop) => isVegetation(prop.class)).length;
+  let other = props.length - vegetation;
+  const taken = props.map((prop) => ({ x: prop.x, y: prop.y }));
+  for (let iy = 1; iy < gh; iy += 3) {
+    for (let ix = 1; ix < gw; ix += 3) {
+      const gi = ix + iy * gw;
+      const playable = mask[gi] === 1;
+      const ring = borderMask[gi] === 1;
+      if (!playable && !ring) continue;
+      if (plan && playable) continue;
+      if (surface[gi]) continue;
+      const g = ground[gi] ?? 0;
+      if (g === GROUND.road || g === GROUND.dirt || g === GROUND.lot || g === GROUND.plaza || g === GROUND.yard || g === GROUND.water) continue;
+      const x = originX + ix + 0.5;
+      const y = originY + iy + 0.5;
+      if (buildings.some((b) => x >= b.plotX - 1 && x < b.plotX + b.plotW + 1 && y >= b.plotY - 1 && y < b.plotY + b.plotD + 1)) continue;
+      if (taken.some((p) => Math.abs(p.x - x) < 2.2 && Math.abs(p.y - y) < 2.2)) continue;
+      const dressed = dressCell(biomeGrid[gi] ?? 0, x, y, placeSeed + 17);
+      if (!dressed) continue;
+      const veg = isVegetation(dressed.propClass);
+      if (veg && vegetation >= budget.vegetation) continue;
+      if (!veg && other >= budget.other) continue;
+      props.push({
+        type: dressed.kit,
+        class: dressed.propClass,
+        x: Math.round(x * 10) / 10,
+        y: Math.round(y * 10) / 10,
+        kit: dressed.kit,
+        rot: dressed.rot,
+        ...(dressed.propClass === 'tree' && dressed.scale !== undefined ? { scale: dressed.scale } : {}),
+        variant: 'default',
+      });
+      taken.push({ x, y });
+      if (veg) vegetation++;
+      else other++;
+    }
+  }
+}
+
+const FORAGE_BIOMES = new Set(['Sand', 'Plains', 'Meadow', 'Forest', 'DarkForest', 'Hills', 'Marsh', 'Taiga', 'Jungle']);
+const CHOP_BIOMES = new Set(['Forest', 'DarkForest', 'Taiga', 'Jungle']);
+
+function emitMinigames(
+  _world: WorldData,
+  place: MapNode,
+  plan: SettlementPlan | null,
+  buildings: AreaBuilding[],
+  props: AreaProp[],
+  biomeGrid: Uint8Array,
+  ground: Uint8Array,
+  surface: Uint8Array,
+  mask: Uint8Array,
+  borderMask: Uint8Array,
+  originX: number,
+  originY: number,
+  gw: number,
+  gh: number,
+): AreaMinigameSlot[] {
+  const fish: Array<{ x: number; y: number }> = [];
+  const forage: Array<{ x: number; y: number }> = [];
+  const ford: Array<{ x: number; y: number }> = [];
+  const biome = biomeName(place.biome);
+  let playable = 0;
+  for (const cell of mask) if (cell) playable++;
+  for (let iy = 0; iy < gh && (fish.length < 4 || forage.length < 4 || ford.length < 2); iy++) {
+    for (let ix = 0; ix < gw; ix++) {
+      const gi = ix + iy * gw;
+      const here = mask[gi] === 1 || borderMask[gi] === 1;
+      if (!here) continue;
+      const water = ground[gi] === GROUND.water;
+      let landNeighbor = false;
+      let waterNeighbor = false;
+      let roadHere = surface[gi] > 0 || ground[gi] === GROUND.road || ground[gi] === GROUND.dirt;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nx = ix + dx;
+        const ny = iy + dy;
+        if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
+        const ng = ground[nx + ny * gw];
+        if (ng === GROUND.water) waterNeighbor = true;
+        else if (mask[nx + ny * gw] || borderMask[nx + ny * gw]) landNeighbor = true;
+      }
+      const x = originX + ix + 0.5;
+      const y = originY + iy + 0.5;
+      if (water && landNeighbor && fish.length < 4) fish.push({ x, y });
+      if (!water && roadHere && waterNeighbor && ford.length < 2) ford.push({ x, y });
+      if (!water && FORAGE_BIOMES.has(biome) && forage.length < 4 && ground[gi] === GROUND.grass) forage.push({ x, y });
+    }
+  }
+  void biomeGrid;
+  const trees = props.filter((prop) => prop.class === 'tree');
+  const chop = CHOP_BIOMES.has(biome) && trees.length >= 5 && trees[0] ? [{ x: trees[0].x, y: trees[0].y }] : [];
+  const slots = rollMinigameSlots({
+    placeSeed: place.seed,
+    tier: plan?.tier ?? null,
+    biome,
+    variant: 'default',
+    areaHa: playable / 10000,
+    buildings: buildings
+      .filter((b) => b.specialty && b.kit)
+      .map((b) => ({ id: b.id, specialty: b.specialty!, kit: b.kit!, x: b.x, y: b.y, facing: b.door })),
+    props: props.filter((p) => p.id && p.kit).map((p) => ({ id: p.id!, kit: p.kit!, x: p.x, y: p.y })),
+    cells: { fish, forage, chop, ford },
+  });
+  for (const slot of slots) {
+    if (slot.host.kind === 'building') continue;
+    const kit = slot.host.kit ?? 'prop_signpost';
+    if (props.some((p) => p.kit === kit && Math.abs(p.x - slot.x) < 3 && Math.abs(p.y - slot.y) < 3)) continue;
+    props.push({
+      type: kit,
+      class: kit.startsWith('host_') ? 'host' : 'prop',
+      x: slot.x,
+      y: slot.y,
+      kit,
+      rot: 0,
+      variant: 'default',
+    });
+    if (slot.gameId === 'wild_chop') {
+      props.push({ type: 'prop_log_pile', class: 'prop', x: slot.x + 1.5, y: slot.y, kit: 'prop_log_pile', rot: 90, variant: 'default' });
+    }
+    if (slot.gameId === 'ford_crossing') {
+      props.push({
+        type: 'rock_flat_cobble_s',
+        class: 'rock',
+        x: slot.x + 1.5,
+        y: slot.y,
+        kit: 'rock_flat_cobble_s',
+        rot: 0,
+        variant: 'default',
+      });
+    }
+  }
+  return slots;
+}
+
+function resolveSlotRefs(slots: AreaMinigameSlot[], buildings: AreaBuilding[], props: AreaProp[]): void {
+  for (const slot of slots) {
+    if (slot.host.kind === 'building') {
+      const building = buildings.find((b) => b.id === slot.host.ref);
+      if (building) slot.host.ref = building.id;
+      continue;
+    }
+    const kit = slot.host.kit;
+    let best: AreaProp | undefined;
+    let bestD = Infinity;
+    for (const prop of props) {
+      if (kit && prop.kit !== kit) continue;
+      const dist = Math.abs(prop.x - slot.x) + Math.abs(prop.y - slot.y);
+      if (dist < bestD) {
+        bestD = dist;
+        best = prop;
+      }
+    }
+    if (best?.id) slot.host.ref = best.id;
+  }
 }
 
 function settlementPopulation(
@@ -793,8 +1185,11 @@ export function decodeB64U8(data: string): Uint8Array {
   return Uint8Array.from(out);
 }
 
-function encodeLayer(bytes: Uint8Array, legend?: string[]): EncodedU8 {
-  return legend ? { enc: 'b64u8', data: encodeB64U8(bytes), legend } : { enc: 'b64u8', data: encodeB64U8(bytes) };
+function encodeLayer(bytes: Uint8Array, legend?: string[], legendAliases?: Record<string, string>): EncodedU8 {
+  const layer: EncodedU8 = { enc: 'b64u8', data: encodeB64U8(bytes) };
+  if (legend) layer.legend = legend;
+  if (legendAliases) layer.legendAliases = legendAliases;
+  return layer;
 }
 
 function uniqueTiles(tiles: Vec2[]): Vec2[] {
@@ -854,11 +1249,11 @@ function buildingRecord(spr: PlacedSprite, anchorX: number, anchorY: number): Ar
     structureY,
     structureW: bounds.w,
     structureD: bounds.d,
-    shape: structureIsRect(mask.parts, mask.w) ? 'rect' : 'mask',
+    shape: spr.kit ? 'kit' : structureIsRect(mask.parts, mask.w) ? 'rect' : 'mask',
     rotation,
     door: rotateCardinal(tmpl.doorFacing, rotation),
     doorCell: { x: doorX, y: doorY },
-    label: buildingLabel(spr.sprite),
+    label: spr.label ?? buildingLabel(spr.sprite),
     storeys: tmpl.storeys,
     wallHeightM: tmpl.wallHeightM,
     roof: { style: tmpl.roof.style, ridge: rotateRidge(tmpl.roof.ridge, rotation) },
@@ -869,6 +1264,18 @@ function buildingRecord(spr: PlacedSprite, anchorX: number, anchorY: number): Ar
       data: encodeB64U8(bytes),
       legend: [...PART_LEGEND],
     },
+    ...(spr.kit
+      ? {
+          kit: spr.kit,
+          ...(spr.family ? { family: spr.family } : {}),
+          ...(spr.resTier ? { resTier: spr.resTier } : {}),
+          ...(spr.specialty ? { specialty: spr.specialty } : {}),
+          ...(spr.style ? { style: spr.style } : {}),
+          ...(spr.district ? { district: spr.district } : {}),
+          ...(spr.lot ? { lot: spr.lot } : {}),
+          ...(spr.frontageRank !== undefined ? { frontageRank: spr.frontageRank } : {}),
+        }
+      : {}),
   };
 }
 
@@ -888,7 +1295,17 @@ function pushSprite(
     buildings.push(buildingRecord(spr, x, y));
     return;
   }
-  props.push({ type: spr.sprite, class: propClass(spr.sprite), x, y });
+  const klass = spr.propClass ?? propClass(spr.sprite);
+  props.push({
+    type: spr.sprite,
+    class: klass,
+    x,
+    y,
+    ...(spr.kit ? { kit: spr.kit } : {}),
+    ...(spr.rot !== undefined ? { rot: spr.rot } : {}),
+    ...(klass === 'tree' && spr.scale !== undefined ? { scale: spr.scale } : {}),
+    ...(spr.variant ? { variant: spr.variant } : {}),
+  });
 }
 
 function reliefFor(world: WorldData, place: MapNode, tiles: Vec2[]): { biome: Biome; mult: number; meters: number } {

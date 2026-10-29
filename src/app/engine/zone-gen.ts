@@ -113,11 +113,7 @@ export function generateZone(world: WorldData, node: MapNode): ZoneData {
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      let b = sampleWorldBiome(world, node, x, y);
-      if (node.kind === 'city' || node.kind === 'town') {
-        const d = Math.hypot(x - mid, y - mid) / (size * 0.5);
-        if (d < 0.72 && b !== Biome.Water) b = Biome.Plains;
-      }
+      const b = sampleWorldBiome(world, node, x, y);
       tiles[zidx(x, y, size)] = b;
     }
   }

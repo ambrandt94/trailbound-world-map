@@ -1,0 +1,87 @@
+{
+  "kitVersion": "0.1-draft",
+  "notes": "Worldgen owns this file. Schedules are hours. Unknown gameId values pass through the roller unchanged. peeloff is data only.",
+  "rules": [
+    {
+      "gameId": "tavern_dice",
+      "scope": "settlement",
+      "requires": { "tierMin": "village", "building": "tavern" },
+      "host": { "kind": "building", "kit": "bld_shop_tavern_{style}_9x9", "anchor": "interior" },
+      "perSettlement": [1, 1],
+      "schedule": { "hours": [17, 24] },
+      "stakesByTier": { "camp": 1, "hamlet": 1, "village": 1, "town": 2, "city": 3, "capital": 4 },
+      "weight": 1,
+      "tags": ["tavern"]
+    },
+    {
+      "gameId": "tavern_cards",
+      "scope": "settlement",
+      "requires": { "tierMin": "village", "building": "tavern" },
+      "host": { "kind": "building", "kit": "bld_shop_tavern_{style}_9x9", "anchor": "interior" },
+      "perSettlement": [1, 1],
+      "schedule": { "hours": [17, 24] },
+      "stakesByTier": { "camp": 1, "hamlet": 1, "village": 1, "town": 2, "city": 3, "capital": 4 },
+      "weight": 1,
+      "tags": ["tavern"]
+    },
+    {
+      "gameId": "arm_wrestling",
+      "scope": "settlement",
+      "requires": { "tierMin": "village", "building": "tavern" },
+      "host": { "kind": "building", "kit": "bld_shop_tavern_{style}_9x9", "anchor": "interior", "fallbackKit": "host_table_arm_1.0" },
+      "perSettlement": [1, 1],
+      "schedule": { "hours": [19, 24] },
+      "stakesByTier": { "camp": 1, "hamlet": 1, "village": 1, "town": 2, "city": 3, "capital": 4 },
+      "weight": 1,
+      "tags": ["tavern"]
+    },
+    {
+      "gameId": "wild_fish",
+      "scope": "wild",
+      "requires": { "overlay": "water" },
+      "host": { "kind": "cell", "kit": "host_fishing_spot", "anchor": "exterior" },
+      "perSettlement": [1, 2],
+      "schedule": { "hours": [5, 20] },
+      "stakesByTier": { "camp": 1, "hamlet": 1, "village": 1, "town": 2, "city": 3, "capital": 4 },
+      "weight": 1,
+      "peeloff": true,
+      "tags": ["fish"]
+    },
+    {
+      "gameId": "wild_forage",
+      "scope": "wild",
+      "requires": { "biome": ["Sand", "Plains", "Meadow", "Forest", "DarkForest", "Hills", "Marsh", "Taiga", "Jungle"] },
+      "host": { "kind": "cell", "kit": "host_forage_patch", "anchor": "exterior" },
+      "perSettlement": [1, 2],
+      "schedule": { "hours": [6, 18] },
+      "stakesByTier": { "camp": 1, "hamlet": 1, "village": 1, "town": 2, "city": 3, "capital": 4 },
+      "weight": 1,
+      "peeloff": true,
+      "tags": ["forage"]
+    },
+    {
+      "gameId": "wild_chop",
+      "scope": "wild",
+      "requires": { "biome": ["Forest", "DarkForest", "Taiga", "Jungle"], "treeCluster": 5 },
+      "host": { "kind": "prop", "kit": "prop_chopping_block", "anchor": "exterior" },
+      "perSettlement": [1, 1],
+      "schedule": { "hours": [6, 18] },
+      "stakesByTier": { "camp": 1, "hamlet": 1, "village": 1, "town": 2, "city": 3, "capital": 4 },
+      "weight": 1,
+      "peeloff": true,
+      "tags": ["chop"]
+    },
+    {
+      "gameId": "ford_crossing",
+      "scope": "wild",
+      "requires": { "overlay": "ford" },
+      "host": { "kind": "prop", "kit": "prop_signpost", "anchor": "exterior" },
+      "perSettlement": [1, 2],
+      "schedule": { "hours": [0, 24] },
+      "stakesByTier": { "camp": 1, "hamlet": 1, "village": 1, "town": 2, "city": 3, "capital": 4 },
+      "weight": 1,
+      "peeloff": true,
+      "tags": ["ford"]
+    }
+  ]
+}

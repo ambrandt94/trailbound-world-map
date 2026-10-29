@@ -30,6 +30,12 @@ export const PART_CODE: Record<BuildingPart, number> = {
 
 /** Metres of wall per storey when a stamp does not override it. */
 export const METERS_PER_STOREY = 2.8;
+/**
+ * Hand-authored Town Tale stamps stay within 10×8 m.
+ * Kit shells (P0 tavern, stables, temple, guildhall, …) may be larger, up to this.
+ * 15 covers the town temple and guildhall (9×15 and 12×15). City heroes stay later.
+ */
+export const KIT_STRUCTURE_MAX = 15;
 
 const PART_CHAR: Record<string, BuildingPart> = {
   ' ': 'void',
@@ -682,8 +688,14 @@ function compile(src: StampSource): BuildingTemplate {
     }
   }
   const bounds = structureBounds(parts, w, d);
-  if (bounds.w < 4 || bounds.d < 4) throw new Error(`${src.id} structure ${bounds.w}×${bounds.d} is too small`);
-  if (bounds.w > 10 || bounds.d > 8) throw new Error(`${src.id} structure ${bounds.w}×${bounds.d} exceeds 10×8`);
+  const kit = src.id.startsWith('bld_') || src.id.startsWith('kit:');
+  const minSide = kit ? 2 : 4;
+  const maxW = kit ? KIT_STRUCTURE_MAX : 10;
+  const maxD = kit ? KIT_STRUCTURE_MAX : 8;
+  if (bounds.w < minSide || bounds.d < minSide) throw new Error(`${src.id} structure ${bounds.w}×${bounds.d} is too small`);
+  if (bounds.w > maxW || bounds.d > maxD) {
+    throw new Error(`${src.id} structure ${bounds.w}×${bounds.d} exceeds ${maxW}×${maxD}`);
+  }
   return {
     id: src.id,
     type: src.type,
@@ -713,6 +725,15 @@ for (const t of BUILDING_TEMPLATES) {
 
 export function templateById(id: string): BuildingTemplate | undefined {
   return BY_ID.get(id);
+}
+
+/** Register a generated kit shell. Placement reads it by id; it does not join legacy sprite variants. */
+export function registerTemplate(tmpl: BuildingTemplate): void {
+  if (BY_ID.has(tmpl.id)) return;
+  BY_ID.set(tmpl.id, tmpl);
+  const list = BY_TYPE.get(tmpl.type);
+  if (list) list.push(tmpl);
+  else BY_TYPE.set(tmpl.type, [tmpl]);
 }
 
 export function templatesForType(type: string): BuildingTemplate[] {

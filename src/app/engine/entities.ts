@@ -352,7 +352,7 @@ const RESIDENT_SHEETS = ['townsfolk', 'farmer', 'household', 'elder', 'blacksmit
 
 /** 3–8 residents for a city, town, or hamlet. Larger places get more. */
 export function residentCountFor(node: MapNode): number {
-  if (node.kind !== 'city' && node.kind !== 'town' && node.kind !== 'hamlet') return 0;
+  if (node.kind !== 'city' && node.kind !== 'town' && node.kind !== 'village' && node.kind !== 'hamlet') return 0;
   const fromTiles = node.tiles?.length ? Math.sqrt(node.tiles.length / Math.PI) : 0;
   const span = Math.max(node.radius, fromTiles);
   const t = clamp((span - 4) / 7, 0, 1);
