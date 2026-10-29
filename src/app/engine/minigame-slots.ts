@@ -198,5 +198,5 @@ function cellFor(rule: MinigameRule, ctx: SlotContext, index: number): { x: numb
   if (rule.gameId === 'wild_chop' || rule.requires?.treeCluster) return ctx.cells.chop[index % Math.max(1, ctx.cells.chop.length)] ?? null;
   if (rule.gameId === 'ford_crossing' || rule.requires?.overlay === 'ford') return ctx.cells.ford[index % Math.max(1, ctx.cells.ford.length)] ?? null;
   const any = ctx.cells.forage[0] ?? ctx.cells.fish[0] ?? ctx.props[0];
-  return any ? { x: any.x, y: any.y } : { x: 0, y: 0 };
+  return any ? { x: any.x, y: any.y } : null;
 }

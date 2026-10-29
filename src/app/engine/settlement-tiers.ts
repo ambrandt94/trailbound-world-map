@@ -51,6 +51,11 @@ export interface SettlementTier {
   street: { lamps: boolean; benches: number; signposts: boolean };
   /** Market stalls rolled inside this range for the tier. */
   stalls: [number, number];
+  /**
+   * When true, townhouses may form an uncapped terrace. Otherwise a run of
+   * attached houses stops at `TERRACE_RUN_MAX`.
+   */
+  rowhouses?: boolean;
   /** P0 places nothing from a stub; the planner substitutes `stubOf`. */
   implemented: boolean;
   stubOf?: SettlementTierId;
@@ -258,6 +263,13 @@ export function roadForRank(row: SettlementTier, rank: number): TierRoad {
 }
 
 /** Node kinds that receive a settlement plan. Groves, shores, and passes do not. */
+/** Minimum clear gap between a detached house and any other structure. One 1.5 m module. */
+export const SIDE_YARD_M = 1.5;
+/** Houses closer than this along one frontage still count as one row. */
+export const ROW_LINK_M = 6;
+/** Attached or gapped house run length when the tier does not set `rowhouses`. */
+export const TERRACE_RUN_MAX = 3;
+
 export function tierForKind(kind: string): SettlementTierId | null {
   switch (kind) {
     case 'camp':

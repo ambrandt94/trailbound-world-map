@@ -8,8 +8,10 @@
 import {
   BuildingRotation,
   Cardinal,
+  placedMask,
   rotatedSize,
   rotationForFacing,
+  structureBounds,
 } from './building-templates';
 import {
   KIT_BUILDINGS,
@@ -24,6 +26,9 @@ import { Rng } from './noise';
 import {
   type SettlementTier,
   type SettlementTierId,
+  ROW_LINK_M,
+  SIDE_YARD_M,
+  TERRACE_RUN_MAX,
   roadForRank,
   tierForKind,
   tierPlacement,
@@ -60,6 +65,8 @@ export interface PlanBuilding {
   footW: number;
   footD: number;
   storeys: number;
+  /** World-aligned structure box. Spacing checks use this, not the lot. */
+  structure: { x: number; y: number; w: number; d: number };
 }
 
 export interface PlanProp {
@@ -159,6 +166,7 @@ function buildPlan(world: WorldData, node: MapNode, tierId: SettlementTierId): S
   const style = styleForBiome(node.biome);
   const rngRoads = new Rng(stageSeed(node.seed, 'roads'));
   const rngLots = new Rng(stageSeed(node.seed, 'lots'));
+  void rngLots;
   const rngBld = new Rng(stageSeed(node.seed, 'buildings'));
   const rngProps = new Rng(stageSeed(node.seed, 'street-props'));
   const rngFence = new Rng(stageSeed(node.seed, 'fences'));
@@ -267,7 +275,7 @@ function buildPlan(world: WorldData, node: MapNode, tierId: SettlementTierId): S
       dropNotes.push(`${id} (unknown catalog id)`);
       return false;
     }
-    const lot = findLot(spec, bias, inNode, blocked, roadCells, center, mainEntry, rngLots);
+    const lot = findLot(spec, bias, inNode, blocked, roadCells, center, mainEntry, buildings, style, row.rowhouses === true);
     if (!lot) {
       dropNotes.push(`${id} (no lot)`);
       return false;
@@ -346,6 +354,7 @@ function buildPlan(world: WorldData, node: MapNode, tierId: SettlementTierId): S
   const fenceName = row.fences.length ? rngFence.pick(row.fences) : '';
   const segments = fenceName ? fencesFor(buildings, fenceName) : [];
   streetProps(row, roadCells, plaza, props, rngProps);
+  dedupeProps(props);
 
   const respawnAnchor = respawnFor(row, buildings, props, center);
   const reachable = reaches(respawnAnchor, roadCells, plazaCells, wagon, buildings);
@@ -726,12 +735,12 @@ function wagonSlots(x: number, y: number, w: number, d: number): Array<{ x: numb
     const rows = Math.min(2, Math.floor(d / 6));
     for (let row = 0; row < Math.max(1, rows); row++) {
       for (let i = 0; i < n && slots.length < 6; i++) {
-        slots.push({ x: x + i * 3, y: y + row * 6, w: 3, d: 6, rot: 0 });
+        slots.push({ x: x + i * 3 + 1.5, y: y + row * 6 + 3, w: 3, d: 6, rot: 0 });
       }
     }
   } else {
     const n = Math.min(6, Math.floor(d / 3));
-    for (let i = 0; i < n; i++) slots.push({ x, y: y + i * 3, w: 6, d: 3, rot: 90 });
+    for (let i = 0; i < n; i++) slots.push({ x: x + 3, y: y + i * 3 + 1.5, w: 6, d: 3, rot: 90 });
   }
   return slots.slice(0, 6);
 }
@@ -763,6 +772,102 @@ interface LotHit {
   rank: number;
 }
 
+function structureBox(
+  spec: KitBuilding,
+  lot: LotHit,
+  style: string,
+): { x: number; y: number; w: number; d: number } {
+  const id = ensureKitTemplate(spec, style);
+  const rotation = rotationForFacing('S', lot.frontage);
+  const mask = placedMask(id, rotation);
+  const plotX = lot.gx * 3;
+  const plotY = lot.gy * 3;
+  if (!mask) return { x: plotX, y: plotY, w: lot.w, d: lot.d };
+  const bounds = structureBounds(mask.parts, mask.w, mask.d);
+  return { x: plotX + bounds.x, y: plotY + bounds.y, w: bounds.w, d: bounds.d };
+}
+
+function boxGap(
+  a: { x: number; y: number; w: number; d: number },
+  b: { x: number; y: number; w: number; d: number },
+): number {
+  const sepX = a.x >= b.x + b.w ? a.x - (b.x + b.w) : b.x >= a.x + a.w ? b.x - (a.x + a.w) : 0;
+  const sepY = a.y >= b.y + b.d ? a.y - (b.y + b.d) : b.y >= a.y + a.d ? b.y - (a.y + a.d) : 0;
+  if (sepX === 0 && sepY === 0) return 0;
+  if (sepX === 0) return sepY;
+  if (sepY === 0) return sepX;
+  return Math.hypot(sepX, sepY);
+}
+
+function detachedHome(spec: KitBuilding): boolean {
+  return spec.family === 'res' && spec.id !== 'townhouse';
+}
+
+function sameRun(
+  a: { x: number; y: number; w: number; d: number },
+  aFront: Cardinal,
+  b: { x: number; y: number; w: number; d: number },
+  bFront: Cardinal,
+): boolean {
+  if (aFront !== bFront) return false;
+  if (boxGap(a, b) > ROW_LINK_M) return false;
+  if (aFront === 'N' || aFront === 'S') return a.y < b.y + b.d && b.y < a.y + a.d;
+  return a.x < b.x + b.w && b.x < a.x + a.w;
+}
+
+/** Houses along one frontage, including a 3 m side yard, count as one run. */
+function rowRunSize(
+  buildings: PlanBuilding[],
+  box: { x: number; y: number; w: number; d: number },
+  frontage: Cardinal,
+): number {
+  const houses = buildings.filter((building) => building.family === 'res');
+  const seen = new Set<PlanBuilding>();
+  const queue = houses.filter((building) => sameRun(box, frontage, building.structure, building.frontage));
+  for (const building of queue) seen.add(building);
+  for (let i = 0; i < queue.length; i++) {
+    const cur = queue[i]!;
+    for (const other of houses) {
+      if (seen.has(other)) continue;
+      if (!sameRun(cur.structure, cur.frontage, other.structure, other.frontage)) continue;
+      seen.add(other);
+      queue.push(other);
+    }
+  }
+  return seen.size;
+}
+
+/** Detached houses keep a side yard. Rows stop at the terrace cap unless the tier wants rowhouses. */
+function spacingOk(
+  spec: KitBuilding,
+  box: { x: number; y: number; w: number; d: number },
+  frontage: Cardinal,
+  buildings: PlanBuilding[],
+  allowTerrace: boolean,
+): boolean {
+  if (detachedHome(spec) && buildings.some((other) => boxGap(box, other.structure) < SIDE_YARD_M)) return false;
+  if (spec.id === 'townhouse') {
+    for (const other of buildings) {
+      if (other.catalogId === 'townhouse') continue;
+      if (boxGap(box, other.structure) < SIDE_YARD_M) return false;
+    }
+  }
+  if (spec.family !== 'res' || allowTerrace) return true;
+  return rowRunSize(buildings, box, frontage) + 1 <= TERRACE_RUN_MAX;
+}
+
+function dedupeProps(props: PlanProp[]): void {
+  const seen = new Set<string>();
+  let write = 0;
+  for (const prop of props) {
+    const key = `${prop.kit}@${prop.x},${prop.y}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    props[write++] = prop;
+  }
+  props.length = write;
+}
+
 function findLot(
   spec: KitBuilding,
   bias: 'entry' | 'core' | 'any',
@@ -771,7 +876,9 @@ function findLot(
   roads: RoadPaint[],
   center: { gx: number; gy: number },
   entry: { gx: number; gy: number },
-  _rng: Rng,
+  buildings: PlanBuilding[],
+  style: string,
+  allowTerrace: boolean,
 ): LotHit | null {
   let best: LotHit | null = null;
   let bestScore = Infinity;
@@ -787,6 +894,8 @@ function findLot(
       const wCells = dim.w / 3;
       const dCells = dim.d / 3;
       if (!rectFree(origin.gx, origin.gy, wCells, dCells, inNode, blocked, false)) continue;
+      const hit: LotHit = { gx: origin.gx, gy: origin.gy, w: dim.w, d: dim.d, frontage, rank: road.rank };
+      if (!spacingOk(spec, structureBox(spec, hit, style), hit.frontage, buildings, allowTerrace)) continue;
       const score =
         (bias === 'entry' ? Math.abs(origin.gx - entry.gx) + Math.abs(origin.gy - entry.gy) : 0) +
         (bias === 'core' ? Math.abs(origin.gx - center.gx) + Math.abs(origin.gy - center.gy) : 0) +
@@ -859,6 +968,7 @@ function occupy(
   if (spec.family === 'civic') district = 'civic';
   if (spec.id === 'market_stall' || spec.id === 'tavern' || spec.id === 'general_store') district = 'market';
   if (spec.family === 'work' || spec.family === 'farm') district = 'craft';
+  const structure = structureBox(spec, lot, style);
   return {
     catalogId: spec.id,
     legacy: spec.legacy,
@@ -879,6 +989,7 @@ function occupy(
     footW: lot.w,
     footD: lot.d,
     storeys: spec.storeys,
+    structure,
   };
 }
 
@@ -1016,7 +1127,7 @@ function wagonProps(wagon: PlanZone, props: PlanProp[], rng: Rng): void {
   slots.forEach((slot, index) => {
     if (index % 2 === 1) return;
     if (rng.chance(0.15) && index > 0) return;
-    props.push(propAt('prop_cart_wood', 'cart', slot.x + slot.w / 2, slot.y + slot.d / 2, slot.rot, 'prop'));
+    props.push(propAt('prop_cart_wood', 'cart', slot.x, slot.y, slot.rot, 'prop'));
   });
   if (wagon.subtype === 'circle' && !slots.length) {
     props.push(propAt('prop_cart_wood', 'cart', wagon.rect.x + wagon.rect.w / 2, wagon.rect.y + wagon.rect.d / 2, 0, 'prop'));
@@ -1093,10 +1204,18 @@ function streetProps(row: SettlementTier, roads: RoadPaint[], plaza: { x: number
     }
   }
   if (plaza && row.street.benches > 0) {
-    for (let i = 0; i < row.street.benches; i++) {
-      const x = plaza.x + 1.5 + (i % 2) * Math.max(3, plaza.w - 3);
-      const y = plaza.y + plaza.d - 1.5;
-      props.push(propAt('prop_bench_1.5m', 'bench', x, y, 0, 'deco'));
+    const yEdges = [plaza.y + plaza.d - 1.5, plaza.y + 1.5];
+    let placed = 0;
+    for (const y of yEdges) {
+      const room = Math.max(1, Math.floor(Math.max(0, plaza.w - 3) / 3) + 1);
+      const count = Math.min(room, row.street.benches - placed);
+      for (let i = 0; i < count; i++) {
+        const t = count === 1 ? 0 : i / (count - 1);
+        const x = plaza.x + 1.5 + t * Math.max(0, plaza.w - 3);
+        props.push(propAt('prop_bench_1.5m', 'bench', x, y, 0, 'deco'));
+        placed++;
+      }
+      if (placed >= row.street.benches) break;
     }
   }
   if (row.street.signposts) {
