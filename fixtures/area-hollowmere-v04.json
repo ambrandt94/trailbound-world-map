@@ -5505,7 +5505,7 @@
       "reliefBiome": "Plains",
       "reliefMeters": 15,
       "detailMeters": 0.4,
-      "note": "sampling is world-subdiv. raw is normalized (heightUnit normalized): the world-gen FBM plus land-mask evaluated at fractional world-tile coordinates, not a bilinear of stored WorldData.heights. Samples are every 2 m. Sample [0] is originInner in absolute inner-tile metres, and originCorner equals originInner. The lattice covers the expanded grid plus one subdiv sample of apron on each side. Controller: Catmull-Rom across the lattice, then y = clamp((raw - minRaw) / (maxRaw - minRaw), 0, 1) * reliefMeters. minRaw/maxRaw are the percentile clip from 0.02 to 0.98, widened so the span is at least 0.12, then padded by 5% of that span on each side, so a small continental delta does not become a full reliefMeters cliff. detailMeters (0.4) is optional micro-relief amplitude and is not baked into raw. Water stays flat at layers.water.level."
+      "note": "sampling is world-subdiv. raw is normalized (heightUnit normalized): the world-gen FBM plus land-mask evaluated at fractional world-tile coordinates, not a bilinear of stored WorldData.heights. Samples are every 2 m. Sample [0] is originInner in absolute inner-tile metres, and originCorner equals originInner. The lattice covers the expanded grid plus one subdiv sample of apron on each side. Controller: Catmull-Rom across the lattice, then y = clamp((raw - minRaw) / (maxRaw - minRaw), 0, 1) * reliefMeters. minRaw/maxRaw are the percentile clip from 0.02 to 0.98, widened so the span is at least 0.12, then padded by 5% of that span on each side, so a small continental delta does not become a full reliefMeters cliff. detailMeters (0.4) is optional micro-relief amplitude and is not baked into raw. Water stays flat at layers.water.level. A settlement pad lifts building lots, roads, zones, the spawn, and the respawn anchor to at least sea level plus 0.012 and blends back to the sampled terrain. Cells that stay below sea level are tagged water."
     },
     "surface": {
       "enc": "b64u8",
@@ -5546,16 +5546,6 @@
   "buildings": [],
   "props": [
     {
-      "type": "host_forage_patch",
-      "class": "host",
-      "x": 6384.5,
-      "y": 9048.5,
-      "kit": "host_forage_patch",
-      "rot": 0,
-      "variant": "default",
-      "id": "p0"
-    },
-    {
       "type": "bush_round_s",
       "class": "plant",
       "x": 6394.5,
@@ -5563,7 +5553,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p1"
+      "id": "p0"
     },
     {
       "type": "prop_haystack",
@@ -5573,7 +5563,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p2"
+      "id": "p1"
     },
     {
       "type": "flower_patch_daisy",
@@ -5583,7 +5573,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p3"
+      "id": "p2"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -5593,7 +5583,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 255,
       "variant": "default",
-      "id": "p4"
+      "id": "p3"
     },
     {
       "type": "prop_haystack",
@@ -5603,7 +5593,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p5"
+      "id": "p4"
     },
     {
       "type": "prop_haystack",
@@ -5613,7 +5603,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p6"
+      "id": "p5"
     },
     {
       "type": "flower_patch_daisy",
@@ -5623,7 +5613,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p7"
+      "id": "p6"
     },
     {
       "type": "flower_patch_daisy",
@@ -5633,7 +5623,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p8"
+      "id": "p7"
     },
     {
       "type": "bush_round_s",
@@ -5643,7 +5633,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p9"
+      "id": "p8"
     },
     {
       "type": "bush_round_s",
@@ -5653,7 +5643,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p10"
+      "id": "p9"
     },
     {
       "type": "prop_haystack",
@@ -5663,7 +5653,7 @@
       "kit": "prop_haystack",
       "rot": 0,
       "variant": "default",
-      "id": "p11"
+      "id": "p10"
     },
     {
       "type": "bush_round_s",
@@ -5673,7 +5663,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p12"
+      "id": "p11"
     },
     {
       "type": "tree_oak_m",
@@ -5684,7 +5674,7 @@
       "rot": 212,
       "scale": 1.02,
       "variant": "default",
-      "id": "p13"
+      "id": "p12"
     },
     {
       "type": "bush_round_s",
@@ -5694,7 +5684,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p14"
+      "id": "p13"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -5704,7 +5694,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 276,
       "variant": "default",
-      "id": "p15"
+      "id": "p14"
     },
     {
       "type": "bush_round_s",
@@ -5714,7 +5704,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p16"
+      "id": "p15"
     },
     {
       "type": "flower_patch_daisy",
@@ -5724,7 +5714,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p17"
+      "id": "p16"
     },
     {
       "type": "bush_round_s",
@@ -5734,7 +5724,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p18"
+      "id": "p17"
     },
     {
       "type": "flower_patch_daisy",
@@ -5744,7 +5734,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p19"
+      "id": "p18"
     },
     {
       "type": "bush_round_m",
@@ -5754,7 +5744,7 @@
       "kit": "bush_round_m",
       "rot": 180,
       "variant": "default",
-      "id": "p20"
+      "id": "p19"
     },
     {
       "type": "prop_haystack",
@@ -5764,7 +5754,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p21"
+      "id": "p20"
     },
     {
       "type": "tree_oak_l",
@@ -5775,7 +5765,7 @@
       "rot": 217,
       "scale": 1.02,
       "variant": "default",
-      "id": "p22"
+      "id": "p21"
     },
     {
       "type": "bush_round_s",
@@ -5785,7 +5775,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p23"
+      "id": "p22"
     },
     {
       "type": "flower_patch_daisy",
@@ -5795,7 +5785,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p24"
+      "id": "p23"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -5805,7 +5795,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 121,
       "variant": "default",
-      "id": "p25"
+      "id": "p24"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -5815,7 +5805,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 155,
       "variant": "default",
-      "id": "p26"
+      "id": "p25"
     },
     {
       "type": "bush_round_s",
@@ -5825,7 +5815,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p27"
+      "id": "p26"
     },
     {
       "type": "flower_patch_daisy",
@@ -5835,7 +5825,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p28"
+      "id": "p27"
     },
     {
       "type": "flower_patch_daisy",
@@ -5845,7 +5835,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p29"
+      "id": "p28"
     },
     {
       "type": "prop_haystack",
@@ -5855,7 +5845,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p30"
+      "id": "p29"
     },
     {
       "type": "bush_round_s",
@@ -5865,7 +5855,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p31"
+      "id": "p30"
     },
     {
       "type": "prop_haystack",
@@ -5875,7 +5865,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p32"
+      "id": "p31"
     },
     {
       "type": "flower_patch_daisy",
@@ -5885,7 +5875,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p33"
+      "id": "p32"
     },
     {
       "type": "flower_patch_daisy",
@@ -5895,7 +5885,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p34"
+      "id": "p33"
     },
     {
       "type": "bush_round_s",
@@ -5905,7 +5895,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p35"
+      "id": "p34"
     },
     {
       "type": "bush_round_s",
@@ -5915,7 +5905,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p36"
+      "id": "p35"
     },
     {
       "type": "bush_round_s",
@@ -5925,7 +5915,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p37"
+      "id": "p36"
     },
     {
       "type": "prop_haystack",
@@ -5935,7 +5925,7 @@
       "kit": "prop_haystack",
       "rot": 0,
       "variant": "default",
-      "id": "p38"
+      "id": "p37"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -5945,7 +5935,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 1,
       "variant": "default",
-      "id": "p39"
+      "id": "p38"
     },
     {
       "type": "prop_haystack",
@@ -5955,7 +5945,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p40"
+      "id": "p39"
     },
     {
       "type": "prop_haystack",
@@ -5965,7 +5955,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p41"
+      "id": "p40"
     },
     {
       "type": "flower_patch_daisy",
@@ -5975,7 +5965,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p42"
+      "id": "p41"
     },
     {
       "type": "bush_round_m",
@@ -5985,7 +5975,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p43"
+      "id": "p42"
     },
     {
       "type": "bush_round_s",
@@ -5995,7 +5985,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p44"
+      "id": "p43"
     },
     {
       "type": "bush_round_s",
@@ -6005,7 +5995,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p45"
+      "id": "p44"
     },
     {
       "type": "flower_patch_daisy",
@@ -6015,7 +6005,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p46"
+      "id": "p45"
     },
     {
       "type": "bush_round_s",
@@ -6025,7 +6015,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p47"
+      "id": "p46"
     },
     {
       "type": "flower_patch_daisy",
@@ -6035,7 +6025,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p48"
+      "id": "p47"
     },
     {
       "type": "prop_haystack",
@@ -6045,7 +6035,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p49"
+      "id": "p48"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -6055,7 +6045,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 55,
       "variant": "default",
-      "id": "p50"
+      "id": "p49"
     },
     {
       "type": "flower_patch_daisy",
@@ -6065,7 +6055,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p51"
+      "id": "p50"
     },
     {
       "type": "bush_round_s",
@@ -6075,7 +6065,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p52"
+      "id": "p51"
     },
     {
       "type": "bush_round_m",
@@ -6085,7 +6075,7 @@
       "kit": "bush_round_m",
       "rot": 90,
       "variant": "default",
-      "id": "p53"
+      "id": "p52"
     },
     {
       "type": "tree_oak_m",
@@ -6096,7 +6086,7 @@
       "rot": 178,
       "scale": 1,
       "variant": "default",
-      "id": "p54"
+      "id": "p53"
     },
     {
       "type": "bush_round_m",
@@ -6106,7 +6096,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p55"
+      "id": "p54"
     },
     {
       "type": "bush_round_s",
@@ -6116,7 +6106,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p56"
+      "id": "p55"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -6126,7 +6116,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 40,
       "variant": "default",
-      "id": "p57"
+      "id": "p56"
     },
     {
       "type": "flower_patch_daisy",
@@ -6136,7 +6126,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p58"
+      "id": "p57"
     },
     {
       "type": "prop_haystack",
@@ -6146,7 +6136,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p59"
+      "id": "p58"
     },
     {
       "type": "flower_patch_daisy",
@@ -6156,7 +6146,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p60"
+      "id": "p59"
     },
     {
       "type": "flower_patch_daisy",
@@ -6166,7 +6156,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p61"
+      "id": "p60"
     },
     {
       "type": "bush_round_s",
@@ -6176,7 +6166,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p62"
+      "id": "p61"
     },
     {
       "type": "flower_patch_daisy",
@@ -6186,7 +6176,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p63"
+      "id": "p62"
     },
     {
       "type": "bush_round_s",
@@ -6196,7 +6186,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p64"
+      "id": "p63"
     },
     {
       "type": "bush_round_m",
@@ -6206,7 +6196,7 @@
       "kit": "bush_round_m",
       "rot": 180,
       "variant": "default",
-      "id": "p65"
+      "id": "p64"
     },
     {
       "type": "bush_round_s",
@@ -6216,7 +6206,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p66"
+      "id": "p65"
     },
     {
       "type": "prop_haystack",
@@ -6226,7 +6216,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p67"
+      "id": "p66"
     },
     {
       "type": "bush_round_m",
@@ -6236,7 +6226,7 @@
       "kit": "bush_round_m",
       "rot": 180,
       "variant": "default",
-      "id": "p68"
+      "id": "p67"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -6246,7 +6236,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 188,
       "variant": "default",
-      "id": "p69"
+      "id": "p68"
     },
     {
       "type": "summer-11",
@@ -6257,7 +6247,7 @@
       "rot": 81,
       "variant": "default",
       "scale": 0.95,
-      "id": "p70"
+      "id": "p69"
     },
     {
       "type": "summer-8",
@@ -6268,7 +6258,7 @@
       "rot": 189,
       "variant": "default",
       "scale": 1.01,
-      "id": "p71"
+      "id": "p70"
     },
     {
       "type": "summer-10",
@@ -6279,7 +6269,7 @@
       "rot": 326,
       "variant": "default",
       "scale": 1.08,
-      "id": "p72"
+      "id": "p71"
     },
     {
       "type": "summer-8",
@@ -6290,7 +6280,7 @@
       "rot": 149,
       "variant": "default",
       "scale": 0.98,
-      "id": "p73"
+      "id": "p72"
     },
     {
       "type": "plant-1",
@@ -6300,7 +6290,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p74"
+      "id": "p73"
     },
     {
       "type": "summer-8",
@@ -6311,7 +6301,7 @@
       "rot": 100,
       "variant": "default",
       "scale": 0.96,
-      "id": "p75"
+      "id": "p74"
     },
     {
       "type": "summer-10",
@@ -6322,7 +6312,7 @@
       "rot": 341,
       "variant": "default",
       "scale": 1.09,
-      "id": "p76"
+      "id": "p75"
     },
     {
       "type": "summer-10",
@@ -6333,7 +6323,7 @@
       "rot": 343,
       "variant": "default",
       "scale": 1.09,
-      "id": "p77"
+      "id": "p76"
     },
     {
       "type": "rock-3",
@@ -6343,7 +6333,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 341,
       "variant": "default",
-      "id": "p78"
+      "id": "p77"
     },
     {
       "type": "summer-11",
@@ -6354,7 +6344,7 @@
       "rot": 32,
       "variant": "default",
       "scale": 0.92,
-      "id": "p79"
+      "id": "p78"
     },
     {
       "type": "bush_round_s",
@@ -6364,7 +6354,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p80"
+      "id": "p79"
     },
     {
       "type": "bush_round_s",
@@ -6374,7 +6364,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p81"
+      "id": "p80"
     },
     {
       "type": "flower_patch_daisy",
@@ -6384,7 +6374,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p82"
+      "id": "p81"
     },
     {
       "type": "plant-1",
@@ -6394,7 +6384,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p83"
+      "id": "p82"
     },
     {
       "type": "summer-10",
@@ -6405,7 +6395,7 @@
       "rot": 17,
       "variant": "default",
       "scale": 0.91,
-      "id": "p84"
+      "id": "p83"
     },
     {
       "type": "flower-1",
@@ -6415,7 +6405,7 @@
       "kit": "bush_round_m",
       "rot": 90,
       "variant": "default",
-      "id": "p85"
+      "id": "p84"
     },
     {
       "type": "rock-1",
@@ -6425,7 +6415,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 307,
       "variant": "default",
-      "id": "p86"
+      "id": "p85"
     },
     {
       "type": "summer-8",
@@ -6436,7 +6426,7 @@
       "rot": 56,
       "variant": "default",
       "scale": 0.93,
-      "id": "p87"
+      "id": "p86"
     },
     {
       "type": "rock-1",
@@ -6446,7 +6436,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p88"
+      "id": "p87"
     },
     {
       "type": "rock-1",
@@ -6456,7 +6446,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p89"
+      "id": "p88"
     },
     {
       "type": "flower-1",
@@ -6466,7 +6456,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p90"
+      "id": "p89"
     },
     {
       "type": "bush_round_m",
@@ -6476,7 +6466,7 @@
       "kit": "bush_round_m",
       "rot": 180,
       "variant": "default",
-      "id": "p91"
+      "id": "p90"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -6486,7 +6476,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 269,
       "variant": "default",
-      "id": "p92"
+      "id": "p91"
     },
     {
       "type": "prop_haystack",
@@ -6496,7 +6486,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p93"
+      "id": "p92"
     },
     {
       "type": "plant-1",
@@ -6506,7 +6496,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p94"
+      "id": "p93"
     },
     {
       "type": "rock-1",
@@ -6516,7 +6506,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 255,
       "variant": "default",
-      "id": "p95"
+      "id": "p94"
     },
     {
       "type": "plant-1",
@@ -6526,7 +6516,7 @@
       "kit": "bush_round_m",
       "rot": 90,
       "variant": "default",
-      "id": "p96"
+      "id": "p95"
     },
     {
       "type": "summer-11",
@@ -6537,7 +6527,7 @@
       "rot": 271,
       "variant": "default",
       "scale": 1.05,
-      "id": "p97"
+      "id": "p96"
     },
     {
       "type": "summer-10",
@@ -6548,7 +6538,7 @@
       "rot": 206,
       "variant": "default",
       "scale": 1.01,
-      "id": "p98"
+      "id": "p97"
     },
     {
       "type": "rock-1",
@@ -6558,7 +6548,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p99"
+      "id": "p98"
     },
     {
       "type": "summer-3",
@@ -6569,7 +6559,7 @@
       "rot": 160,
       "variant": "default",
       "scale": 0.99,
-      "id": "p100"
+      "id": "p99"
     },
     {
       "type": "bush_round_s",
@@ -6579,7 +6569,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p101"
+      "id": "p100"
     },
     {
       "type": "flower_patch_daisy",
@@ -6589,7 +6579,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p102"
+      "id": "p101"
     },
     {
       "type": "bush_round_s",
@@ -6599,7 +6589,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p103"
+      "id": "p102"
     },
     {
       "type": "bush_round_s",
@@ -6609,7 +6599,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p104"
+      "id": "p103"
     },
     {
       "type": "bush_round_s",
@@ -6619,7 +6609,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p105"
+      "id": "p104"
     },
     {
       "type": "rock-3",
@@ -6629,7 +6619,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 37,
       "variant": "default",
-      "id": "p106"
+      "id": "p105"
     },
     {
       "type": "summer-3",
@@ -6640,7 +6630,7 @@
       "rot": 37,
       "variant": "default",
       "scale": 0.92,
-      "id": "p107"
+      "id": "p106"
     },
     {
       "type": "plant-1",
@@ -6650,7 +6640,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p108"
+      "id": "p107"
     },
     {
       "type": "rock-3",
@@ -6660,7 +6650,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p109"
+      "id": "p108"
     },
     {
       "type": "rock-1",
@@ -6670,7 +6660,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p110"
+      "id": "p109"
     },
     {
       "type": "summer-3",
@@ -6681,7 +6671,7 @@
       "rot": 71,
       "variant": "default",
       "scale": 0.94,
-      "id": "p111"
+      "id": "p110"
     },
     {
       "type": "prop_haystack",
@@ -6691,7 +6681,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p112"
+      "id": "p111"
     },
     {
       "type": "bush_round_s",
@@ -6701,7 +6691,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p113"
+      "id": "p112"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -6711,7 +6701,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 34,
       "variant": "default",
-      "id": "p114"
+      "id": "p113"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -6721,7 +6711,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 114,
       "variant": "default",
-      "id": "p115"
+      "id": "p114"
     },
     {
       "type": "bush_round_m",
@@ -6731,7 +6721,7 @@
       "kit": "bush_round_m",
       "rot": 90,
       "variant": "default",
-      "id": "p116"
+      "id": "p115"
     },
     {
       "type": "rock-1",
@@ -6741,7 +6731,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 121,
       "variant": "default",
-      "id": "p117"
+      "id": "p116"
     },
     {
       "type": "summer-10",
@@ -6752,7 +6742,7 @@
       "rot": 354,
       "variant": "default",
       "scale": 1.1,
-      "id": "p118"
+      "id": "p117"
     },
     {
       "type": "rock-3",
@@ -6762,7 +6752,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p119"
+      "id": "p118"
     },
     {
       "type": "summer-8",
@@ -6773,7 +6763,7 @@
       "rot": 164,
       "variant": "default",
       "scale": 0.99,
-      "id": "p120"
+      "id": "p119"
     },
     {
       "type": "rock-1",
@@ -6783,7 +6773,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p121"
+      "id": "p120"
     },
     {
       "type": "summer-11",
@@ -6794,7 +6784,7 @@
       "rot": 110,
       "variant": "default",
       "scale": 0.96,
-      "id": "p122"
+      "id": "p121"
     },
     {
       "type": "summer-10",
@@ -6805,7 +6795,7 @@
       "rot": 219,
       "variant": "default",
       "scale": 1.02,
-      "id": "p123"
+      "id": "p122"
     },
     {
       "type": "summer-3",
@@ -6816,7 +6806,7 @@
       "rot": 152,
       "variant": "default",
       "scale": 0.98,
-      "id": "p124"
+      "id": "p123"
     },
     {
       "type": "bush_round_m",
@@ -6826,7 +6816,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p125"
+      "id": "p124"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -6836,7 +6826,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 256,
       "variant": "default",
-      "id": "p126"
+      "id": "p125"
     },
     {
       "type": "bush_round_s",
@@ -6846,7 +6836,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p127"
+      "id": "p126"
     },
     {
       "type": "prop_haystack",
@@ -6856,7 +6846,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p128"
+      "id": "p127"
     },
     {
       "type": "tree_oak_l",
@@ -6867,7 +6857,7 @@
       "rot": 106,
       "scale": 0.96,
       "variant": "default",
-      "id": "p129"
+      "id": "p128"
     },
     {
       "type": "bush_round_m",
@@ -6877,7 +6867,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p130"
+      "id": "p129"
     },
     {
       "type": "summer-3",
@@ -6888,7 +6878,7 @@
       "rot": 147,
       "variant": "default",
       "scale": 0.98,
-      "id": "p131"
+      "id": "p130"
     },
     {
       "type": "summer-8",
@@ -6899,7 +6889,7 @@
       "rot": 223,
       "variant": "default",
       "scale": 1.02,
-      "id": "p132"
+      "id": "p131"
     },
     {
       "type": "summer-10",
@@ -6910,7 +6900,7 @@
       "rot": 15,
       "variant": "default",
       "scale": 0.91,
-      "id": "p133"
+      "id": "p132"
     },
     {
       "type": "rock-3",
@@ -6920,7 +6910,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 210,
       "variant": "default",
-      "id": "p134"
+      "id": "p133"
     },
     {
       "type": "rock-3",
@@ -6930,7 +6920,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 332,
       "variant": "default",
-      "id": "p135"
+      "id": "p134"
     },
     {
       "type": "plant-1",
@@ -6940,7 +6930,7 @@
       "kit": "bush_round_m",
       "rot": 90,
       "variant": "default",
-      "id": "p136"
+      "id": "p135"
     },
     {
       "type": "summer-11",
@@ -6951,7 +6941,7 @@
       "rot": 41,
       "variant": "default",
       "scale": 0.92,
-      "id": "p137"
+      "id": "p136"
     },
     {
       "type": "plant-1",
@@ -6961,7 +6951,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p138"
+      "id": "p137"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -6971,7 +6961,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 152,
       "variant": "default",
-      "id": "p139"
+      "id": "p138"
     },
     {
       "type": "prop_haystack",
@@ -6981,7 +6971,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p140"
+      "id": "p139"
     },
     {
       "type": "flower-1",
@@ -6991,7 +6981,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p141"
+      "id": "p140"
     },
     {
       "type": "plant-1",
@@ -7001,7 +6991,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p142"
+      "id": "p141"
     },
     {
       "type": "summer-10",
@@ -7012,7 +7002,7 @@
       "rot": 172,
       "variant": "default",
       "scale": 1,
-      "id": "p143"
+      "id": "p142"
     },
     {
       "type": "summer-8",
@@ -7023,7 +7013,7 @@
       "rot": 202,
       "variant": "default",
       "scale": 1.01,
-      "id": "p144"
+      "id": "p143"
     },
     {
       "type": "summer-10",
@@ -7034,7 +7024,7 @@
       "rot": 358,
       "variant": "default",
       "scale": 1.1,
-      "id": "p145"
+      "id": "p144"
     },
     {
       "type": "plant-1",
@@ -7044,7 +7034,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p146"
+      "id": "p145"
     },
     {
       "type": "rock-1",
@@ -7054,7 +7044,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p147"
+      "id": "p146"
     },
     {
       "type": "flower-1",
@@ -7064,7 +7054,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p148"
+      "id": "p147"
     },
     {
       "type": "flower-1",
@@ -7074,7 +7064,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p149"
+      "id": "p148"
     },
     {
       "type": "summer-10",
@@ -7085,7 +7075,7 @@
       "rot": 168,
       "variant": "default",
       "scale": 0.99,
-      "id": "p150"
+      "id": "p149"
     },
     {
       "type": "flower-1",
@@ -7095,7 +7085,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p151"
+      "id": "p150"
     },
     {
       "type": "summer-11",
@@ -7106,7 +7096,7 @@
       "rot": 162,
       "variant": "default",
       "scale": 0.99,
-      "id": "p152"
+      "id": "p151"
     },
     {
       "type": "bush_round_s",
@@ -7116,7 +7106,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p153"
+      "id": "p152"
     },
     {
       "type": "summer-10",
@@ -7127,7 +7117,7 @@
       "rot": 275,
       "variant": "default",
       "scale": 1.05,
-      "id": "p154"
+      "id": "p153"
     },
     {
       "type": "plant-1",
@@ -7137,7 +7127,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p155"
+      "id": "p154"
     },
     {
       "type": "flower-1",
@@ -7147,7 +7137,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p156"
+      "id": "p155"
     },
     {
       "type": "flower-1",
@@ -7157,7 +7147,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p157"
+      "id": "p156"
     },
     {
       "type": "rock-1",
@@ -7167,7 +7157,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p158"
+      "id": "p157"
     },
     {
       "type": "flower-1",
@@ -7177,7 +7167,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p159"
+      "id": "p158"
     },
     {
       "type": "summer-10",
@@ -7188,7 +7178,7 @@
       "rot": 207,
       "variant": "default",
       "scale": 1.02,
-      "id": "p160"
+      "id": "p159"
     },
     {
       "type": "summer-8",
@@ -7199,7 +7189,7 @@
       "rot": 214,
       "variant": "default",
       "scale": 1.02,
-      "id": "p161"
+      "id": "p160"
     },
     {
       "type": "summer-8",
@@ -7210,7 +7200,7 @@
       "rot": 111,
       "variant": "default",
       "scale": 0.96,
-      "id": "p162"
+      "id": "p161"
     },
     {
       "type": "summer-8",
@@ -7221,7 +7211,7 @@
       "rot": 143,
       "variant": "default",
       "scale": 0.98,
-      "id": "p163"
+      "id": "p162"
     },
     {
       "type": "summer-8",
@@ -7232,7 +7222,7 @@
       "rot": 163,
       "variant": "default",
       "scale": 0.99,
-      "id": "p164"
+      "id": "p163"
     },
     {
       "type": "flower_patch_daisy",
@@ -7242,7 +7232,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p165"
+      "id": "p164"
     },
     {
       "type": "prop_haystack",
@@ -7252,7 +7242,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p166"
+      "id": "p165"
     },
     {
       "type": "bush_round_s",
@@ -7262,7 +7252,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p167"
+      "id": "p166"
     },
     {
       "type": "summer-11",
@@ -7273,7 +7263,7 @@
       "rot": 124,
       "variant": "default",
       "scale": 0.97,
-      "id": "p168"
+      "id": "p167"
     },
     {
       "type": "summer-8",
@@ -7284,7 +7274,7 @@
       "rot": 42,
       "variant": "default",
       "scale": 0.92,
-      "id": "p169"
+      "id": "p168"
     },
     {
       "type": "summer-3",
@@ -7295,7 +7285,7 @@
       "rot": 126,
       "variant": "default",
       "scale": 0.97,
-      "id": "p170"
+      "id": "p169"
     },
     {
       "type": "plant-1",
@@ -7305,7 +7295,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p171"
+      "id": "p170"
     },
     {
       "type": "rock-1",
@@ -7315,7 +7305,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p172"
+      "id": "p171"
     },
     {
       "type": "flower_patch_daisy",
@@ -7325,7 +7315,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p173"
+      "id": "p172"
     },
     {
       "type": "flower_patch_daisy",
@@ -7335,7 +7325,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p174"
+      "id": "p173"
     },
     {
       "type": "flower_patch_daisy",
@@ -7345,7 +7335,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p175"
+      "id": "p174"
     },
     {
       "type": "bush_round_m",
@@ -7355,7 +7345,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p176"
+      "id": "p175"
     },
     {
       "type": "flower_patch_daisy",
@@ -7365,7 +7355,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p177"
+      "id": "p176"
     },
     {
       "type": "rock-1",
@@ -7375,7 +7365,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 143,
       "variant": "default",
-      "id": "p178"
+      "id": "p177"
     },
     {
       "type": "flower-1",
@@ -7385,7 +7375,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p179"
+      "id": "p178"
     },
     {
       "type": "summer-8",
@@ -7396,7 +7386,7 @@
       "rot": 247,
       "variant": "default",
       "scale": 1.04,
-      "id": "p180"
+      "id": "p179"
     },
     {
       "type": "rock-1",
@@ -7406,7 +7396,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 20,
       "variant": "default",
-      "id": "p181"
+      "id": "p180"
     },
     {
       "type": "summer-8",
@@ -7417,7 +7407,7 @@
       "rot": 225,
       "variant": "default",
       "scale": 1.03,
-      "id": "p182"
+      "id": "p181"
     },
     {
       "type": "rock-3",
@@ -7427,7 +7417,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p183"
+      "id": "p182"
     },
     {
       "type": "bush_round_s",
@@ -7437,7 +7427,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p184"
+      "id": "p183"
     },
     {
       "type": "bush_round_s",
@@ -7445,6 +7435,16 @@
       "x": 6463.5,
       "y": 9109.5,
       "kit": "bush_round_s",
+      "rot": 0,
+      "variant": "default",
+      "id": "p184"
+    },
+    {
+      "type": "host_forage_patch",
+      "class": "host",
+      "x": 6466.5,
+      "y": 9109.5,
+      "kit": "host_forage_patch",
       "rot": 0,
       "variant": "default",
       "id": "p185"
@@ -8114,6 +8114,16 @@
       "id": "p249"
     },
     {
+      "type": "host_forage_patch",
+      "class": "host",
+      "x": 6423.5,
+      "y": 9124.5,
+      "kit": "host_forage_patch",
+      "rot": 0,
+      "variant": "default",
+      "id": "p250"
+    },
+    {
       "type": "rock_boulder_cool_s",
       "class": "rock",
       "x": 6451.5,
@@ -8121,7 +8131,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 17,
       "variant": "default",
-      "id": "p250"
+      "id": "p251"
     },
     {
       "type": "bush_round_m",
@@ -8131,7 +8141,7 @@
       "kit": "bush_round_m",
       "rot": 180,
       "variant": "default",
-      "id": "p251"
+      "id": "p252"
     },
     {
       "type": "rock-3",
@@ -8141,7 +8151,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 66,
       "variant": "default",
-      "id": "p252"
+      "id": "p253"
     },
     {
       "type": "rock-3",
@@ -8151,7 +8161,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p253"
+      "id": "p254"
     },
     {
       "type": "flower-1",
@@ -8161,7 +8171,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p254"
+      "id": "p255"
     },
     {
       "type": "rock-1",
@@ -8171,7 +8181,7 @@
       "kit": "prop_haystack",
       "rot": 0,
       "variant": "default",
-      "id": "p255"
+      "id": "p256"
     },
     {
       "type": "flower-1",
@@ -8181,7 +8191,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p256"
+      "id": "p257"
     },
     {
       "type": "flower-1",
@@ -8191,7 +8201,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p257"
+      "id": "p258"
     },
     {
       "type": "summer-8",
@@ -8202,7 +8212,7 @@
       "rot": 226,
       "variant": "default",
       "scale": 1.03,
-      "id": "p258"
+      "id": "p259"
     },
     {
       "type": "summer-11",
@@ -8213,7 +8223,7 @@
       "rot": 173,
       "variant": "default",
       "scale": 1,
-      "id": "p259"
+      "id": "p260"
     },
     {
       "type": "summer-8",
@@ -8224,7 +8234,7 @@
       "rot": 14,
       "variant": "default",
       "scale": 0.91,
-      "id": "p260"
+      "id": "p261"
     },
     {
       "type": "summer-11",
@@ -8235,7 +8245,7 @@
       "rot": 278,
       "variant": "default",
       "scale": 1.05,
-      "id": "p261"
+      "id": "p262"
     },
     {
       "type": "summer-11",
@@ -8246,7 +8256,7 @@
       "rot": 207,
       "variant": "default",
       "scale": 1.02,
-      "id": "p262"
+      "id": "p263"
     },
     {
       "type": "rock-3",
@@ -8256,7 +8266,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 190,
       "variant": "default",
-      "id": "p263"
+      "id": "p264"
     },
     {
       "type": "flower-1",
@@ -8266,7 +8276,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p264"
+      "id": "p265"
     },
     {
       "type": "bush_round_s",
@@ -8276,7 +8286,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p265"
+      "id": "p266"
     },
     {
       "type": "flower_patch_daisy",
@@ -8286,7 +8296,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p266"
+      "id": "p267"
     },
     {
       "type": "bush_round_m",
@@ -8296,7 +8306,7 @@
       "kit": "bush_round_m",
       "rot": 90,
       "variant": "default",
-      "id": "p267"
+      "id": "p268"
     },
     {
       "type": "summer-8",
@@ -8307,7 +8317,7 @@
       "rot": 243,
       "variant": "default",
       "scale": 1.04,
-      "id": "p268"
+      "id": "p269"
     },
     {
       "type": "summer-3",
@@ -8318,7 +8328,7 @@
       "rot": 36,
       "variant": "default",
       "scale": 0.92,
-      "id": "p269"
+      "id": "p270"
     },
     {
       "type": "plant-1",
@@ -8328,7 +8338,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p270"
+      "id": "p271"
     },
     {
       "type": "rock-3",
@@ -8338,7 +8348,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 156,
       "variant": "default",
-      "id": "p271"
+      "id": "p272"
     },
     {
       "type": "flower-1",
@@ -8348,7 +8358,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p272"
+      "id": "p273"
     },
     {
       "type": "plant-1",
@@ -8358,7 +8368,7 @@
       "kit": "bush_round_m",
       "rot": 180,
       "variant": "default",
-      "id": "p273"
+      "id": "p274"
     },
     {
       "type": "rock-3",
@@ -8368,7 +8378,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 292,
       "variant": "default",
-      "id": "p274"
+      "id": "p275"
     },
     {
       "type": "flower-1",
@@ -8378,7 +8388,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p275"
+      "id": "p276"
     },
     {
       "type": "summer-3",
@@ -8389,7 +8399,7 @@
       "rot": 243,
       "variant": "default",
       "scale": 1.04,
-      "id": "p276"
+      "id": "p277"
     },
     {
       "type": "summer-10",
@@ -8400,7 +8410,7 @@
       "rot": 170,
       "variant": "default",
       "scale": 0.99,
-      "id": "p277"
+      "id": "p278"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -8410,7 +8420,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 112,
       "variant": "default",
-      "id": "p278"
+      "id": "p279"
     },
     {
       "type": "tree_oak_l",
@@ -8421,7 +8431,7 @@
       "rot": 129,
       "scale": 0.97,
       "variant": "default",
-      "id": "p279"
+      "id": "p280"
     },
     {
       "type": "bush_round_m",
@@ -8431,7 +8441,7 @@
       "kit": "bush_round_m",
       "rot": 90,
       "variant": "default",
-      "id": "p280"
+      "id": "p281"
     },
     {
       "type": "flower_patch_daisy",
@@ -8441,7 +8451,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p281"
+      "id": "p282"
     },
     {
       "type": "tree_oak_m",
@@ -8452,7 +8462,7 @@
       "rot": 215,
       "scale": 1.02,
       "variant": "default",
-      "id": "p282"
+      "id": "p283"
     },
     {
       "type": "plant-1",
@@ -8462,7 +8472,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p283"
+      "id": "p284"
     },
     {
       "type": "flower-1",
@@ -8472,7 +8482,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p284"
+      "id": "p285"
     },
     {
       "type": "summer-8",
@@ -8483,7 +8493,7 @@
       "rot": 70,
       "variant": "default",
       "scale": 0.94,
-      "id": "p285"
+      "id": "p286"
     },
     {
       "type": "summer-10",
@@ -8494,7 +8504,7 @@
       "rot": 86,
       "variant": "default",
       "scale": 0.95,
-      "id": "p286"
+      "id": "p287"
     },
     {
       "type": "summer-11",
@@ -8505,7 +8515,7 @@
       "rot": 347,
       "variant": "default",
       "scale": 1.09,
-      "id": "p287"
+      "id": "p288"
     },
     {
       "type": "summer-3",
@@ -8516,7 +8526,7 @@
       "rot": 3,
       "variant": "default",
       "scale": 0.9,
-      "id": "p288"
+      "id": "p289"
     },
     {
       "type": "summer-8",
@@ -8527,7 +8537,7 @@
       "rot": 220,
       "variant": "default",
       "scale": 1.02,
-      "id": "p289"
+      "id": "p290"
     },
     {
       "type": "summer-8",
@@ -8538,7 +8548,7 @@
       "rot": 17,
       "variant": "default",
       "scale": 0.91,
-      "id": "p290"
+      "id": "p291"
     },
     {
       "type": "rock-1",
@@ -8548,7 +8558,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p291"
+      "id": "p292"
     },
     {
       "type": "summer-3",
@@ -8559,7 +8569,7 @@
       "rot": 180,
       "variant": "default",
       "scale": 1,
-      "id": "p292"
+      "id": "p293"
     },
     {
       "type": "rock-1",
@@ -8569,7 +8579,7 @@
       "kit": "prop_haystack",
       "rot": 0,
       "variant": "default",
-      "id": "p293"
+      "id": "p294"
     },
     {
       "type": "flower_patch_daisy",
@@ -8579,7 +8589,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p294"
+      "id": "p295"
     },
     {
       "type": "flower_patch_daisy",
@@ -8589,7 +8599,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p295"
+      "id": "p296"
     },
     {
       "type": "prop_haystack",
@@ -8599,7 +8609,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p296"
+      "id": "p297"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -8609,7 +8619,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 205,
       "variant": "default",
-      "id": "p297"
+      "id": "p298"
     },
     {
       "type": "bush_round_s",
@@ -8619,7 +8629,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p298"
+      "id": "p299"
     },
     {
       "type": "rock-1",
@@ -8629,7 +8639,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 254,
       "variant": "default",
-      "id": "p299"
+      "id": "p300"
     },
     {
       "type": "flower-1",
@@ -8639,7 +8649,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p300"
+      "id": "p301"
     },
     {
       "type": "summer-11",
@@ -8650,7 +8660,7 @@
       "rot": 347,
       "variant": "default",
       "scale": 1.09,
-      "id": "p301"
+      "id": "p302"
     },
     {
       "type": "summer-8",
@@ -8661,7 +8671,7 @@
       "rot": 322,
       "variant": "default",
       "scale": 1.08,
-      "id": "p302"
+      "id": "p303"
     },
     {
       "type": "summer-8",
@@ -8672,7 +8682,7 @@
       "rot": 14,
       "variant": "default",
       "scale": 0.91,
-      "id": "p303"
+      "id": "p304"
     },
     {
       "type": "summer-3",
@@ -8683,7 +8693,7 @@
       "rot": 324,
       "variant": "default",
       "scale": 1.08,
-      "id": "p304"
+      "id": "p305"
     },
     {
       "type": "summer-11",
@@ -8694,7 +8704,7 @@
       "rot": 359,
       "variant": "default",
       "scale": 1.1,
-      "id": "p305"
+      "id": "p306"
     },
     {
       "type": "plant-1",
@@ -8704,7 +8714,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p306"
+      "id": "p307"
     },
     {
       "type": "plant-1",
@@ -8714,7 +8724,7 @@
       "kit": "bush_round_m",
       "rot": 180,
       "variant": "default",
-      "id": "p307"
+      "id": "p308"
     },
     {
       "type": "plant-1",
@@ -8724,7 +8734,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p308"
+      "id": "p309"
     },
     {
       "type": "flower-1",
@@ -8734,7 +8744,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p309"
+      "id": "p310"
     },
     {
       "type": "flower_patch_daisy",
@@ -8744,7 +8754,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p310"
+      "id": "p311"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -8754,7 +8764,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 87,
       "variant": "default",
-      "id": "p311"
+      "id": "p312"
     },
     {
       "type": "flower_patch_daisy",
@@ -8764,7 +8774,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p312"
+      "id": "p313"
     },
     {
       "type": "summer-10",
@@ -8775,7 +8785,7 @@
       "rot": 131,
       "variant": "default",
       "scale": 0.97,
-      "id": "p313"
+      "id": "p314"
     },
     {
       "type": "summer-3",
@@ -8786,7 +8796,7 @@
       "rot": 219,
       "variant": "default",
       "scale": 1.02,
-      "id": "p314"
+      "id": "p315"
     },
     {
       "type": "summer-11",
@@ -8797,7 +8807,7 @@
       "rot": 115,
       "variant": "default",
       "scale": 0.96,
-      "id": "p315"
+      "id": "p316"
     },
     {
       "type": "summer-10",
@@ -8808,7 +8818,7 @@
       "rot": 60,
       "variant": "default",
       "scale": 0.93,
-      "id": "p316"
+      "id": "p317"
     },
     {
       "type": "plant-1",
@@ -8818,7 +8828,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p317"
+      "id": "p318"
     },
     {
       "type": "plant-1",
@@ -8828,7 +8838,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p318"
+      "id": "p319"
     },
     {
       "type": "flower-1",
@@ -8838,7 +8848,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p319"
+      "id": "p320"
     },
     {
       "type": "summer-8",
@@ -8849,7 +8859,7 @@
       "rot": 105,
       "variant": "default",
       "scale": 0.96,
-      "id": "p320"
+      "id": "p321"
     },
     {
       "type": "summer-8",
@@ -8860,7 +8870,7 @@
       "rot": 296,
       "variant": "default",
       "scale": 1.06,
-      "id": "p321"
+      "id": "p322"
     },
     {
       "type": "summer-11",
@@ -8871,7 +8881,7 @@
       "rot": 279,
       "variant": "default",
       "scale": 1.06,
-      "id": "p322"
+      "id": "p323"
     },
     {
       "type": "plant-1",
@@ -8881,7 +8891,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p323"
+      "id": "p324"
     },
     {
       "type": "tree_oak_l",
@@ -8892,7 +8902,7 @@
       "rot": 206,
       "scale": 1.01,
       "variant": "default",
-      "id": "p324"
+      "id": "p325"
     },
     {
       "type": "bush_round_s",
@@ -8902,7 +8912,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p325"
+      "id": "p326"
     },
     {
       "type": "bush_round_s",
@@ -8912,7 +8922,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p326"
+      "id": "p327"
     },
     {
       "type": "plant-1",
@@ -8922,7 +8932,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p327"
+      "id": "p328"
     },
     {
       "type": "rock-1",
@@ -8932,7 +8942,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p328"
+      "id": "p329"
     },
     {
       "type": "summer-8",
@@ -8943,7 +8953,7 @@
       "rot": 156,
       "variant": "default",
       "scale": 0.99,
-      "id": "p329"
+      "id": "p330"
     },
     {
       "type": "summer-3",
@@ -8954,7 +8964,7 @@
       "rot": 221,
       "variant": "default",
       "scale": 1.02,
-      "id": "p330"
+      "id": "p331"
     },
     {
       "type": "rock-3",
@@ -8964,7 +8974,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 34,
       "variant": "default",
-      "id": "p331"
+      "id": "p332"
     },
     {
       "type": "summer-8",
@@ -8975,7 +8985,7 @@
       "rot": 165,
       "variant": "default",
       "scale": 0.99,
-      "id": "p332"
+      "id": "p333"
     },
     {
       "type": "summer-10",
@@ -8986,7 +8996,7 @@
       "rot": 198,
       "variant": "default",
       "scale": 1.01,
-      "id": "p333"
+      "id": "p334"
     },
     {
       "type": "summer-8",
@@ -8997,7 +9007,7 @@
       "rot": 276,
       "variant": "default",
       "scale": 1.05,
-      "id": "p334"
+      "id": "p335"
     },
     {
       "type": "plant-1",
@@ -9007,7 +9017,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p335"
+      "id": "p336"
     },
     {
       "type": "flower-1",
@@ -9017,7 +9027,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p336"
+      "id": "p337"
     },
     {
       "type": "rock-3",
@@ -9027,7 +9037,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 56,
       "variant": "default",
-      "id": "p337"
+      "id": "p338"
     },
     {
       "type": "summer-11",
@@ -9038,7 +9048,7 @@
       "rot": 186,
       "variant": "default",
       "scale": 1,
-      "id": "p338"
+      "id": "p339"
     },
     {
       "type": "summer-8",
@@ -9049,7 +9059,7 @@
       "rot": 316,
       "variant": "default",
       "scale": 1.08,
-      "id": "p339"
+      "id": "p340"
     },
     {
       "type": "tree_oak_m",
@@ -9060,7 +9070,7 @@
       "rot": 168,
       "scale": 0.99,
       "variant": "default",
-      "id": "p340"
+      "id": "p341"
     },
     {
       "type": "tree_oak_m",
@@ -9071,7 +9081,7 @@
       "rot": 56,
       "scale": 0.93,
       "variant": "default",
-      "id": "p341"
+      "id": "p342"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9081,7 +9091,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 249,
       "variant": "default",
-      "id": "p342"
+      "id": "p343"
     },
     {
       "type": "bush_round_s",
@@ -9091,7 +9101,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p343"
+      "id": "p344"
     },
     {
       "type": "summer-11",
@@ -9102,7 +9112,7 @@
       "rot": 315,
       "variant": "default",
       "scale": 1.08,
-      "id": "p344"
+      "id": "p345"
     },
     {
       "type": "summer-8",
@@ -9113,7 +9123,7 @@
       "rot": 51,
       "variant": "default",
       "scale": 0.93,
-      "id": "p345"
+      "id": "p346"
     },
     {
       "type": "summer-8",
@@ -9124,7 +9134,7 @@
       "rot": 36,
       "variant": "default",
       "scale": 0.92,
-      "id": "p346"
+      "id": "p347"
     },
     {
       "type": "bush_round_s",
@@ -9134,7 +9144,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p347"
+      "id": "p348"
     },
     {
       "type": "bush_round_m",
@@ -9144,7 +9154,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p348"
+      "id": "p349"
     },
     {
       "type": "flower_patch_daisy",
@@ -9154,7 +9164,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p349"
+      "id": "p350"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9164,7 +9174,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 154,
       "variant": "default",
-      "id": "p350"
+      "id": "p351"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9174,7 +9184,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 61,
       "variant": "default",
-      "id": "p351"
+      "id": "p352"
     },
     {
       "type": "plant-1",
@@ -9184,7 +9194,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p352"
+      "id": "p353"
     },
     {
       "type": "flower-1",
@@ -9194,7 +9204,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p353"
+      "id": "p354"
     },
     {
       "type": "summer-10",
@@ -9205,7 +9215,7 @@
       "rot": 348,
       "variant": "default",
       "scale": 1.09,
-      "id": "p354"
+      "id": "p355"
     },
     {
       "type": "summer-8",
@@ -9216,7 +9226,7 @@
       "rot": 192,
       "variant": "default",
       "scale": 1.01,
-      "id": "p355"
+      "id": "p356"
     },
     {
       "type": "summer-3",
@@ -9227,7 +9237,7 @@
       "rot": 251,
       "variant": "default",
       "scale": 1.04,
-      "id": "p356"
+      "id": "p357"
     },
     {
       "type": "plant-1",
@@ -9237,7 +9247,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p357"
+      "id": "p358"
     },
     {
       "type": "flower-1",
@@ -9247,7 +9257,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p358"
+      "id": "p359"
     },
     {
       "type": "flower-1",
@@ -9257,7 +9267,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p359"
+      "id": "p360"
     },
     {
       "type": "rock-1",
@@ -9267,7 +9277,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p360"
+      "id": "p361"
     },
     {
       "type": "bush_round_s",
@@ -9277,7 +9287,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p361"
+      "id": "p362"
     },
     {
       "type": "tree_oak_l",
@@ -9288,7 +9298,7 @@
       "rot": 230,
       "scale": 1.03,
       "variant": "default",
-      "id": "p362"
+      "id": "p363"
     },
     {
       "type": "flower_patch_daisy",
@@ -9298,7 +9308,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p363"
+      "id": "p364"
     },
     {
       "type": "flower_patch_daisy",
@@ -9308,7 +9318,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p364"
+      "id": "p365"
     },
     {
       "type": "summer-8",
@@ -9319,7 +9329,7 @@
       "rot": 101,
       "variant": "default",
       "scale": 0.96,
-      "id": "p365"
+      "id": "p366"
     },
     {
       "type": "summer-11",
@@ -9330,7 +9340,7 @@
       "rot": 4,
       "variant": "default",
       "scale": 0.9,
-      "id": "p366"
+      "id": "p367"
     },
     {
       "type": "summer-11",
@@ -9341,7 +9351,7 @@
       "rot": 155,
       "variant": "default",
       "scale": 0.99,
-      "id": "p367"
+      "id": "p368"
     },
     {
       "type": "summer-10",
@@ -9352,7 +9362,7 @@
       "rot": 342,
       "variant": "default",
       "scale": 1.09,
-      "id": "p368"
+      "id": "p369"
     },
     {
       "type": "summer-11",
@@ -9363,7 +9373,7 @@
       "rot": 67,
       "variant": "default",
       "scale": 0.94,
-      "id": "p369"
+      "id": "p370"
     },
     {
       "type": "flower-1",
@@ -9373,7 +9383,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p370"
+      "id": "p371"
     },
     {
       "type": "bush_round_s",
@@ -9383,7 +9393,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p371"
+      "id": "p372"
     },
     {
       "type": "flower_patch_daisy",
@@ -9393,7 +9403,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p372"
+      "id": "p373"
     },
     {
       "type": "bush_round_m",
@@ -9403,7 +9413,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p373"
+      "id": "p374"
     },
     {
       "type": "bush_round_m",
@@ -9413,7 +9423,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p374"
+      "id": "p375"
     },
     {
       "type": "bush_round_s",
@@ -9423,7 +9433,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p375"
+      "id": "p376"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9433,7 +9443,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 128,
       "variant": "default",
-      "id": "p376"
+      "id": "p377"
     },
     {
       "type": "bush_round_m",
@@ -9443,7 +9453,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p377"
+      "id": "p378"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9453,7 +9463,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 227,
       "variant": "default",
-      "id": "p378"
+      "id": "p379"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9463,7 +9473,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 1,
       "variant": "default",
-      "id": "p379"
+      "id": "p380"
     },
     {
       "type": "flower_patch_daisy",
@@ -9473,7 +9483,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p380"
+      "id": "p381"
     },
     {
       "type": "bush_round_s",
@@ -9483,7 +9493,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p381"
+      "id": "p382"
     },
     {
       "type": "flower_patch_daisy",
@@ -9493,7 +9503,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p382"
+      "id": "p383"
     },
     {
       "type": "bush_round_m",
@@ -9503,7 +9513,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p383"
+      "id": "p384"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9513,7 +9523,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 206,
       "variant": "default",
-      "id": "p384"
+      "id": "p385"
     },
     {
       "type": "tree_oak_m",
@@ -9524,7 +9534,7 @@
       "rot": 204,
       "scale": 1.01,
       "variant": "default",
-      "id": "p385"
+      "id": "p386"
     },
     {
       "type": "prop_haystack",
@@ -9534,7 +9544,7 @@
       "kit": "prop_haystack",
       "rot": 270,
       "variant": "default",
-      "id": "p386"
+      "id": "p387"
     },
     {
       "type": "flower_patch_daisy",
@@ -9544,7 +9554,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p387"
+      "id": "p388"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9554,7 +9564,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 245,
       "variant": "default",
-      "id": "p388"
+      "id": "p389"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9564,7 +9574,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 191,
       "variant": "default",
-      "id": "p389"
+      "id": "p390"
     },
     {
       "type": "tree_birch_m",
@@ -9575,7 +9585,7 @@
       "rot": 17,
       "scale": 0.91,
       "variant": "default",
-      "id": "p390"
+      "id": "p391"
     },
     {
       "type": "flower_patch_daisy",
@@ -9585,7 +9595,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p391"
+      "id": "p392"
     },
     {
       "type": "bush_round_m",
@@ -9595,7 +9605,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p392"
+      "id": "p393"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9605,7 +9615,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 88,
       "variant": "default",
-      "id": "p393"
+      "id": "p394"
     },
     {
       "type": "bush_round_s",
@@ -9615,7 +9625,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p394"
+      "id": "p395"
     },
     {
       "type": "prop_haystack",
@@ -9625,7 +9635,7 @@
       "kit": "prop_haystack",
       "rot": 0,
       "variant": "default",
-      "id": "p395"
+      "id": "p396"
     },
     {
       "type": "prop_haystack",
@@ -9635,7 +9645,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p396"
+      "id": "p397"
     },
     {
       "type": "tree_oak_l",
@@ -9646,7 +9656,7 @@
       "rot": 287,
       "scale": 1.06,
       "variant": "default",
-      "id": "p397"
+      "id": "p398"
     },
     {
       "type": "flower_patch_daisy",
@@ -9656,7 +9666,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p398"
+      "id": "p399"
     },
     {
       "type": "flower_patch_daisy",
@@ -9666,7 +9676,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p399"
+      "id": "p400"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9676,7 +9686,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 44,
       "variant": "default",
-      "id": "p400"
+      "id": "p401"
     },
     {
       "type": "flower_patch_daisy",
@@ -9686,7 +9696,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p401"
+      "id": "p402"
     },
     {
       "type": "bush_round_m",
@@ -9696,7 +9706,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p402"
+      "id": "p403"
     },
     {
       "type": "bush_round_s",
@@ -9706,7 +9716,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p403"
+      "id": "p404"
     },
     {
       "type": "bush_round_m",
@@ -9716,7 +9726,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p404"
+      "id": "p405"
     },
     {
       "type": "bush_round_s",
@@ -9726,7 +9736,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p405"
+      "id": "p406"
     },
     {
       "type": "bush_round_s",
@@ -9736,7 +9746,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p406"
+      "id": "p407"
     },
     {
       "type": "tree_oak_l",
@@ -9747,7 +9757,7 @@
       "rot": 157,
       "scale": 0.99,
       "variant": "default",
-      "id": "p407"
+      "id": "p408"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9757,7 +9767,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 279,
       "variant": "default",
-      "id": "p408"
+      "id": "p409"
     },
     {
       "type": "bush_round_m",
@@ -9767,7 +9777,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p409"
+      "id": "p410"
     },
     {
       "type": "flower_patch_daisy",
@@ -9777,7 +9787,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p410"
+      "id": "p411"
     },
     {
       "type": "flower_patch_daisy",
@@ -9787,7 +9797,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p411"
+      "id": "p412"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9797,7 +9807,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 84,
       "variant": "default",
-      "id": "p412"
+      "id": "p413"
     },
     {
       "type": "bush_round_s",
@@ -9807,7 +9817,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p413"
+      "id": "p414"
     },
     {
       "type": "bush_round_m",
@@ -9817,7 +9827,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p414"
+      "id": "p415"
     },
     {
       "type": "flower_patch_daisy",
@@ -9827,7 +9837,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p415"
+      "id": "p416"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -9837,7 +9847,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 7,
       "variant": "default",
-      "id": "p416"
+      "id": "p417"
     },
     {
       "type": "bush_round_s",
@@ -9847,7 +9857,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p417"
+      "id": "p418"
     },
     {
       "type": "bush_round_s",
@@ -9857,7 +9867,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p418"
+      "id": "p419"
     },
     {
       "type": "prop_haystack",
@@ -9867,7 +9877,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p419"
+      "id": "p420"
     },
     {
       "type": "bush_round_m",
@@ -9877,7 +9887,7 @@
       "kit": "bush_round_m",
       "rot": 90,
       "variant": "default",
-      "id": "p420"
+      "id": "p421"
     },
     {
       "type": "bush_round_s",
@@ -9887,7 +9897,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p421"
+      "id": "p422"
     },
     {
       "type": "bush_round_s",
@@ -9897,7 +9907,7 @@
       "kit": "bush_round_s",
       "rot": 90,
       "variant": "default",
-      "id": "p422"
+      "id": "p423"
     },
     {
       "type": "flower_patch_daisy",
@@ -9907,7 +9917,7 @@
       "kit": "flower_patch_daisy",
       "rot": 0,
       "variant": "default",
-      "id": "p423"
+      "id": "p424"
     },
     {
       "type": "tree_oak_m",
@@ -9918,7 +9928,7 @@
       "rot": 104,
       "scale": 0.96,
       "variant": "default",
-      "id": "p424"
+      "id": "p425"
     },
     {
       "type": "bush_round_m",
@@ -9928,7 +9938,7 @@
       "kit": "bush_round_m",
       "rot": 180,
       "variant": "default",
-      "id": "p425"
+      "id": "p426"
     },
     {
       "type": "flower_patch_daisy",
@@ -9938,7 +9948,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p426"
+      "id": "p427"
     },
     {
       "type": "prop_haystack",
@@ -9948,7 +9958,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p427"
+      "id": "p428"
     },
     {
       "type": "bush_round_s",
@@ -9958,7 +9968,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p428"
+      "id": "p429"
     },
     {
       "type": "flower_patch_daisy",
@@ -9968,7 +9978,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p429"
+      "id": "p430"
     },
     {
       "type": "tree_oak_m",
@@ -9979,7 +9989,7 @@
       "rot": 184,
       "scale": 1,
       "variant": "default",
-      "id": "p430"
+      "id": "p431"
     },
     {
       "type": "prop_haystack",
@@ -9989,7 +9999,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p431"
+      "id": "p432"
     },
     {
       "type": "flower_patch_daisy",
@@ -9999,7 +10009,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p432"
+      "id": "p433"
     },
     {
       "type": "bush_round_m",
@@ -10009,7 +10019,7 @@
       "kit": "bush_round_m",
       "rot": 90,
       "variant": "default",
-      "id": "p433"
+      "id": "p434"
     },
     {
       "type": "bush_round_m",
@@ -10019,7 +10029,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p434"
+      "id": "p435"
     },
     {
       "type": "tree_oak_l",
@@ -10030,7 +10040,7 @@
       "rot": 38,
       "scale": 0.92,
       "variant": "default",
-      "id": "p435"
+      "id": "p436"
     },
     {
       "type": "prop_haystack",
@@ -10040,7 +10050,7 @@
       "kit": "prop_haystack",
       "rot": 0,
       "variant": "default",
-      "id": "p436"
+      "id": "p437"
     },
     {
       "type": "bush_round_m",
@@ -10050,7 +10060,7 @@
       "kit": "bush_round_m",
       "rot": 180,
       "variant": "default",
-      "id": "p437"
+      "id": "p438"
     },
     {
       "type": "bush_round_s",
@@ -10060,7 +10070,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p438"
+      "id": "p439"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -10070,7 +10080,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 327,
       "variant": "default",
-      "id": "p439"
+      "id": "p440"
     },
     {
       "type": "flower_patch_daisy",
@@ -10080,7 +10090,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p440"
+      "id": "p441"
     },
     {
       "type": "prop_haystack",
@@ -10090,7 +10100,7 @@
       "kit": "prop_haystack",
       "rot": 180,
       "variant": "default",
-      "id": "p441"
+      "id": "p442"
     },
     {
       "type": "bush_round_m",
@@ -10100,7 +10110,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p442"
+      "id": "p443"
     },
     {
       "type": "bush_round_s",
@@ -10110,7 +10120,7 @@
       "kit": "bush_round_s",
       "rot": 270,
       "variant": "default",
-      "id": "p443"
+      "id": "p444"
     },
     {
       "type": "flower_patch_daisy",
@@ -10120,7 +10130,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p444"
+      "id": "p445"
     },
     {
       "type": "flower_patch_daisy",
@@ -10130,7 +10140,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p445"
+      "id": "p446"
     },
     {
       "type": "bush_round_s",
@@ -10140,7 +10150,7 @@
       "kit": "bush_round_s",
       "rot": 180,
       "variant": "default",
-      "id": "p446"
+      "id": "p447"
     },
     {
       "type": "prop_haystack",
@@ -10150,7 +10160,7 @@
       "kit": "prop_haystack",
       "rot": 0,
       "variant": "default",
-      "id": "p447"
+      "id": "p448"
     },
     {
       "type": "prop_haystack",
@@ -10160,7 +10170,7 @@
       "kit": "prop_haystack",
       "rot": 90,
       "variant": "default",
-      "id": "p448"
+      "id": "p449"
     },
     {
       "type": "bush_round_s",
@@ -10170,7 +10180,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p449"
+      "id": "p450"
     },
     {
       "type": "prop_haystack",
@@ -10180,7 +10190,7 @@
       "kit": "prop_haystack",
       "rot": 0,
       "variant": "default",
-      "id": "p450"
+      "id": "p451"
     },
     {
       "type": "flower_patch_daisy",
@@ -10190,7 +10200,7 @@
       "kit": "flower_patch_daisy",
       "rot": 90,
       "variant": "default",
-      "id": "p451"
+      "id": "p452"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -10200,7 +10210,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 195,
       "variant": "default",
-      "id": "p452"
+      "id": "p453"
     },
     {
       "type": "bush_round_s",
@@ -10210,7 +10220,7 @@
       "kit": "bush_round_s",
       "rot": 0,
       "variant": "default",
-      "id": "p453"
+      "id": "p454"
     },
     {
       "type": "tree_oak_l",
@@ -10221,7 +10231,7 @@
       "rot": 235,
       "scale": 1.03,
       "variant": "default",
-      "id": "p454"
+      "id": "p455"
     },
     {
       "type": "flower_patch_daisy",
@@ -10231,7 +10241,7 @@
       "kit": "flower_patch_daisy",
       "rot": 180,
       "variant": "default",
-      "id": "p455"
+      "id": "p456"
     },
     {
       "type": "flower_patch_daisy",
@@ -10241,7 +10251,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p456"
+      "id": "p457"
     },
     {
       "type": "bush_round_m",
@@ -10251,7 +10261,7 @@
       "kit": "bush_round_m",
       "rot": 270,
       "variant": "default",
-      "id": "p457"
+      "id": "p458"
     },
     {
       "type": "flower_patch_daisy",
@@ -10261,7 +10271,7 @@
       "kit": "flower_patch_daisy",
       "rot": 270,
       "variant": "default",
-      "id": "p458"
+      "id": "p459"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -10271,7 +10281,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 109,
       "variant": "default",
-      "id": "p459"
+      "id": "p460"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -10281,7 +10291,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 206,
       "variant": "default",
-      "id": "p460"
+      "id": "p461"
     },
     {
       "type": "rock_boulder_cool_s",
@@ -10291,7 +10301,7 @@
       "kit": "rock_boulder_cool_s",
       "rot": 159,
       "variant": "default",
-      "id": "p461"
+      "id": "p462"
     },
     {
       "type": "bush_round_m",
@@ -10301,7 +10311,7 @@
       "kit": "bush_round_m",
       "rot": 0,
       "variant": "default",
-      "id": "p462"
+      "id": "p463"
     }
   ],
   "segments": [],
@@ -10315,10 +10325,10 @@
         "kind": "cell",
         "kit": "host_forage_patch",
         "anchor": "exterior",
-        "ref": "p0"
+        "ref": "p185"
       },
-      "x": 6384.5,
-      "y": 9048.5,
+      "x": 6466.5,
+      "y": 9109.5,
       "radiusM": 6,
       "schedule": {
         "hours": [
@@ -10343,10 +10353,10 @@
         "kind": "cell",
         "kit": "host_forage_patch",
         "anchor": "exterior",
-        "ref": "p0"
+        "ref": "p250"
       },
-      "x": 6385.5,
-      "y": 9048.5,
+      "x": 6423.5,
+      "y": 9124.5,
       "radiusM": 6,
       "schedule": {
         "hours": [
@@ -10379,13 +10389,13 @@
     "exportedAt": "2026-10-26T00:00:00.000Z",
     "timeOfDayHours": 8,
     "season": "summer",
-    "hash": "sha1:fac05b1afcf2934cd206a4d4b05ae8c81406b751",
+    "hash": "sha1:1791c694bcfb67858e338ef6b65130166ff43f9b",
     "notes": [
       "Street chunks are regenerated in (y, x) order for two passes. Edges do not depend on which neighbour the session generated first.",
       "Spawn is the road or dirt cell nearest the place centroid, otherwise the nearest walkable cell. The live walker is not baked in, so the same seed and place hash the same.",
       "reliefMeters is 15 times the highest per-biome multiplier among the place biome and its world tiles. Hills use 2 and mountains use 3, so they rise above the 15 m base. This is not the continental elevationMeters scale.",
       "Water level is derived. See layers.water.note. world-map does not store a water line or depth.",
-      "roads.polylines are centerlines on the 3 m grid (north-west corner of each road cell). rank, widthM, and surface match layers.surface. roads.worldTiles stay the coarse world-grid flags. Ground classes road and dirt remain the v0.5 road mask.",
+      "roads.polylines are centerlines on the 3 m grid (north-west corner of each road cell). rank, widthM, and surface match layers.surface. roads.worldTiles stay the coarse WorldData.paths flags and are not filled from polylines. Overworld paths are stamped between cities and towns, so a village can have local polylines and an empty worldTiles list. Ground classes road and dirt remain the v0.5 road mask.",
       "The border ring is visual only. Walkable cells are grid.mask (1 = place tile). grid.borderMask uses the same encoding (1 = ring cell with world terrain, 0 = void or playable) and is not walkable. The controller should use Catmull-Rom on layers.height.",
       "The ring copies the world-tile biome and a simplified ground (grass, sand, rock, dirt, water, and road along world paths). It has no buildings and no props. Neighbour names stay metadata. Void cells are 0 in both masks; ignore their biome and ground bytes.",
       "Desert maps to ground class sand. Mountain maps to rock. Other dry land is grass unless a path, lot, plaza, or yard overrides it. Snow stays grass.",

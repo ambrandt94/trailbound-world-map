@@ -14,9 +14,15 @@ Layout v2 places roads, a wagon yard, districts, and 3 m lots before kit buildin
 
 `roads.polylines[]` is `{ id, kind, rank, width, widthM, surface, points }`. Points are north-west corners of 3 m road cells, so every coordinate is divisible by 3. `width` copies `widthM`.
 
+`roads.worldTiles` is only the coarse `WorldData.paths` flags inside the place. It is not derived from polylines. Overworld paths are stamped between cities and towns, so a village such as Sunspire can export local polylines and an empty `worldTiles` list. That empty list is expected.
+
 `area.settlement` is `{ tier, style, variant, buildingCount, dropped, districts, respawnAnchor: { x, y, kind } }`. `kind` is `healer`, `temple`, `shrine`, or `campfire`. Towns respawn at the healer. Villages respawn at the shrine or small temple. Camps and hamlets respawn at the campfire. `dropped` counts catalog ids that did not fit, and `meta.notes` lists them.
 
 `zones[]` includes `wagon_yard` (`subtype` `yard` or `circle`, `slots` of 3×6 m on a full yard), `plaza` or `green`, and `district`. `segments[]` are 3 m fence chains. `meta.kitVersion` is `0.1-draft`.
+
+`zones[].rect` is the zone's top-left corner plus size, in absolute inner-tile metres (`x` right, `y` down). `zones[].slots[].x/y` are the **centre** of that slot, the same convention as building anchors and props. `slots[].w/d` stay the slot size, so the slot's top-left corner is `(x - w/2, y - d/2)`. A wagon slot is not stored on the yard corner.
+
+Detached houses (`tent`, `hovel`, `cottage`, `manor`) keep at least 1.5 m (one module) between their structure boxes. Townhouses may touch other townhouses. Houses on the same frontage that sit closer than 6 m still count as one row, and that run stops at 3 unless the tier sets `rowhouses`. Doors still face the lot's road.
 
 `minigameSlots[]` come from `src/app/engine/minigame-spawn-rules.json`. Schedules are hours. Unknown `gameId`s are emitted unchanged. `peeloff` is true on every `scope: "wild"` slot and on `ford_crossing`. The games themselves are not implemented.
 
@@ -166,6 +172,8 @@ There is no stored water line. `layers.water` is derived:
 - If no Water world tile is in range, `raw` falls back to `units.seaLevel` (`0.36`, the contract value; world-gen’s hard water cutoff is height &lt; 0.33 before style overrides) and the note says so.
 
 Water cells should stay flat at `level`.
+
+A playable or border cell whose height sample is below `units.seaLevel` is tagged `layers.ground` water and `layers.biome` Water, and `layers.water.present` is true when any playable cell has that ground class. Settlement lots, roads, zones, the spawn, and `respawnAnchor` are lifted onto a pad at least `0.012` above sea level (normalized) and blended back into the sampled terrain, so those features stay dry land. The pad is part of `layers.height.raw`; samples outside the blend are still the world-gen formula.
 
 ### Spawn and edges
 

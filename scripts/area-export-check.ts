@@ -20,6 +20,7 @@ import {
   HEIGHT_SUBDIV_METERS,
   RELIEF_BIOME_MULT,
   RELIEF_METERS,
+  SEA_LEVEL,
   buildAreaExport,
   contentHash,
   decodeB64U8,
@@ -28,6 +29,7 @@ import {
 import { PART_CODE, PART_LEGEND } from '../src/app/engine/building-templates';
 import { generateWorld, worldHeightSampler } from '../src/app/engine/world-gen';
 import { rollMinigameSlots, type MinigameRule } from '../src/app/engine/minigame-slots';
+import { ROW_LINK_M, SIDE_YARD_M, TERRACE_RUN_MAX, tierPlacement, type SettlementTierId } from '../src/app/engine/settlement-tiers';
 import { Biome, DEFAULT_WORLD_SETTINGS, ZONE_SCALE, type MapNode, type WorldData } from '../src/app/models/world.models';
 
 const V03_HASH: Record<string, string> = {
@@ -189,7 +191,13 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
         assert(RING_GROUND.has(ground[gi] ?? 255), `ring ground ${ground[gi]} at ${key}`);
         assert((ground[gi] ?? 0) !== GROUND.lot && (ground[gi] ?? 0) !== GROUND.plaza && (ground[gi] ?? 0) !== GROUND.yard, 'ring building ground');
         const stored = world.biomes[wx + wy * world.width];
-        assert(biomes[gi] === stored, `ring biome ${biomes[gi]} != world ${stored} at ${key}`);
+        const raw = latticeRaw(area, area.grid.originInner.x + ix + 0.5, area.grid.originInner.y + iy + 0.5);
+        if (raw < area.units.seaLevel) {
+          assert(biomes[gi] === Biome.Water, `ring below sea stays ${biomes[gi]} at ${key}`);
+          assert((ground[gi] ?? 0) === GROUND.water, `ring below sea ground ${ground[gi]} at ${key}`);
+        } else {
+          assert(biomes[gi] === stored, `ring biome ${biomes[gi]} != world ${stored} at ${key}`);
+        }
       }
     }
   }
@@ -286,6 +294,7 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
     assert(mask[di] === PART_CODE.door, `${b.id} door cell`);
   }
   assert(GROUND.yard === 8, 'yard class index');
+  assertPlaceContract(area, mask, ground, biomes, border);
   assert(area.meta.hash.startsWith('sha1:'), 'hash prefix');
   assert(contentHash(area) === area.meta.hash, 'hash matches content');
   const canonical = canonicalForHash(area);
@@ -310,6 +319,209 @@ function sortKeys(value: unknown): unknown {
     return out;
   }
   return value;
+}
+
+const DETACHED_HOMES = new Set(['tent', 'hovel', 'cottage', 'manor']);
+
+/** Lattice sample that contains this inner-tile point. Matches the sea-level cell count. */
+function latticeRaw(area: AreaExport, x: number, y: number): number {
+  const height = area.layers.height;
+  const step = height.subdivMeters;
+  const i = Math.max(0, Math.min(height.w - 1, Math.floor((x - height.originInner.x) / step)));
+  const j = Math.max(0, Math.min(height.h - 1, Math.floor((y - height.originInner.y) / step)));
+  return height.raw[i + j * height.w] ?? 0;
+}
+
+function boxGap(
+  a: { x: number; y: number; w: number; d: number },
+  b: { x: number; y: number; w: number; d: number },
+): number {
+  const sepX = a.x >= b.x + b.w ? a.x - (b.x + b.w) : b.x >= a.x + a.w ? b.x - (a.x + a.w) : 0;
+  const sepY = a.y >= b.y + b.d ? a.y - (b.y + b.d) : b.y >= a.y + a.d ? b.y - (a.y + a.d) : 0;
+  if (sepX === 0 && sepY === 0) return 0;
+  if (sepX === 0) return sepY;
+  if (sepY === 0) return sepX;
+  return Math.hypot(sepX, sepY);
+}
+
+function assertPlaceContract(
+  area: AreaExport,
+  mask: Uint8Array,
+  ground: Uint8Array,
+  biomes: Uint8Array,
+  border: Uint8Array,
+): void {
+  const sea = area.units.seaLevel;
+  assert(sea === SEA_LEVEL, 'sea level');
+  const gw = area.grid.w;
+  const gh = area.grid.h;
+  const ox = area.grid.originInner.x;
+  const oy = area.grid.originInner.y;
+  let playableWater = 0;
+  let below = 0;
+  let belowUntagged = 0;
+  for (let iy = 0; iy < gh; iy++) {
+    for (let ix = 0; ix < gw; ix++) {
+      const gi = ix + iy * gw;
+      const playable = mask[gi] === 1;
+      const ring = border[gi] === 1;
+      if (!playable && !ring) continue;
+      const raw = latticeRaw(area, ox + ix + 0.5, oy + iy + 0.5);
+      if (raw >= sea) continue;
+      below++;
+      const tagged = ground[gi] === GROUND.water && biomes[gi] === Biome.Water;
+      if (!tagged) belowUntagged++;
+    }
+  }
+  assert(belowUntagged === 0, `${area.area.id} ${belowUntagged} of ${below} below-sea cells are not water`);
+  for (let i = 0; i < ground.length; i++) if (mask[i] === 1 && ground[i] === GROUND.water) playableWater++;
+  assert(area.layers.water.present === playableWater > 0, `${area.area.id} water.present ${area.layers.water.present} vs ${playableWater} water cells`);
+
+  const dry = (x: number, y: number, label: string) => {
+    assert(latticeRaw(area, x, y) >= sea, `${area.area.id} ${label} at ${x},${y} is below sea (${latticeRaw(area, x, y)})`);
+  };
+  for (const building of area.buildings) {
+    for (let y = building.structureY; y < building.structureY + building.structureD; y++) {
+      for (let x = building.structureX; x < building.structureX + building.structureW; x++) {
+        dry(x + 0.5, y + 0.5, `${building.id} ${building.specialty ?? building.type}`);
+      }
+    }
+    const lot = building.lot;
+    if (lot) {
+      for (let y = lot.y; y < lot.y + lot.d; y++) {
+        for (let x = lot.x; x < lot.x + lot.w; x++) dry(x + 0.5, y + 0.5, `${building.id} lot`);
+      }
+    }
+  }
+  for (let iy = 0; iy < gh; iy++) {
+    for (let ix = 0; ix < gw; ix++) {
+      const gi = ix + iy * gw;
+      if (mask[gi] !== 1) continue;
+      if (ground[gi] !== GROUND.road && ground[gi] !== GROUND.dirt) continue;
+      dry(ox + ix + 0.5, oy + iy + 0.5, 'road');
+    }
+  }
+  for (const zone of area.zones) {
+    const rect = zone.rect;
+    for (let y = rect.y; y < rect.y + rect.d; y++) {
+      for (let x = rect.x; x < rect.x + rect.w; x++) {
+        const ix = Math.floor(x - ox);
+        const iy = Math.floor(y - oy);
+        if (ix < 0 || iy < 0 || ix >= gw || iy >= gh) continue;
+        if (mask[ix + iy * gw] !== 1) continue;
+        dry(x + 0.5, y + 0.5, `${zone.id} zone`);
+      }
+    }
+  }
+  const spawn = area.entries.find((entry) => entry.kind === 'spawn');
+  if (spawn) dry(spawn.x, spawn.y, 'spawn');
+  const anchor = area.area.settlement?.respawnAnchor;
+  if (anchor) dry(anchor.x, anchor.y, 'respawn');
+
+  const seenProp = new Set<string>();
+  for (const prop of area.props) {
+    const key = `${prop.kit ?? prop.type}@${prop.x},${prop.y}`;
+    assert(!seenProp.has(key), `${area.area.id} duplicate prop ${prop.id} ${key}`);
+    seenProp.add(key);
+  }
+
+  const wagon = area.zones.find((zone) => zone.kind === 'wagon_yard');
+  for (const slot of wagon?.slots ?? []) {
+    const cornerX = slot.x - slot.w / 2;
+    const cornerY = slot.y - slot.d / 2;
+    assert(Math.abs(slot.x - (cornerX + slot.w / 2)) < 1e-6, 'slot x is a centre');
+    assert(wagon && cornerX >= wagon.rect.x - 1e-6 && cornerY >= wagon.rect.y - 1e-6, `${slot.x},${slot.y} slot outside yard`);
+    assert(wagon && cornerX + slot.w <= wagon.rect.x + wagon.rect.w + 1e-6, 'slot past yard');
+    assert(Math.abs(slot.x - wagon!.rect.x) > 0.1, `${area.area.id} wagon slot x is the yard corner`);
+  }
+
+  for (const slot of area.minigameSlots) {
+    if (slot.gameId !== 'wild_forage') continue;
+    const lx = slot.x - ox;
+    const ly = slot.y - oy;
+    assert(Math.abs(lx - 0.5) > 0.01 || Math.abs(ly - 0.5) > 0.01, `${area.area.id} ${slot.id} forage at the grid origin`);
+    const ix = Math.floor(lx);
+    const iy = Math.floor(ly);
+    const gi = ix + iy * gw;
+    assert(mask[gi] === 1, `${slot.id} forage is not playable`);
+    const g = ground[gi] ?? 0;
+    assert(
+      g !== GROUND.road && g !== GROUND.dirt && g !== GROUND.lot && g !== GROUND.plaza && g !== GROUND.yard && g !== GROUND.water,
+      `${slot.id} forage on ${g}`,
+    );
+  }
+
+  if (!area.area.settlement) return;
+  const boxes = area.buildings.map((building) => ({
+    id: building.specialty ?? building.type,
+    detached: DETACHED_HOMES.has(building.specialty ?? ''),
+    rowhouse: building.specialty === 'townhouse',
+    box: { x: building.structureX, y: building.structureY, w: building.structureW, d: building.structureD },
+    door: building.door,
+    doorCell: building.doorCell,
+  }));
+  for (let i = 0; i < boxes.length; i++) {
+    const a = boxes[i]!;
+    if (!a.detached) continue;
+    for (let j = 0; j < boxes.length; j++) {
+      if (i === j) continue;
+      const gap = boxGap(a.box, boxes[j]!.box);
+      assert(gap >= SIDE_YARD_M, `${area.area.id} ${a.id} is ${gap.toFixed(2)} m from ${boxes[j]!.id}`);
+    }
+  }
+  const row = tierPlacement(area.area.settlement.tier as SettlementTierId).row;
+  if (!row.rowhouses) {
+    const sameRun = (a: (typeof boxes)[number], b: (typeof boxes)[number]): boolean => {
+      if (a.door !== b.door) return false;
+      if (boxGap(a.box, b.box) > ROW_LINK_M) return false;
+      if (a.door === 'N' || a.door === 'S') return a.box.y < b.box.y + b.box.d && b.box.y < a.box.y + a.box.d;
+      return a.box.x < b.box.x + b.box.w && b.box.x < a.box.x + a.box.w;
+    };
+    const parent = boxes.map(() => -1);
+    const find = (n: number): number => (parent[n]! < 0 ? n : (parent[n] = find(parent[n]!)));
+    const unite = (i: number, j: number) => {
+      const a = find(i);
+      const b = find(j);
+      if (a !== b) parent[b] = a;
+    };
+    for (let i = 0; i < boxes.length; i++) {
+      if (!boxes[i]!.rowhouse && !boxes[i]!.detached) continue;
+      for (let j = i + 1; j < boxes.length; j++) {
+        if (!boxes[j]!.rowhouse && !boxes[j]!.detached) continue;
+        if (sameRun(boxes[i]!, boxes[j]!)) unite(i, j);
+      }
+    }
+    const sizes = new Map<number, number>();
+    for (let i = 0; i < boxes.length; i++) {
+      if (!boxes[i]!.rowhouse && !boxes[i]!.detached) continue;
+      const root = find(i);
+      sizes.set(root, (sizes.get(root) ?? 0) + 1);
+    }
+    for (const size of sizes.values()) {
+      assert(size <= TERRACE_RUN_MAX, `${area.area.id} terrace run of ${size} exceeds ${TERRACE_RUN_MAX}`);
+    }
+  }
+  const step: Record<string, [number, number]> = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
+  const lateral: Record<string, [number, number]> = { N: [1, 0], E: [0, 1], S: [1, 0], W: [0, 1] };
+  for (const building of boxes) {
+    const dir = step[building.door];
+    const side = lateral[building.door];
+    if (!dir || !side) continue;
+    let faced = false;
+    for (let s = 1; s <= 6 && !faced; s++) {
+      for (let off = -3; off <= 3; off++) {
+        const ix = Math.floor(building.doorCell.x + dir[0] * s + side[0] * off - ox);
+        const iy = Math.floor(building.doorCell.y + dir[1] * s + side[1] * off - oy);
+        if (ix < 0 || iy < 0 || ix >= gw || iy >= gh) continue;
+        const g = ground[ix + iy * gw] ?? 0;
+        if (g === GROUND.road || g === GROUND.dirt || g === GROUND.plaza || g === GROUND.park) {
+          faced = true;
+          break;
+        }
+      }
+    }
+    assert(faced, `${area.area.id} ${building.id} door ${building.door} does not face a road`);
+  }
 }
 
 function exportPlace(world: WorldData, id: string): AreaExport {
@@ -418,6 +630,8 @@ function assertSettlement(area: AreaExport, tier: string, minBuildings: number, 
   if (tier === 'town') {
     assert(area.buildings.some((b) => b.specialty === 'healer'), 'town healer');
     assert(settlement.respawnAnchor.kind === 'healer' || settlement.respawnAnchor.kind === 'temple', 'town respawn');
+    const benches = area.props.filter((prop) => prop.kit === 'prop_bench_1.5m');
+    assert(benches.length >= 4, `town benches ${benches.length}`);
   }
   if (tier === 'village') {
     assert(settlement.respawnAnchor.kind === 'shrine' || settlement.respawnAnchor.kind === 'temple', 'village respawn');
