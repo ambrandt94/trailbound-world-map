@@ -170,6 +170,7 @@ export function kindForBiome(biome: Biome, rng: Rng): NodeKind {
       return rng.chance(0.4) ? 'hamlet' : 'grove';
     case Biome.Desert:
       if (rng.chance(0.05)) return 'town';
+      if (rng.chance(0.12)) return 'village';
       if (rng.chance(0.22)) return 'hamlet';
       return rng.chance(0.45) ? 'camp' : 'meadow';
     case Biome.Jungle:
@@ -179,7 +180,8 @@ export function kindForBiome(biome: Biome, rng: Rng): NodeKind {
     case Biome.Plains:
     case Biome.Meadow:
       if (rng.chance(0.04)) return 'city';
-      if (rng.chance(0.1)) return 'town';
+      if (rng.chance(0.08)) return 'town';
+      if (rng.chance(0.2)) return 'village';
       if (rng.chance(0.32)) return 'hamlet';
       return 'meadow';
     case Biome.Forest:
@@ -188,6 +190,7 @@ export function kindForBiome(biome: Biome, rng: Rng): NodeKind {
     case Biome.Hills:
     case Biome.Heath:
       if (rng.chance(0.03)) return 'town';
+      if (rng.chance(0.12)) return 'village';
       if (rng.chance(0.28)) return 'hamlet';
       return 'meadow';
     case Biome.Mountain:

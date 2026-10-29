@@ -330,7 +330,7 @@ export class LocationPanelComponent {
     if (!world || !loc.nodeId || !isSettlementKind(loc.nodeKind)) return null;
     const place = world.nodes.find((node) => node.id === loc.nodeId);
     if (!place) return null;
-    const houses = countDwellings(place, world.seed);
+    const houses = countDwellings(place, world);
     const named = residentCountFor(place);
     const override = overrides[place.id] ?? null;
     const params = resolveResidentParams(settings, override);

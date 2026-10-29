@@ -16,9 +16,9 @@ import {
   stampBuildingYard,
   poiBuildingLayout,
   settlementLayout,
-  settlementPlaza,
   toPlacedSprite,
 } from './buildings';
+import { settlementPlan } from './layout-v2';
 import { hash2, Rng } from './noise';
 
 function idx(x: number, y: number, size: number): number {
@@ -202,7 +202,6 @@ export function generateChunk(
       if (x === size - 1) b = mixBiome(b, biomeAt(world, wx + 1.2, wy + 0.5), 0.35);
       if (y === 0) b = mixBiome(b, biomeAt(world, wx + 0.5, wy - 0.2), 0.35);
       if (y === size - 1) b = mixBiome(b, biomeAt(world, wx + 0.5, wy + 1.2), 0.35);
-      if (node && (node.kind === 'city' || node.kind === 'town') && b !== Biome.Water) b = Biome.Plains;
       tiles[idx(x, y, size)] = b;
     }
   }
@@ -211,11 +210,11 @@ export function generateChunk(
 
   stampRoadNetwork(world, node, wx, wy, size, paths);
 
-  if (node) applyNodeOverlay(node, world.seed, wx, wy, size, tiles, paths, cobble, sprites, layoutRng);
+  if (node) applyNodeOverlay(world, node, world.seed, wx, wy, size, tiles, paths, cobble, sprites, layoutRng);
   stampNearbyPois(world, node, wx, wy, size, tiles, paths, cobble, sprites, layoutRng);
 
   const pool = treePool(base);
-  const settlement = node && (node.kind === 'city' || node.kind === 'town' || node.kind === 'hamlet' || node.kind === 'camp');
+  const settlement = node && (node.kind === 'city' || node.kind === 'town' || node.kind === 'village' || node.kind === 'hamlet' || node.kind === 'camp');
   const treeChance = node?.poiKind === 'treehouse' ? 0.11 : settlement ? 0.014 : node?.kind === 'grove' ? 0.09 : base === Biome.DarkForest ? 0.08 : 0.04;
   for (let y = 0; y < size; y += 2) {
     for (let x = 0; x < size; x += 2) {
@@ -320,7 +319,7 @@ function stampRoadNetwork(
 ): void {
   const hereP = worldPathAt(world, wx, wy);
   const settlement =
-    !!node && (node.kind === 'city' || node.kind === 'town' || node.kind === 'hamlet' || node.kind === 'camp');
+    !!node && (node.kind === 'city' || node.kind === 'town' || node.kind === 'village' || node.kind === 'hamlet' || node.kind === 'camp');
   const pass = node?.kind === 'pass';
   const linkN = wantsRoadLink(world, wx, wy, wx, wy - 1) || pass;
   const linkE = wantsRoadLink(world, wx, wy, wx + 1, wy);
@@ -404,6 +403,7 @@ function stitchEdgesFromNeighbors(
 }
 
 function applyNodeOverlay(
+  world: WorldData,
   node: MapNode,
   worldSeed: number,
   wx: number,
@@ -419,7 +419,7 @@ function applyNodeOverlay(
   const originY = wy * size;
   const midX = node.cx * size;
   const midY = node.cy * size;
-  const settlement = node.kind === 'city' || node.kind === 'town' || node.kind === 'hamlet' || node.kind === 'camp';
+  const settlement = node.kind === 'city' || node.kind === 'town' || node.kind === 'village' || node.kind === 'hamlet' || node.kind === 'camp';
 
   if (node.poiKind) {
     stampPoiIntoChunk(node.poiKind, wx, wy, size, tiles, paths, cobble, sprites, midX, midY, rng);
@@ -427,12 +427,9 @@ function applyNodeOverlay(
   }
 
   if (settlement) {
-    const lx = node.cx * size - originX;
-    const ly = node.cy * size - originY;
-    const plaza = settlementPlaza(node.kind);
-    stampRect(cobble, size, lx - plaza.w * 0.5, ly - plaza.h * 0.45, plaza.w, plaza.h, 2);
-    stampCityStreets(node, wx, wy, size, paths);
-    placeSettlementSprites(node, worldSeed, wx, wy, size, paths, cobble, sprites);
+    const plan = settlementPlan(world, node);
+    if (plan) stampPlan(plan, originX, originY, size, paths, cobble, sprites);
+    placeSettlementSprites(node, world, wx, wy, size, paths, cobble, sprites);
   } else if (node.kind === 'shore' && node.origin !== 'generated') {
     const shoreY = node.cy * size;
     for (let y = 0; y < size; y++) {
@@ -445,9 +442,77 @@ function applyNodeOverlay(
   }
 }
 
+function stampPlan(
+  plan: NonNullable<ReturnType<typeof settlementPlan>>,
+  originX: number,
+  originY: number,
+  size: number,
+  paths: Uint8Array,
+  cobble: Uint8Array,
+  sprites: PlacedSprite[],
+): void {
+  const paint = (gx: number, gy: number, pad: number, write: (ix: number, iy: number) => void) => {
+    const x0 = gx * 3 - originX - pad;
+    const y0 = gy * 3 - originY - pad;
+    const span = 3 + pad * 2;
+    for (let y = 0; y < span; y++) {
+      for (let x = 0; x < span; x++) {
+        const ix = Math.floor(x0 + x);
+        const iy = Math.floor(y0 + y);
+        if (ix < 0 || iy < 0 || ix >= size || iy >= size) continue;
+        write(ix, iy);
+      }
+    }
+  };
+  for (const cell of plan.roadCells) {
+    const pad = cell.widthM >= 4.5 ? 1 : 0;
+    paint(cell.gx, cell.gy, pad, (ix, iy) => {
+      paths[idx(ix, iy, size)] = 1;
+    });
+  }
+  if (plan.plaza && plan.zones.some((zone) => zone.kind === 'plaza')) {
+    const gx0 = Math.floor(plan.plaza.x / 3);
+    const gy0 = Math.floor(plan.plaza.y / 3);
+    const w = Math.round(plan.plaza.w / 3);
+    const d = Math.round(plan.plaza.d / 3);
+    for (let y = 0; y < d; y++) {
+      for (let x = 0; x < w; x++) paint(gx0 + x, gy0 + y, 0, (ix, iy) => {
+        cobble[idx(ix, iy, size)] = 2;
+      });
+    }
+  }
+  const yard = plan.zones.find((zone) => zone.kind === 'wagon_yard');
+  if (yard) {
+    const gx0 = Math.floor(yard.rect.x / 3);
+    const gy0 = Math.floor(yard.rect.y / 3);
+    const w = Math.round(yard.rect.w / 3);
+    const d = Math.round(yard.rect.d / 3);
+    for (let y = 0; y < d; y++) {
+      for (let x = 0; x < w; x++) paint(gx0 + x, gy0 + y, 0, (ix, iy) => {
+        if (!cobble[idx(ix, iy, size)]) paths[idx(ix, iy, size)] = 1;
+      });
+    }
+  }
+  for (const prop of plan.props) {
+    const lx = prop.x - originX;
+    const ly = prop.y - originY;
+    if (lx < 0 || ly < 0 || lx >= size || ly >= size) continue;
+    sprites.push({
+      sprite: prop.sprite,
+      x: lx,
+      y: ly,
+      kit: prop.kit,
+      rot: prop.rot,
+      ...(prop.scale !== undefined ? { scale: prop.scale } : {}),
+      variant: prop.variant,
+      propClass: prop.propClass,
+    });
+  }
+}
+
 function placeSettlementSprites(
   node: MapNode,
-  worldSeed: number,
+  world: WorldData,
   wx: number,
   wy: number,
   size: number,
@@ -457,27 +522,10 @@ function placeSettlementSprites(
 ): void {
   const originX = wx * size;
   const originY = wy * size;
-  const layout = settlementLayout(node, worldSeed);
+  const layout = settlementLayout(node, world);
   for (const b of layout) {
     stampBuildingYard(cobble, paths, size, b, originX, originY);
     if (buildingInChunk(b, wx, wy, size)) sprites.push(toPlacedSprite(b, originX, originY));
-  }
-
-  const plaza = settlementPlaza(node.kind);
-  const midX = node.cx * size;
-  const midY = node.cy * size;
-  const putProp = (sprite: string, x: number, y: number) => {
-    const lx = x - originX;
-    const ly = y - originY;
-    if (lx < 0 || ly < 0 || lx >= size || ly >= size) return;
-    sprites.push({ sprite, x: lx, y: ly });
-  };
-  putProp('well', midX + plaza.w * 0.12, midY + plaza.h * 0.28);
-  if (node.kind === 'city' || node.kind === 'town') {
-    putProp('lantern', midX - plaza.w * 0.32, midY + plaza.h * 0.08);
-    putProp('lantern', midX + plaza.w * 0.34, midY + plaza.h * 0.06);
-    putProp('bench', midX + 0.8, midY + plaza.h * 0.3);
-    if (((node.seed >>> 0) % 10) < 7) putProp('market', midX - plaza.w * 0.28, midY + plaza.h * 0.32);
   }
 }
 

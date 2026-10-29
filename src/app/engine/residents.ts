@@ -10,6 +10,7 @@ import {
   DEFAULT_AVG_PER_PLACE,
   MapNode,
   ResidentsMode,
+  WorldData,
   clampAvg,
 } from '../models/world.models';
 
@@ -81,13 +82,13 @@ export function resolveResidentParams(
 }
 
 export function isSettlementKind(kind: string | null | undefined): boolean {
-  return kind === 'city' || kind === 'town' || kind === 'hamlet';
+  return kind === 'city' || kind === 'town' || kind === 'village' || kind === 'hamlet';
 }
 
 /** Dwellings in the street layout. Same roster the chunk baker stamps. */
-export function countDwellings(node: MapNode, worldSeed: number): number {
+export function countDwellings(node: MapNode, world: WorldData): number {
   if (!isSettlementKind(node.kind)) return 0;
-  return settlementLayout(node, worldSeed).filter((building) => isDwellingType(building.sprite)).length;
+  return settlementLayout(node, world).filter((building) => isDwellingType(building.sprite)).length;
 }
 
 /** Cottages, houses, and farmhouses. Inns, shops, and halls are not homes. */

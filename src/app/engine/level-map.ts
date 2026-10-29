@@ -90,7 +90,7 @@ export function biomeMapDeco(biome: Biome, hash: number): string | null {
 export function settlementMapIcon(kind: string, hash: number): string {
   if (kind === 'city') return `map-house-${(hash % 3) + 7}`;
   if (kind === 'town') return `map-house-${(hash % 3) + 4}`;
-  if (kind === 'hamlet' || kind === 'camp') return `map-house-${(hash % 3) + 1}`;
+  if (kind === 'hamlet' || kind === 'village' || kind === 'camp') return `map-house-${(hash % 3) + 1}`;
   return `map-house-${(hash % 9) + 1}`;
 }
 

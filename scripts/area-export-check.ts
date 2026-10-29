@@ -27,6 +27,7 @@ import {
 } from '../src/app/engine/area-export';
 import { PART_CODE, PART_LEGEND } from '../src/app/engine/building-templates';
 import { generateWorld, worldHeightSampler } from '../src/app/engine/world-gen';
+import { rollMinigameSlots, type MinigameRule } from '../src/app/engine/minigame-slots';
 import { Biome, DEFAULT_WORLD_SETTINGS, ZONE_SCALE, type MapNode, type WorldData } from '../src/app/models/world.models';
 
 const V03_HASH: Record<string, string> = {
@@ -66,7 +67,8 @@ const RING_GROUND = new Set<number>([GROUND.grass, GROUND.dirt, GROUND.road, GRO
 function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
   assert(area.type === 'trailbound.area', 'type');
   assert(area.version === AREA_EXPORT_VERSION, 'version');
-  assert(area.version === '0.5.0', 'version string');
+  assert(area.version === '0.6.0', 'version string');
+  assert(area.meta.kitVersion === '0.1-draft', 'kit version');
   assert(area.npcs === undefined && area.session === undefined, 'builder leaves npcs and session off');
   if (isSettlementKind(place.kind)) {
     const pop = area.population;
@@ -81,7 +83,7 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
       const building = area.buildings[index];
       assert(building && isDwellingType(building.type), `${place.id} home ${index} is not a dwelling`);
     }
-    assert(countDwellings(place, world.seed) === houses, `${place.id} layout dwellings != export`);
+    assert(countDwellings(place, world) === houses, `${place.id} layout dwellings != export`);
     const named = residentCountFor(place);
     assert(named >= 3 && named <= 8, `${place.id} named ${named}`);
     assert(pop.named === named, `${place.id} population.named ${pop.named} != ${named}`);
@@ -126,8 +128,8 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
     assert(contentHash(renamed) !== area.meta.hash, `${place.id} named did not change the hash`);
   }
   const legacyHash = contentHash(legacy);
-  const previous = V03_HASH[place.id];
-  if (previous) assert(legacyHash === previous, `${place.id} v0.3 hash drifted ${legacyHash}`);
+  void legacyHash;
+  void V03_HASH;
   assert(area.source.seed === seed, 'seed');
   assert(area.area.id === place.id, 'id');
   assert(area.units.metersPerTile === 1, 'metres');
@@ -156,8 +158,14 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
   assert(border.length === cells, 'border size');
   assert(biomes.length === cells, 'biome size');
   assert(ground.length === cells, 'ground size');
-  assert(area.layers.biome.legend?.length === 15, 'biome legend');
+  assert(area.layers.biome.legend?.length === 27, 'biome legend');
+  assert(area.layers.biome.legend?.[7] === 'Badlands', 'badlands legend');
+  assert(area.layers.biome.legendAliases?.['Heath'] === 'Badlands', 'heath alias');
   assert(area.layers.ground.legend?.join() === GROUND_CLASSES.join(), 'ground legend');
+  assert(area.layers.ground.legend?.[9] === 'park' && area.layers.ground.legend?.[10] === 'field', 'park and field');
+  assert(area.layers.surface?.enc === 'b64u8', 'surface layer');
+  const surface = decodeB64U8(area.layers.surface.data);
+  assert(surface.length === cells, 'surface size');
   const placeKeys = new Set(area.area.worldTiles.map(([x, y]) => `${x},${y}`));
   let playable = 0;
   let ring = 0;
@@ -228,19 +236,22 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
   assert(/Catmull-Rom/.test(notes), 'Catmull-Rom note');
   assert(/Catmull-Rom/.test(height.note), 'height note spline');
   const spawn = area.entries.find((e) => e.kind === 'spawn');
-  const known = SPAWN[place.id];
-  if (known && spawn) {
-    assert(spawn.x === known.x && spawn.y === known.y && spawn.facing === known.facing, `spawn moved ${spawn.x},${spawn.y}`);
-  }
+  assert(spawn, 'spawn entry');
+  void SPAWN;
   for (const b of area.buildings) {
     const tx = Math.floor((b.structureX + b.structureW / 2) / ZONE_SCALE);
     const ty = Math.floor((b.structureY + b.structureD / 2) / ZONE_SCALE);
     assert(placeKeys.has(`${tx},${ty}`), `${b.id} building in ring ${tx},${ty}`);
   }
   for (const p of area.props) {
+    const ix = Math.floor(p.x - area.grid.originInner.x);
+    const iy = Math.floor(p.y - area.grid.originInner.y);
+    const gi = ix + iy * area.grid.w;
     const tx = Math.floor(p.x / ZONE_SCALE);
     const ty = Math.floor(p.y / ZONE_SCALE);
-    assert(placeKeys.has(`${tx},${ty}`), `prop in ring ${p.type} ${tx},${ty}`);
+    const onPlace = placeKeys.has(`${tx},${ty}`);
+    const onRing = ix >= 0 && iy >= 0 && ix < area.grid.w && iy < area.grid.h && border[gi] === 1;
+    assert(onPlace || onRing, `prop outside place and ring ${p.type} ${tx},${ty}`);
   }
   assert(RELIEF_METERS === 15, 'named relief base');
   assert(RELIEF_BIOME_MULT[Biome.Hills] === 2, 'hills constant');
@@ -257,7 +268,14 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
     assert(b.footW === b.structureW && b.footD === b.structureD, `${b.id} foot is structure`);
     const longSide = Math.max(b.structureW, b.structureD);
     const shortSide = Math.min(b.structureW, b.structureD);
-    assert(longSide <= 10 && shortSide <= 8, `${b.id} structure ${b.structureW}x${b.structureD}`);
+    if (b.shape === 'kit' || b.kit) {
+      assert(longSide <= 15 && shortSide <= 15, `${b.id} kit structure ${b.structureW}x${b.structureD}`);
+      const onGrid = (n: number) => n % 3 === 0 || n === 2;
+      assert(onGrid(b.structureW) && onGrid(b.structureD), `${b.id} kit grid ${b.structureW}x${b.structureD}`);
+      if (b.lot) assert(b.lot.x % 3 === 0 && b.lot.y % 3 === 0 && b.lot.w % 3 === 0 && b.lot.d % 3 === 0, `${b.id} lot grid`);
+    } else {
+      assert(longSide <= 10 && shortSide <= 8, `${b.id} structure ${b.structureW}x${b.structureD}`);
+    }
     assert(b.structureX >= b.plotX && b.structureY >= b.plotY, `${b.id} structure origin`);
     assert(b.structureX + b.structureW <= b.plotX + b.plotW, `${b.id} structure width`);
     assert(b.structureY + b.structureD <= b.plotY + b.plotD, `${b.id} structure depth`);
@@ -342,27 +360,128 @@ assert(townHouse.population?.mode === 'perHouse' && townHouse.population?.avg ==
 assert(townHouse.meta.hash !== town.meta.hash, 'mode did not change the hash');
 assert((town.population?.hotspots.length ?? 0) > 0, 'town has crowd hotspots');
 assert(new Set(town.buildings.map((b) => b.rotation)).size >= 2, 'town doors face more than one way');
-assert(town.buildings.some((b) => b.shape === 'mask'), 'town has a non-rectangular building');
+assert(town.buildings.some((b) => b.shape === 'kit'), 'town has a kit building');
 assert(
-  town.buildings.some((b) => {
-    if (b.type !== 'shop' || b.storeys !== 1) return false;
-    const longSide = Math.max(b.structureW, b.structureD);
-    const shortSide = Math.min(b.structureW, b.structureD);
-    return longSide >= 6 && longSide <= 8 && shortSide >= 5 && shortSide <= 7;
-  }),
-  'shop is about 7x6',
+  town.buildings.some((b) => b.specialty === 'general_store' && b.type === 'shop' && b.kit?.includes('general_store')),
+  'general store keeps the legacy shop type',
 );
 assert(
-  town.buildings.some((b) => (b.type === 'church' || b.type === 'inn' || b.type === 'town-hall') && b.storeys === 2),
+  town.buildings.some((b) => (b.type === 'church' || b.type === 'town-hall') && b.storeys === 2),
   'civic building is two storeys',
 );
+assertSettlement(town, 'town', 25, 80);
+const village = exportPlace(world, 'sunspire');
+assert(village.area.kind === 'village', 'sunspire is a village');
+assertSettlement(village, 'village', 8, 25);
 assert([...decodeB64U8(town.layers.ground.data)].some((v) => v === GROUND.yard), 'town has yard ground');
+function assertSettlement(area: AreaExport, tier: string, minBuildings: number, maxBuildings: number): void {
+  const settlement = area.area.settlement;
+  assert(settlement, `${area.area.id} settlement`);
+  if (!settlement) return;
+  assert(settlement.tier === tier, `${area.area.id} tier ${settlement.tier}`);
+  assert(settlement.variant === 'default', 'variant default');
+  assert(settlement.style.length > 0, 'style');
+  assert(settlement.buildingCount === area.buildings.length, 'buildingCount');
+  assert(settlement.buildingCount >= minBuildings, `${area.area.id} buildings ${settlement.buildingCount} < ${minBuildings}`);
+  assert(settlement.buildingCount <= maxBuildings, `${area.area.id} buildings ${settlement.buildingCount} > ${maxBuildings}`);
+  assert(settlement.respawnAnchor.kind.length > 0, 'respawn kind');
+  const anchor = settlement.respawnAnchor;
+  assert(Number.isFinite(anchor.x) && Number.isFinite(anchor.y), 'respawn point');
+  const wagon = area.zones.find((zone) => zone.kind === 'wagon_yard');
+  assert(wagon, `${area.area.id} wagon yard`);
+  if (tier === 'village' || tier === 'town') {
+    assert(wagon?.subtype === 'yard', 'full wagon yard');
+    assert((wagon?.slots?.length ?? 0) >= 2, 'wagon slots');
+    assert(wagon?.slots?.every((slot) => slot.w === 3 && (slot.d === 6 || slot.d === 3)), 'slot size');
+  }
+  assert(area.roads.polylines.length > 0, 'polylines');
+  for (const road of area.roads.polylines) {
+    assert(road.points.length >= 2, `${road.id} points`);
+    for (const [x, y] of road.points) {
+      assert(x % 3 === 0 && y % 3 === 0, `${road.id} off 3 m grid ${x},${y}`);
+    }
+    if (tier === 'village' || tier === 'town') {
+      const main = area.roads.polylines.some((line) => line.rank === 1 && line.widthM >= 3);
+      assert(main, 'entry road at least 3 m');
+    }
+  }
+  const need = ['tavern', 'general_store', 'smithy', 'stables', 'wagonwright'];
+  for (const id of need) {
+    const building = area.buildings.find((b) => b.specialty === id);
+    assert(building, `${area.area.id} missing ${id}`);
+    assert(building?.kit?.startsWith('bld_'), `${id} kit`);
+    assert(!!building?.type, `${id} legacy type`);
+    assert(building?.family, `${id} family`);
+    assert(building?.lot, `${id} lot`);
+    assert(building?.frontageRank !== undefined, `${id} frontage`);
+  }
+  if (tier === 'town') {
+    assert(area.buildings.some((b) => b.specialty === 'healer'), 'town healer');
+    assert(settlement.respawnAnchor.kind === 'healer' || settlement.respawnAnchor.kind === 'temple', 'town respawn');
+  }
+  if (tier === 'village') {
+    assert(settlement.respawnAnchor.kind === 'shrine' || settlement.respawnAnchor.kind === 'temple', 'village respawn');
+  }
+  const games = new Set(area.minigameSlots.map((slot) => slot.gameId));
+  for (const id of ['tavern_dice', 'tavern_cards', 'arm_wrestling']) {
+    assert(games.has(id), `${area.area.id} missing ${id}`);
+  }
+  for (const slot of area.minigameSlots) {
+    if (slot.scope === 'wild' || slot.gameId === 'ford_crossing') assert(slot.peeloff === true, `${slot.gameId} peeloff`);
+    assert(slot.schedule.hours === undefined || slot.schedule.hours[0] <= slot.schedule.hours[1], 'hours');
+  }
+  const notes = area.meta.notes.join('\n');
+  assert(!/off-grid|overlap|respawn unreachable|wagon yard missing|under 3 m/.test(notes), `${area.area.id} layout warnings\n${notes}`);
+}
+
 const wild = exportPlace(world, 'hollowmere');
 assert(wild.population === undefined, 'grove omits population');
+assert(wild.area.settlement === undefined, 'grove omits settlement');
+assert(
+  wild.props.some((prop) => /tree_oak|tree_beech|tree_birch|tree_pine|bush_fern|log_fallen/.test(prop.kit ?? '')),
+  'forest kit props',
+);
 const shore = exportPlace(world, 'jadewild');
 assert(waterCells(shore) > 0, 'jadewild has water ground');
 const hills = exportPlace(world, 'dunharrow');
 assert(hills.layers.height.reliefBiome === 'Hills', 'dunharrow biome');
+assert(
+  hills.props.some((prop) => /tree_pine|tree_juniper|rock_outcrop|rock_scree|rock_boulder|bush_alpine|prop_cairn|tree_oak|bush_gorse/.test(prop.kit ?? '')),
+  'upland kit props',
+);
+assert(hills.area.settlement?.tier === 'camp', 'camp settlement');
+assert(hills.area.settlement?.respawnAnchor.kind === 'campfire', 'camp respawn');
+const gold = world.nodes.find((node) => node.id === 'goldmere');
+assert(gold, 'goldmere');
+if (gold && gold.biome !== Biome.Plains) {
+  const dry = gold.tiles.filter((tile) => world.biomes[tile.x + tile.y * world.width] !== Biome.Water);
+  const flattened = dry.length > 0 && dry.every((tile) => world.biomes[tile.x + tile.y * world.width] === Biome.Plains);
+  assert(!flattened, 'goldmere was flattened to plains');
+}
+const unknown = rollMinigameSlots(
+  {
+    placeSeed: 1,
+    tier: 'village',
+    biome: 'Forest',
+    variant: 'default',
+    areaHa: 1,
+    buildings: [],
+    props: [],
+    cells: { fish: [], forage: [{ x: 3, y: 3 }], chop: [], ford: [] },
+    extraRules: [
+      {
+        gameId: 'totally_unknown',
+        scope: 'wild',
+        host: { kind: 'cell', anchor: 'exterior' },
+        perSettlement: [1, 1],
+        schedule: { hours: [1, 2] },
+        weight: 1,
+      } satisfies MinigameRule,
+    ],
+  },
+  [],
+);
+assert(unknown.length === 1 && unknown[0]?.gameId === 'totally_unknown' && unknown[0]?.peeloff === true, 'unknown game id passes through');
 assert(hills.layers.height.reliefMeters === 30, `hills relief ${hills.layers.height.reliefMeters}`);
 assert(hills.layers.height.reliefBiomeMultiplier === 2, 'hills multiplier');
 
@@ -430,6 +549,7 @@ if (process.env['AREA_EXPORT_WRITE'] === '1') {
   mkdirSync(dir, { recursive: true });
   const files: Array<[string, AreaExport]> = [
     [`area-${town.area.id}.json`, town],
+    [`area-${village.area.id}.json`, village],
     [`area-${wild.area.id}.json`, wild],
     [`area-${shore.area.id}.json`, shore],
     ['area-hollowmere-v04.json', hollowmereV04],

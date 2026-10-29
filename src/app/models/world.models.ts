@@ -22,6 +22,7 @@ export const GENERATED_ZONE_RADIUS = 7.6;
 export const ZONE_RADIUS: Record<NodeKind, number> = {
   city: 10.8,
   town: 6.6,
+  village: 5.4,
   hamlet: 4.1,
   camp: 3.5,
   grove: 4.6,
@@ -552,7 +553,9 @@ export enum Biome {
   Forest = 4,
   DarkForest = 5,
   Hills = 6,
+  /** @deprecated One-version alias. Legend name is Badlands. */
   Heath = 7,
+  Badlands = 7,
   Marsh = 8,
   Mountain = 9,
   Snow = 10,
@@ -564,7 +567,7 @@ export enum Biome {
 
 export const BIOME_COUNT = 15;
 
-export type NodeKind = 'city' | 'town' | 'hamlet' | 'grove' | 'camp' | 'shore' | 'meadow' | 'pass';
+export type NodeKind = 'city' | 'town' | 'village' | 'hamlet' | 'grove' | 'camp' | 'shore' | 'meadow' | 'pass';
 export type NodeOrigin = 'authored' | 'generated';
 
 export type PoiKind =
@@ -654,6 +657,21 @@ export interface PlacedSprite {
   templateId?: string;
   /** Quarter-turns clockwise so the door faces the street. */
   rotation?: 0 | 90 | 180 | 270;
+  /** Kit name from the settlement or wild-prop catalog. */
+  kit?: string;
+  label?: string;
+  family?: 'res' | 'shop' | 'work' | 'civic' | 'cap' | 'farm';
+  resTier?: 1 | 2 | 3 | 4 | 5;
+  specialty?: string;
+  style?: string;
+  district?: string;
+  lot?: { x: number; y: number; w: number; d: number };
+  frontageRank?: number;
+  rot?: number;
+  /** Trees only, 0.9–1.1. */
+  scale?: number;
+  variant?: string;
+  propClass?: 'tree' | 'rock' | 'plant' | 'prop' | 'deco' | 'civic' | 'host' | 'hero' | 'fence_post';
 }
 
 export interface ZoneData {
@@ -840,6 +858,7 @@ export const BIOME_LABELS: Record<Biome, string> = {
 export const KIND_LABELS: Record<NodeKind, string> = {
   city: 'city',
   town: 'town',
+  village: 'village',
   hamlet: 'hamlet',
   grove: 'grove',
   camp: 'camp',
@@ -998,7 +1017,7 @@ type BlobShape = {
 
 function blobShapeFor(kind: NodeKind | undefined, seed: number, cx: number, cy: number, reach: number): BlobShape {
   const city = kind === 'city';
-  const town = kind === 'town';
+  const town = kind === 'town' || kind === 'village';
   const settled = city || town || kind === 'hamlet';
   const aspect = city
     ? 0.9 + blobHash(seed, 13, 17) * 0.22
@@ -1060,7 +1079,7 @@ function inBlobShape(
 
 function minTilesForKind(kind: NodeKind | undefined, reach: number): number {
   const byKind =
-    kind === 'city' ? 40 : kind === 'town' ? 22 : kind === 'hamlet' ? 12 : kind === 'camp' ? MIN_ZONE_TILES : 10;
+    kind === 'city' ? 40 : kind === 'town' ? 22 : kind === 'village' ? 16 : kind === 'hamlet' ? 12 : kind === 'camp' ? MIN_ZONE_TILES : 10;
   const byReach = Math.max(MIN_ZONE_TILES, Math.round(reach * reach * 0.42));
   return Math.min(120, Math.max(byKind, byReach));
 }
