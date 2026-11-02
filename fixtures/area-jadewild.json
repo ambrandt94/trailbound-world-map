@@ -5973,7 +5973,7 @@
       "reliefBiome": "Forest",
       "reliefMeters": 17.25,
       "detailMeters": 0.4,
-      "note": "sampling is world-subdiv. raw is normalized (heightUnit normalized): the world-gen FBM plus land-mask evaluated at fractional world-tile coordinates, not a bilinear of stored WorldData.heights. Samples are every 2 m. Sample [0] is originInner in absolute inner-tile metres, and originCorner equals originInner. The lattice covers the expanded grid plus one subdiv sample of apron on each side. Controller: Catmull-Rom across the lattice, then y = clamp((raw - minRaw) / (maxRaw - minRaw), 0, 1) * reliefMeters. minRaw/maxRaw are the percentile clip from 0.02 to 0.98, widened so the span is at least 0.12, then padded by 5% of that span on each side, so a small continental delta does not become a full reliefMeters cliff. detailMeters (0.4) is optional micro-relief amplitude and is not baked into raw. Water stays flat at layers.water.level."
+      "note": "sampling is world-subdiv. raw is normalized (heightUnit normalized): the world-gen FBM plus land-mask evaluated at fractional world-tile coordinates, not a bilinear of stored WorldData.heights. Samples are every 2 m. Sample [0] is originInner in absolute inner-tile metres, and originCorner equals originInner. The lattice covers the expanded grid plus one subdiv sample of apron on each side. Controller: Catmull-Rom across the lattice, then y = clamp((raw - minRaw) / (maxRaw - minRaw), 0, 1) * reliefMeters. minRaw/maxRaw are the percentile clip from 0.02 to 0.98, widened so the span is at least 0.12, then padded by 5% of that span on each side, so a small continental delta does not become a full reliefMeters cliff. detailMeters (0.4) is optional micro-relief amplitude and is not baked into raw. Water stays flat at layers.water.level. A settlement pad lifts building lots, roads, zones, the spawn, and the respawn anchor to at least sea level plus 0.012 and blends back to the sampled terrain. Cells that stay below sea level are tagged water."
     },
     "surface": {
       "enc": "b64u8",
@@ -6014,16 +6014,6 @@
   "buildings": [],
   "props": [
     {
-      "type": "host_forage_patch",
-      "class": "host",
-      "x": 2800.5,
-      "y": 4888.5,
-      "kit": "host_forage_patch",
-      "rot": 0,
-      "variant": "default",
-      "id": "p0"
-    },
-    {
       "type": "host_fishing_spot",
       "class": "host",
       "x": 2816.5,
@@ -6031,7 +6021,7 @@
       "kit": "host_fishing_spot",
       "rot": 0,
       "variant": "default",
-      "id": "p1"
+      "id": "p0"
     },
     {
       "type": "host_fishing_spot",
@@ -6041,7 +6031,7 @@
       "kit": "host_fishing_spot",
       "rot": 0,
       "variant": "default",
-      "id": "p2"
+      "id": "p1"
     },
     {
       "type": "reeds_cattail_m",
@@ -6051,7 +6041,7 @@
       "kit": "reeds_cattail_m",
       "rot": 0,
       "variant": "default",
-      "id": "p3"
+      "id": "p2"
     },
     {
       "type": "rock_boulder_cool_m",
@@ -6061,7 +6051,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 205,
       "variant": "default",
-      "id": "p4"
+      "id": "p3"
     },
     {
       "type": "prop_chopping_block",
@@ -6071,7 +6061,7 @@
       "kit": "prop_chopping_block",
       "rot": 0,
       "variant": "default",
-      "id": "p5"
+      "id": "p4"
     },
     {
       "type": "tree_willow_m",
@@ -6082,7 +6072,7 @@
       "rot": 271,
       "scale": 1.05,
       "variant": "default",
-      "id": "p6"
+      "id": "p5"
     },
     {
       "type": "prop_log_pile",
@@ -6092,7 +6082,7 @@
       "kit": "prop_log_pile",
       "rot": 90,
       "variant": "default",
-      "id": "p7"
+      "id": "p6"
     },
     {
       "type": "reeds_cattail_m",
@@ -6102,7 +6092,7 @@
       "kit": "reeds_cattail_m",
       "rot": 0,
       "variant": "default",
-      "id": "p8"
+      "id": "p7"
     },
     {
       "type": "reeds_cattail_m",
@@ -6112,7 +6102,7 @@
       "kit": "reeds_cattail_m",
       "rot": 270,
       "variant": "default",
-      "id": "p9"
+      "id": "p8"
     },
     {
       "type": "rock_boulder_cool_m",
@@ -6122,7 +6112,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 346,
       "variant": "default",
-      "id": "p10"
+      "id": "p9"
     },
     {
       "type": "beach_grass_s",
@@ -6132,7 +6122,7 @@
       "kit": "beach_grass_s",
       "rot": 180,
       "variant": "default",
-      "id": "p11"
+      "id": "p10"
     },
     {
       "type": "reeds_cattail_m",
@@ -6142,7 +6132,7 @@
       "kit": "reeds_cattail_m",
       "rot": 90,
       "variant": "default",
-      "id": "p12"
+      "id": "p11"
     },
     {
       "type": "reeds_cattail_m",
@@ -6152,7 +6142,7 @@
       "kit": "reeds_cattail_m",
       "rot": 270,
       "variant": "default",
-      "id": "p13"
+      "id": "p12"
     },
     {
       "type": "lilypad_s",
@@ -6162,7 +6152,7 @@
       "kit": "lilypad_s",
       "rot": 270,
       "variant": "default",
-      "id": "p14"
+      "id": "p13"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6172,7 +6162,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 90,
       "variant": "default",
-      "id": "p15"
+      "id": "p14"
     },
     {
       "type": "lilypad_s",
@@ -6182,7 +6172,7 @@
       "kit": "lilypad_s",
       "rot": 90,
       "variant": "default",
-      "id": "p16"
+      "id": "p15"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6192,7 +6182,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 90,
       "variant": "default",
-      "id": "p17"
+      "id": "p16"
     },
     {
       "type": "reeds_cattail_m",
@@ -6202,7 +6192,7 @@
       "kit": "reeds_cattail_m",
       "rot": 270,
       "variant": "default",
-      "id": "p18"
+      "id": "p17"
     },
     {
       "type": "reeds_cattail_m",
@@ -6212,7 +6202,7 @@
       "kit": "reeds_cattail_m",
       "rot": 90,
       "variant": "default",
-      "id": "p19"
+      "id": "p18"
     },
     {
       "type": "reeds_cattail_m",
@@ -6222,7 +6212,7 @@
       "kit": "reeds_cattail_m",
       "rot": 270,
       "variant": "default",
-      "id": "p20"
+      "id": "p19"
     },
     {
       "type": "lilypad_s",
@@ -6232,7 +6222,7 @@
       "kit": "lilypad_s",
       "rot": 0,
       "variant": "default",
-      "id": "p21"
+      "id": "p20"
     },
     {
       "type": "reeds_cattail_m",
@@ -6242,7 +6232,7 @@
       "kit": "reeds_cattail_m",
       "rot": 180,
       "variant": "default",
-      "id": "p22"
+      "id": "p21"
     },
     {
       "type": "reeds_cattail_m",
@@ -6252,7 +6242,7 @@
       "kit": "reeds_cattail_m",
       "rot": 0,
       "variant": "default",
-      "id": "p23"
+      "id": "p22"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6262,7 +6252,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 0,
       "variant": "default",
-      "id": "p24"
+      "id": "p23"
     },
     {
       "type": "rock_boulder_cool_m",
@@ -6272,7 +6262,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 199,
       "variant": "default",
-      "id": "p25"
+      "id": "p24"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -6282,7 +6272,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 0,
       "variant": "default",
-      "id": "p26"
+      "id": "p25"
     },
     {
       "type": "tree_pine_coastal_m",
@@ -6293,7 +6283,7 @@
       "rot": 49,
       "scale": 0.93,
       "variant": "default",
-      "id": "p27"
+      "id": "p26"
     },
     {
       "type": "reeds_cattail_m",
@@ -6303,7 +6293,7 @@
       "kit": "reeds_cattail_m",
       "rot": 90,
       "variant": "default",
-      "id": "p28"
+      "id": "p27"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6313,7 +6303,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 180,
       "variant": "default",
-      "id": "p29"
+      "id": "p28"
     },
     {
       "type": "beach_grass_s",
@@ -6323,7 +6313,7 @@
       "kit": "beach_grass_s",
       "rot": 90,
       "variant": "default",
-      "id": "p30"
+      "id": "p29"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6333,7 +6323,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 90,
       "variant": "default",
-      "id": "p31"
+      "id": "p30"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6343,7 +6333,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 180,
       "variant": "default",
-      "id": "p32"
+      "id": "p31"
     },
     {
       "type": "reeds_cattail_m",
@@ -6353,7 +6343,7 @@
       "kit": "reeds_cattail_m",
       "rot": 180,
       "variant": "default",
-      "id": "p33"
+      "id": "p32"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6363,7 +6353,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 180,
       "variant": "default",
-      "id": "p34"
+      "id": "p33"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6373,7 +6363,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 90,
       "variant": "default",
-      "id": "p35"
+      "id": "p34"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6383,7 +6373,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 270,
       "variant": "default",
-      "id": "p36"
+      "id": "p35"
     },
     {
       "type": "tree_oak_l",
@@ -6394,7 +6384,7 @@
       "rot": 14,
       "scale": 0.91,
       "variant": "default",
-      "id": "p37"
+      "id": "p36"
     },
     {
       "type": "bush_fern_m",
@@ -6404,7 +6394,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p38"
+      "id": "p37"
     },
     {
       "type": "mushroom_cluster_red",
@@ -6414,7 +6404,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p39"
+      "id": "p38"
     },
     {
       "type": "tree_pine_m",
@@ -6425,7 +6415,7 @@
       "rot": 308,
       "scale": 1.07,
       "variant": "default",
-      "id": "p40"
+      "id": "p39"
     },
     {
       "type": "prop_driftwood_m",
@@ -6435,7 +6425,7 @@
       "kit": "prop_driftwood_m",
       "rot": 90,
       "variant": "default",
-      "id": "p41"
+      "id": "p40"
     },
     {
       "type": "beach_grass_s",
@@ -6445,7 +6435,7 @@
       "kit": "beach_grass_s",
       "rot": 270,
       "variant": "default",
-      "id": "p42"
+      "id": "p41"
     },
     {
       "type": "lilypad_s",
@@ -6455,7 +6445,7 @@
       "kit": "lilypad_s",
       "rot": 180,
       "variant": "default",
-      "id": "p43"
+      "id": "p42"
     },
     {
       "type": "reeds_cattail_m",
@@ -6465,7 +6455,7 @@
       "kit": "reeds_cattail_m",
       "rot": 0,
       "variant": "default",
-      "id": "p44"
+      "id": "p43"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6475,7 +6465,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 270,
       "variant": "default",
-      "id": "p45"
+      "id": "p44"
     },
     {
       "type": "bush_fern_m",
@@ -6485,7 +6475,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p46"
+      "id": "p45"
     },
     {
       "type": "mushroom_cluster_red",
@@ -6495,7 +6485,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p47"
+      "id": "p46"
     },
     {
       "type": "tree_beech_l",
@@ -6506,7 +6496,7 @@
       "rot": 210,
       "scale": 1.02,
       "variant": "default",
-      "id": "p48"
+      "id": "p47"
     },
     {
       "type": "bush_fern_m",
@@ -6516,7 +6506,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p49"
+      "id": "p48"
     },
     {
       "type": "tree_willow_m",
@@ -6527,7 +6517,7 @@
       "rot": 133,
       "scale": 0.97,
       "variant": "default",
-      "id": "p50"
+      "id": "p49"
     },
     {
       "type": "reeds_cattail_m",
@@ -6537,7 +6527,7 @@
       "kit": "reeds_cattail_m",
       "rot": 0,
       "variant": "default",
-      "id": "p51"
+      "id": "p50"
     },
     {
       "type": "reeds_cattail_m",
@@ -6547,7 +6537,7 @@
       "kit": "reeds_cattail_m",
       "rot": 180,
       "variant": "default",
-      "id": "p52"
+      "id": "p51"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6557,7 +6547,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 90,
       "variant": "default",
-      "id": "p53"
+      "id": "p52"
     },
     {
       "type": "tree_willow_m",
@@ -6568,7 +6558,7 @@
       "rot": 192,
       "scale": 1.01,
       "variant": "default",
-      "id": "p54"
+      "id": "p53"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6578,7 +6568,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 270,
       "variant": "default",
-      "id": "p55"
+      "id": "p54"
     },
     {
       "type": "reeds_cattail_m",
@@ -6588,7 +6578,7 @@
       "kit": "reeds_cattail_m",
       "rot": 180,
       "variant": "default",
-      "id": "p56"
+      "id": "p55"
     },
     {
       "type": "mushroom_cluster_red",
@@ -6598,7 +6588,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p57"
+      "id": "p56"
     },
     {
       "type": "tree_beech_l",
@@ -6609,7 +6599,7 @@
       "rot": 239,
       "scale": 1.03,
       "variant": "default",
-      "id": "p58"
+      "id": "p57"
     },
     {
       "type": "tree_oak_l",
@@ -6620,7 +6610,7 @@
       "rot": 296,
       "scale": 1.07,
       "variant": "default",
-      "id": "p59"
+      "id": "p58"
     },
     {
       "type": "bush_fern_m",
@@ -6630,7 +6620,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p60"
+      "id": "p59"
     },
     {
       "type": "forest-8",
@@ -6641,7 +6631,7 @@
       "rot": 51,
       "variant": "default",
       "scale": 0.93,
-      "id": "p61"
+      "id": "p60"
     },
     {
       "type": "beach_grass_s",
@@ -6651,7 +6641,7 @@
       "kit": "beach_grass_s",
       "rot": 180,
       "variant": "default",
-      "id": "p62"
+      "id": "p61"
     },
     {
       "type": "log_fallen_mossy_l",
@@ -6661,7 +6651,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 90,
       "variant": "default",
-      "id": "p63"
+      "id": "p62"
     },
     {
       "type": "tree_oak_l",
@@ -6672,7 +6662,7 @@
       "rot": 114,
       "scale": 0.96,
       "variant": "default",
-      "id": "p64"
+      "id": "p63"
     },
     {
       "type": "rock_mossy_cool_m",
@@ -6682,7 +6672,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 240,
       "variant": "default",
-      "id": "p65"
+      "id": "p64"
     },
     {
       "type": "bush_fern_m",
@@ -6692,7 +6682,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p66"
+      "id": "p65"
     },
     {
       "type": "bush_fern_m",
@@ -6702,7 +6692,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p67"
+      "id": "p66"
     },
     {
       "type": "mushroom_cluster_red",
@@ -6712,7 +6702,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p68"
+      "id": "p67"
     },
     {
       "type": "bush_fern_m",
@@ -6722,7 +6712,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p69"
+      "id": "p68"
     },
     {
       "type": "tree_oak_l",
@@ -6733,7 +6723,7 @@
       "rot": 257,
       "scale": 1.04,
       "variant": "default",
-      "id": "p70"
+      "id": "p69"
     },
     {
       "type": "mushroom_cluster_red",
@@ -6743,7 +6733,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p71"
+      "id": "p70"
     },
     {
       "type": "bush_fern_m",
@@ -6753,7 +6743,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p72"
+      "id": "p71"
     },
     {
       "type": "forest-1",
@@ -6764,7 +6754,7 @@
       "rot": 208,
       "variant": "default",
       "scale": 1.02,
-      "id": "p73"
+      "id": "p72"
     },
     {
       "type": "forest-1",
@@ -6775,7 +6765,7 @@
       "rot": 322,
       "variant": "default",
       "scale": 1.08,
-      "id": "p74"
+      "id": "p73"
     },
     {
       "type": "rock-1",
@@ -6785,7 +6775,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 90,
       "variant": "default",
-      "id": "p75"
+      "id": "p74"
     },
     {
       "type": "prop_driftwood_m",
@@ -6795,7 +6785,7 @@
       "kit": "prop_driftwood_m",
       "rot": 0,
       "variant": "default",
-      "id": "p76"
+      "id": "p75"
     },
     {
       "type": "tree_beech_l",
@@ -6806,7 +6796,7 @@
       "rot": 158,
       "scale": 0.99,
       "variant": "default",
-      "id": "p77"
+      "id": "p76"
     },
     {
       "type": "bush_fern_m",
@@ -6816,7 +6806,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p78"
+      "id": "p77"
     },
     {
       "type": "bush_fern_m",
@@ -6826,7 +6816,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p79"
+      "id": "p78"
     },
     {
       "type": "rock_mossy_cool_m",
@@ -6836,7 +6826,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 171,
       "variant": "default",
-      "id": "p80"
+      "id": "p79"
     },
     {
       "type": "bush_fern_m",
@@ -6846,7 +6836,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p81"
+      "id": "p80"
     },
     {
       "type": "tree_oak_l",
@@ -6857,7 +6847,7 @@
       "rot": 252,
       "scale": 1.04,
       "variant": "default",
-      "id": "p82"
+      "id": "p81"
     },
     {
       "type": "mushroom_cluster_red",
@@ -6867,7 +6857,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p83"
+      "id": "p82"
     },
     {
       "type": "forest-2",
@@ -6878,7 +6868,7 @@
       "rot": 299,
       "variant": "default",
       "scale": 1.07,
-      "id": "p84"
+      "id": "p83"
     },
     {
       "type": "reeds_cattail_m",
@@ -6888,7 +6878,7 @@
       "kit": "reeds_cattail_m",
       "rot": 180,
       "variant": "default",
-      "id": "p85"
+      "id": "p84"
     },
     {
       "type": "reeds_cattail_m",
@@ -6898,7 +6888,7 @@
       "kit": "reeds_cattail_m",
       "rot": 90,
       "variant": "default",
-      "id": "p86"
+      "id": "p85"
     },
     {
       "type": "tree_oak_l",
@@ -6909,7 +6899,7 @@
       "rot": 84,
       "scale": 0.95,
       "variant": "default",
-      "id": "p87"
+      "id": "p86"
     },
     {
       "type": "tree_beech_l",
@@ -6920,7 +6910,7 @@
       "rot": 341,
       "scale": 1.09,
       "variant": "default",
-      "id": "p88"
+      "id": "p87"
     },
     {
       "type": "tree_beech_l",
@@ -6931,7 +6921,7 @@
       "rot": 262,
       "scale": 1.05,
       "variant": "default",
-      "id": "p89"
+      "id": "p88"
     },
     {
       "type": "log_fallen_m",
@@ -6941,7 +6931,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p90"
+      "id": "p89"
     },
     {
       "type": "tree_oak_l",
@@ -6952,7 +6942,7 @@
       "rot": 341,
       "scale": 1.09,
       "variant": "default",
-      "id": "p91"
+      "id": "p90"
     },
     {
       "type": "bush_fern_m",
@@ -6962,7 +6952,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p92"
+      "id": "p91"
     },
     {
       "type": "tree_pine_m",
@@ -6973,7 +6963,7 @@
       "rot": 220,
       "scale": 1.02,
       "variant": "default",
-      "id": "p93"
+      "id": "p92"
     },
     {
       "type": "mushroom_cluster_red",
@@ -6983,14 +6973,14 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p94"
+      "id": "p93"
     },
     {
       "type": "reed",
       "class": "plant",
       "x": 2846.634,
       "y": 4931.206,
-      "id": "p95"
+      "id": "p94"
     },
     {
       "type": "rock_boulder_cool_m",
@@ -7000,7 +6990,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 262,
       "variant": "default",
-      "id": "p96"
+      "id": "p95"
     },
     {
       "type": "tree_pine_m",
@@ -7011,7 +7001,7 @@
       "rot": 192,
       "scale": 1.01,
       "variant": "default",
-      "id": "p97"
+      "id": "p96"
     },
     {
       "type": "log_fallen_m",
@@ -7021,7 +7011,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p98"
+      "id": "p97"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7031,7 +7021,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p99"
+      "id": "p98"
     },
     {
       "type": "bush_fern_m",
@@ -7041,7 +7031,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p100"
+      "id": "p99"
     },
     {
       "type": "bush_fern_m",
@@ -7051,7 +7041,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p101"
+      "id": "p100"
     },
     {
       "type": "rock_mossy_cool_m",
@@ -7061,7 +7051,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 190,
       "variant": "default",
-      "id": "p102"
+      "id": "p101"
     },
     {
       "type": "bush_fern_m",
@@ -7071,7 +7061,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p103"
+      "id": "p102"
     },
     {
       "type": "bush_fern_m",
@@ -7081,7 +7071,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p104"
+      "id": "p103"
     },
     {
       "type": "bush_fern_m",
@@ -7091,7 +7081,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p105"
+      "id": "p104"
     },
     {
       "type": "rock-1",
@@ -7101,7 +7091,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 180,
       "variant": "default",
-      "id": "p106"
+      "id": "p105"
     },
     {
       "type": "rock-3",
@@ -7111,7 +7101,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 0,
       "variant": "default",
-      "id": "p107"
+      "id": "p106"
     },
     {
       "type": "rock_boulder_cool_m",
@@ -7121,7 +7111,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 220,
       "variant": "default",
-      "id": "p108"
+      "id": "p107"
     },
     {
       "type": "tree_willow_m",
@@ -7132,7 +7122,7 @@
       "rot": 239,
       "scale": 1.03,
       "variant": "default",
-      "id": "p109"
+      "id": "p108"
     },
     {
       "type": "bush_fern_m",
@@ -7142,7 +7132,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p110"
+      "id": "p109"
     },
     {
       "type": "tree_beech_l",
@@ -7153,7 +7143,7 @@
       "rot": 299,
       "scale": 1.07,
       "variant": "default",
-      "id": "p111"
+      "id": "p110"
     },
     {
       "type": "bush_fern_m",
@@ -7163,7 +7153,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p112"
+      "id": "p111"
     },
     {
       "type": "bush_fern_m",
@@ -7173,7 +7163,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p113"
+      "id": "p112"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7183,7 +7173,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p114"
+      "id": "p113"
     },
     {
       "type": "tree_birch_m",
@@ -7194,7 +7184,7 @@
       "rot": 138,
       "scale": 0.98,
       "variant": "default",
-      "id": "p115"
+      "id": "p114"
     },
     {
       "type": "tree_oak_l",
@@ -7205,7 +7195,7 @@
       "rot": 84,
       "scale": 0.95,
       "variant": "default",
-      "id": "p116"
+      "id": "p115"
     },
     {
       "type": "bush_fern_m",
@@ -7215,7 +7205,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p117"
+      "id": "p116"
     },
     {
       "type": "log_fallen_m",
@@ -7225,14 +7215,14 @@
       "kit": "log_fallen_m",
       "rot": 0,
       "variant": "default",
-      "id": "p118"
+      "id": "p117"
     },
     {
       "type": "reed",
       "class": "plant",
       "x": 2843.675,
       "y": 4936.495,
-      "id": "p119"
+      "id": "p118"
     },
     {
       "type": "summer-8",
@@ -7243,7 +7233,7 @@
       "rot": 233,
       "variant": "default",
       "scale": 1.03,
-      "id": "p120"
+      "id": "p119"
     },
     {
       "type": "rock-3",
@@ -7253,7 +7243,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 0,
       "variant": "default",
-      "id": "p121"
+      "id": "p120"
     },
     {
       "type": "rock-3",
@@ -7263,7 +7253,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 270,
       "variant": "default",
-      "id": "p122"
+      "id": "p121"
     },
     {
       "type": "tree_birch_m",
@@ -7274,7 +7264,7 @@
       "rot": 291,
       "scale": 1.06,
       "variant": "default",
-      "id": "p123"
+      "id": "p122"
     },
     {
       "type": "bush_fern_m",
@@ -7284,7 +7274,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p124"
+      "id": "p123"
     },
     {
       "type": "tree_beech_l",
@@ -7295,7 +7285,7 @@
       "rot": 349,
       "scale": 1.09,
       "variant": "default",
-      "id": "p125"
+      "id": "p124"
     },
     {
       "type": "bush_fern_m",
@@ -7305,7 +7295,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p126"
+      "id": "p125"
     },
     {
       "type": "tree_beech_l",
@@ -7316,7 +7306,7 @@
       "rot": 105,
       "scale": 0.96,
       "variant": "default",
-      "id": "p127"
+      "id": "p126"
     },
     {
       "type": "bush_fern_m",
@@ -7326,7 +7316,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p128"
+      "id": "p127"
     },
     {
       "type": "bush_fern_m",
@@ -7336,7 +7326,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p129"
+      "id": "p128"
     },
     {
       "type": "tree_beech_l",
@@ -7347,7 +7337,7 @@
       "rot": 104,
       "scale": 0.96,
       "variant": "default",
-      "id": "p130"
+      "id": "p129"
     },
     {
       "type": "bush_fern_m",
@@ -7357,7 +7347,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p131"
+      "id": "p130"
     },
     {
       "type": "bush_fern_m",
@@ -7367,7 +7357,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p132"
+      "id": "p131"
     },
     {
       "type": "summer-3",
@@ -7378,7 +7368,7 @@
       "rot": 58,
       "variant": "default",
       "scale": 0.93,
-      "id": "p133"
+      "id": "p132"
     },
     {
       "type": "forest-1",
@@ -7389,7 +7379,7 @@
       "rot": 259,
       "variant": "default",
       "scale": 1.04,
-      "id": "p134"
+      "id": "p133"
     },
     {
       "type": "forest-8",
@@ -7400,21 +7390,21 @@
       "rot": 83,
       "variant": "default",
       "scale": 0.95,
-      "id": "p135"
+      "id": "p134"
     },
     {
       "type": "reed",
       "class": "plant",
       "x": 2856.495,
       "y": 4938.804,
-      "id": "p136"
+      "id": "p135"
     },
     {
       "type": "reed",
       "class": "plant",
       "x": 2856.471,
       "y": 4939.227,
-      "id": "p137"
+      "id": "p136"
     },
     {
       "type": "prop_driftwood_m",
@@ -7424,7 +7414,7 @@
       "kit": "prop_driftwood_m",
       "rot": 180,
       "variant": "default",
-      "id": "p138"
+      "id": "p137"
     },
     {
       "type": "reeds_cattail_m",
@@ -7434,7 +7424,7 @@
       "kit": "reeds_cattail_m",
       "rot": 180,
       "variant": "default",
-      "id": "p139"
+      "id": "p138"
     },
     {
       "type": "bush_fern_m",
@@ -7444,7 +7434,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p140"
+      "id": "p139"
     },
     {
       "type": "bush_fern_m",
@@ -7454,7 +7444,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p141"
+      "id": "p140"
     },
     {
       "type": "bush_fern_m",
@@ -7464,7 +7454,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p142"
+      "id": "p141"
     },
     {
       "type": "tree_oak_l",
@@ -7475,7 +7465,7 @@
       "rot": 225,
       "scale": 1.03,
       "variant": "default",
-      "id": "p143"
+      "id": "p142"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7485,7 +7475,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p144"
+      "id": "p143"
     },
     {
       "type": "stump_s",
@@ -7495,7 +7485,7 @@
       "kit": "stump_s",
       "rot": 270,
       "variant": "default",
-      "id": "p145"
+      "id": "p144"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7505,7 +7495,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p146"
+      "id": "p145"
     },
     {
       "type": "summer-8",
@@ -7516,7 +7506,7 @@
       "rot": 264,
       "variant": "default",
       "scale": 1.05,
-      "id": "p147"
+      "id": "p146"
     },
     {
       "type": "rock-3",
@@ -7526,7 +7516,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 102,
       "variant": "default",
-      "id": "p148"
+      "id": "p147"
     },
     {
       "type": "beach_grass_s",
@@ -7536,7 +7526,7 @@
       "kit": "beach_grass_s",
       "rot": 0,
       "variant": "default",
-      "id": "p149"
+      "id": "p148"
     },
     {
       "type": "lilypad_s",
@@ -7546,7 +7536,7 @@
       "kit": "lilypad_s",
       "rot": 0,
       "variant": "default",
-      "id": "p150"
+      "id": "p149"
     },
     {
       "type": "reeds_cattail_m",
@@ -7556,7 +7546,7 @@
       "kit": "reeds_cattail_m",
       "rot": 180,
       "variant": "default",
-      "id": "p151"
+      "id": "p150"
     },
     {
       "type": "lilypad_s",
@@ -7566,7 +7556,7 @@
       "kit": "lilypad_s",
       "rot": 270,
       "variant": "default",
-      "id": "p152"
+      "id": "p151"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7576,7 +7566,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p153"
+      "id": "p152"
     },
     {
       "type": "bush_fern_m",
@@ -7586,7 +7576,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p154"
+      "id": "p153"
     },
     {
       "type": "bush_fern_m",
@@ -7596,7 +7586,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p155"
+      "id": "p154"
     },
     {
       "type": "tree_pine_m",
@@ -7607,7 +7597,7 @@
       "rot": 30,
       "scale": 0.92,
       "variant": "default",
-      "id": "p156"
+      "id": "p155"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7617,7 +7607,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p157"
+      "id": "p156"
     },
     {
       "type": "bush_fern_m",
@@ -7627,7 +7617,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p158"
+      "id": "p157"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7637,7 +7627,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p159"
+      "id": "p158"
     },
     {
       "type": "summer-8",
@@ -7648,7 +7638,7 @@
       "rot": 274,
       "variant": "default",
       "scale": 1.05,
-      "id": "p160"
+      "id": "p159"
     },
     {
       "type": "reeds_cattail_m",
@@ -7658,7 +7648,7 @@
       "kit": "reeds_cattail_m",
       "rot": 90,
       "variant": "default",
-      "id": "p161"
+      "id": "p160"
     },
     {
       "type": "tree_oak_l",
@@ -7669,7 +7659,7 @@
       "rot": 271,
       "scale": 1.05,
       "variant": "default",
-      "id": "p162"
+      "id": "p161"
     },
     {
       "type": "bush_fern_m",
@@ -7679,7 +7669,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p163"
+      "id": "p162"
     },
     {
       "type": "stump_s",
@@ -7689,7 +7679,7 @@
       "kit": "stump_s",
       "rot": 0,
       "variant": "default",
-      "id": "p164"
+      "id": "p163"
     },
     {
       "type": "bush_fern_m",
@@ -7699,7 +7689,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p165"
+      "id": "p164"
     },
     {
       "type": "bush_fern_m",
@@ -7709,7 +7699,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p166"
+      "id": "p165"
     },
     {
       "type": "bush_fern_m",
@@ -7719,7 +7709,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p167"
+      "id": "p166"
     },
     {
       "type": "log_fallen_m",
@@ -7729,7 +7719,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p168"
+      "id": "p167"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7739,7 +7729,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p169"
+      "id": "p168"
     },
     {
       "type": "summer-1",
@@ -7750,7 +7740,7 @@
       "rot": 20,
       "variant": "default",
       "scale": 0.91,
-      "id": "p170"
+      "id": "p169"
     },
     {
       "type": "summer-11",
@@ -7761,7 +7751,7 @@
       "rot": 155,
       "variant": "default",
       "scale": 0.99,
-      "id": "p171"
+      "id": "p170"
     },
     {
       "type": "plant-1",
@@ -7771,7 +7761,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p172"
+      "id": "p171"
     },
     {
       "type": "rock-3",
@@ -7781,7 +7771,7 @@
       "kit": "stump_s",
       "rot": 270,
       "variant": "default",
-      "id": "p173"
+      "id": "p172"
     },
     {
       "type": "summer-8",
@@ -7792,7 +7782,7 @@
       "rot": 133,
       "variant": "default",
       "scale": 0.97,
-      "id": "p174"
+      "id": "p173"
     },
     {
       "type": "rock-1",
@@ -7802,7 +7792,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 251,
       "variant": "default",
-      "id": "p175"
+      "id": "p174"
     },
     {
       "type": "tree_willow_m",
@@ -7813,7 +7803,7 @@
       "rot": 54,
       "scale": 0.93,
       "variant": "default",
-      "id": "p176"
+      "id": "p175"
     },
     {
       "type": "bush_fern_m",
@@ -7823,7 +7813,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p177"
+      "id": "p176"
     },
     {
       "type": "rock_mossy_cool_m",
@@ -7833,7 +7823,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 67,
       "variant": "default",
-      "id": "p178"
+      "id": "p177"
     },
     {
       "type": "tree_pine_m",
@@ -7844,7 +7834,7 @@
       "rot": 299,
       "scale": 1.07,
       "variant": "default",
-      "id": "p179"
+      "id": "p178"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7854,7 +7844,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p180"
+      "id": "p179"
     },
     {
       "type": "bush_fern_m",
@@ -7864,7 +7854,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p181"
+      "id": "p180"
     },
     {
       "type": "bush_fern_m",
@@ -7874,7 +7864,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p182"
+      "id": "p181"
     },
     {
       "type": "bush_fern_m",
@@ -7884,7 +7874,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p183"
+      "id": "p182"
     },
     {
       "type": "bush_fern_m",
@@ -7894,7 +7884,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p184"
+      "id": "p183"
     },
     {
       "type": "bush_fern_m",
@@ -7904,7 +7894,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p185"
+      "id": "p184"
     },
     {
       "type": "summer-11",
@@ -7915,7 +7905,7 @@
       "rot": 359,
       "variant": "default",
       "scale": 1.1,
-      "id": "p186"
+      "id": "p185"
     },
     {
       "type": "summer-3",
@@ -7926,7 +7916,7 @@
       "rot": 30,
       "variant": "default",
       "scale": 0.92,
-      "id": "p187"
+      "id": "p186"
     },
     {
       "type": "bush_fern_m",
@@ -7936,7 +7926,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p188"
+      "id": "p187"
     },
     {
       "type": "tree_beech_l",
@@ -7947,7 +7937,7 @@
       "rot": 320,
       "scale": 1.08,
       "variant": "default",
-      "id": "p189"
+      "id": "p188"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7957,7 +7947,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p190"
+      "id": "p189"
     },
     {
       "type": "bush_fern_m",
@@ -7967,7 +7957,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p191"
+      "id": "p190"
     },
     {
       "type": "tree_oak_l",
@@ -7978,7 +7968,7 @@
       "rot": 199,
       "scale": 1.01,
       "variant": "default",
-      "id": "p192"
+      "id": "p191"
     },
     {
       "type": "bush_fern_m",
@@ -7988,7 +7978,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p193"
+      "id": "p192"
     },
     {
       "type": "mushroom_cluster_red",
@@ -7998,7 +7988,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p194"
+      "id": "p193"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8008,7 +7998,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p195"
+      "id": "p194"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8018,7 +8008,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p196"
+      "id": "p195"
     },
     {
       "type": "log_fallen_m",
@@ -8028,7 +8018,7 @@
       "kit": "log_fallen_m",
       "rot": 270,
       "variant": "default",
-      "id": "p197"
+      "id": "p196"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -8038,7 +8028,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 270,
       "variant": "default",
-      "id": "p198"
+      "id": "p197"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8048,7 +8038,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p199"
+      "id": "p198"
     },
     {
       "type": "tree_birch_m",
@@ -8059,7 +8049,7 @@
       "rot": 93,
       "scale": 0.95,
       "variant": "default",
-      "id": "p200"
+      "id": "p199"
     },
     {
       "type": "bush_fern_m",
@@ -8069,7 +8059,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p201"
+      "id": "p200"
     },
     {
       "type": "bush_fern_m",
@@ -8079,7 +8069,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p202"
+      "id": "p201"
     },
     {
       "type": "bush_fern_m",
@@ -8089,7 +8079,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p203"
+      "id": "p202"
     },
     {
       "type": "tree_birch_m",
@@ -8100,7 +8090,7 @@
       "rot": 241,
       "scale": 1.03,
       "variant": "default",
-      "id": "p204"
+      "id": "p203"
     },
     {
       "type": "bush_fern_m",
@@ -8110,7 +8100,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p205"
+      "id": "p204"
     },
     {
       "type": "bush_fern_m",
@@ -8120,7 +8110,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p206"
+      "id": "p205"
     },
     {
       "type": "bush_fern_m",
@@ -8130,7 +8120,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p207"
+      "id": "p206"
     },
     {
       "type": "bush_fern_m",
@@ -8140,7 +8130,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p208"
+      "id": "p207"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8150,7 +8140,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p209"
+      "id": "p208"
     },
     {
       "type": "bush_fern_m",
@@ -8160,7 +8150,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p210"
+      "id": "p209"
     },
     {
       "type": "flower-1",
@@ -8170,7 +8160,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p211"
+      "id": "p210"
     },
     {
       "type": "flower-1",
@@ -8180,7 +8170,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p212"
+      "id": "p211"
     },
     {
       "type": "summer-11",
@@ -8191,7 +8181,7 @@
       "rot": 7,
       "variant": "default",
       "scale": 0.9,
-      "id": "p213"
+      "id": "p212"
     },
     {
       "type": "summer-8",
@@ -8202,7 +8192,7 @@
       "rot": 149,
       "variant": "default",
       "scale": 0.98,
-      "id": "p214"
+      "id": "p213"
     },
     {
       "type": "summer-8",
@@ -8213,7 +8203,7 @@
       "rot": 171,
       "variant": "default",
       "scale": 1,
-      "id": "p215"
+      "id": "p214"
     },
     {
       "type": "summer-1",
@@ -8224,7 +8214,7 @@
       "rot": 215,
       "variant": "default",
       "scale": 1.02,
-      "id": "p216"
+      "id": "p215"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -8234,7 +8224,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 0,
       "variant": "default",
-      "id": "p217"
+      "id": "p216"
     },
     {
       "type": "tree_beech_l",
@@ -8245,7 +8235,7 @@
       "rot": 288,
       "scale": 1.06,
       "variant": "default",
-      "id": "p218"
+      "id": "p217"
     },
     {
       "type": "bush_fern_m",
@@ -8255,7 +8245,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p219"
+      "id": "p218"
     },
     {
       "type": "bush_fern_m",
@@ -8265,7 +8255,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p220"
+      "id": "p219"
     },
     {
       "type": "bush_fern_m",
@@ -8275,7 +8265,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p221"
+      "id": "p220"
     },
     {
       "type": "bush_fern_m",
@@ -8285,7 +8275,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p222"
+      "id": "p221"
     },
     {
       "type": "bush_fern_m",
@@ -8295,7 +8285,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p223"
+      "id": "p222"
     },
     {
       "type": "bush_fern_m",
@@ -8305,7 +8295,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p224"
+      "id": "p223"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8315,7 +8305,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p225"
+      "id": "p224"
     },
     {
       "type": "tree_beech_l",
@@ -8326,7 +8316,7 @@
       "rot": 109,
       "scale": 0.96,
       "variant": "default",
-      "id": "p226"
+      "id": "p225"
     },
     {
       "type": "bush_fern_m",
@@ -8336,7 +8326,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p227"
+      "id": "p226"
     },
     {
       "type": "summer-8",
@@ -8347,7 +8337,7 @@
       "rot": 13,
       "variant": "default",
       "scale": 0.91,
-      "id": "p228"
+      "id": "p227"
     },
     {
       "type": "summer-3",
@@ -8358,7 +8348,7 @@
       "rot": 37,
       "variant": "default",
       "scale": 0.92,
-      "id": "p229"
+      "id": "p228"
     },
     {
       "type": "summer-1",
@@ -8369,7 +8359,7 @@
       "rot": 32,
       "variant": "default",
       "scale": 0.92,
-      "id": "p230"
+      "id": "p229"
     },
     {
       "type": "summer-8",
@@ -8380,7 +8370,7 @@
       "rot": 339,
       "variant": "default",
       "scale": 1.09,
-      "id": "p231"
+      "id": "p230"
     },
     {
       "type": "summer-10",
@@ -8391,7 +8381,7 @@
       "rot": 240,
       "variant": "default",
       "scale": 1.03,
-      "id": "p232"
+      "id": "p231"
     },
     {
       "type": "plant-1",
@@ -8401,7 +8391,7 @@
       "kit": "reeds_cattail_m",
       "rot": 180,
       "variant": "default",
-      "id": "p233"
+      "id": "p232"
     },
     {
       "type": "tree_dead_snag_m",
@@ -8412,7 +8402,7 @@
       "rot": 59,
       "scale": 0.93,
       "variant": "default",
-      "id": "p234"
+      "id": "p233"
     },
     {
       "type": "bush_fern_m",
@@ -8422,7 +8412,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p235"
+      "id": "p234"
     },
     {
       "type": "bush_fern_m",
@@ -8432,7 +8422,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p236"
+      "id": "p235"
     },
     {
       "type": "bush_fern_m",
@@ -8442,7 +8432,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p237"
+      "id": "p236"
     },
     {
       "type": "bush_fern_m",
@@ -8452,7 +8442,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p238"
+      "id": "p237"
     },
     {
       "type": "bush_fern_m",
@@ -8462,7 +8452,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p239"
+      "id": "p238"
     },
     {
       "type": "tree_beech_l",
@@ -8473,7 +8463,7 @@
       "rot": 81,
       "scale": 0.95,
       "variant": "default",
-      "id": "p240"
+      "id": "p239"
     },
     {
       "type": "bush_fern_m",
@@ -8483,7 +8473,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p241"
+      "id": "p240"
     },
     {
       "type": "rock_mossy_cool_m",
@@ -8493,7 +8483,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 338,
       "variant": "default",
-      "id": "p242"
+      "id": "p241"
     },
     {
       "type": "bush_fern_m",
@@ -8503,7 +8493,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p243"
+      "id": "p242"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8513,7 +8503,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p244"
+      "id": "p243"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8523,7 +8513,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p245"
+      "id": "p244"
     },
     {
       "type": "bush_fern_m",
@@ -8533,7 +8523,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p246"
+      "id": "p245"
     },
     {
       "type": "bush_fern_m",
@@ -8543,7 +8533,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p247"
+      "id": "p246"
     },
     {
       "type": "tree_beech_l",
@@ -8554,7 +8544,7 @@
       "rot": 23,
       "scale": 0.91,
       "variant": "default",
-      "id": "p248"
+      "id": "p247"
     },
     {
       "type": "tree_oak_l",
@@ -8565,7 +8555,7 @@
       "rot": 227,
       "scale": 1.03,
       "variant": "default",
-      "id": "p249"
+      "id": "p248"
     },
     {
       "type": "summer-1",
@@ -8576,7 +8566,7 @@
       "rot": 157,
       "variant": "default",
       "scale": 0.99,
-      "id": "p250"
+      "id": "p249"
     },
     {
       "type": "plant-1",
@@ -8586,7 +8576,7 @@
       "kit": "reeds_cattail_m",
       "rot": 270,
       "variant": "default",
-      "id": "p251"
+      "id": "p250"
     },
     {
       "type": "summer-11",
@@ -8597,7 +8587,7 @@
       "rot": 268,
       "variant": "default",
       "scale": 1.05,
-      "id": "p252"
+      "id": "p251"
     },
     {
       "type": "rock-1",
@@ -8607,7 +8597,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 90,
       "variant": "default",
-      "id": "p253"
+      "id": "p252"
     },
     {
       "type": "rock-3",
@@ -8617,7 +8607,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 180,
       "variant": "default",
-      "id": "p254"
+      "id": "p253"
     },
     {
       "type": "rock-3",
@@ -8627,7 +8617,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p255"
+      "id": "p254"
     },
     {
       "type": "rock-3",
@@ -8637,7 +8627,7 @@
       "kit": "log_fallen_mossy_l",
       "rot": 90,
       "variant": "default",
-      "id": "p256"
+      "id": "p255"
     },
     {
       "type": "summer-11",
@@ -8648,7 +8638,7 @@
       "rot": 161,
       "variant": "default",
       "scale": 0.99,
-      "id": "p257"
+      "id": "p256"
     },
     {
       "type": "rock-3",
@@ -8658,7 +8648,7 @@
       "kit": "log_fallen_m",
       "rot": 270,
       "variant": "default",
-      "id": "p258"
+      "id": "p257"
     },
     {
       "type": "forest-6",
@@ -8669,7 +8659,7 @@
       "rot": 102,
       "variant": "default",
       "scale": 0.96,
-      "id": "p259"
+      "id": "p258"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8679,7 +8669,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p260"
+      "id": "p259"
     },
     {
       "type": "stump_s",
@@ -8689,7 +8679,7 @@
       "kit": "stump_s",
       "rot": 180,
       "variant": "default",
-      "id": "p261"
+      "id": "p260"
     },
     {
       "type": "bush_fern_m",
@@ -8699,7 +8689,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p262"
+      "id": "p261"
     },
     {
       "type": "stump_s",
@@ -8709,7 +8699,7 @@
       "kit": "stump_s",
       "rot": 90,
       "variant": "default",
-      "id": "p263"
+      "id": "p262"
     },
     {
       "type": "bush_fern_m",
@@ -8719,7 +8709,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p264"
+      "id": "p263"
     },
     {
       "type": "bush_fern_m",
@@ -8729,7 +8719,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p265"
+      "id": "p264"
     },
     {
       "type": "tree_birch_m",
@@ -8740,7 +8730,7 @@
       "rot": 260,
       "scale": 1.04,
       "variant": "default",
-      "id": "p266"
+      "id": "p265"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8750,7 +8740,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p267"
+      "id": "p266"
     },
     {
       "type": "bush_fern_m",
@@ -8760,7 +8750,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p268"
+      "id": "p267"
     },
     {
       "type": "summer-11",
@@ -8771,7 +8761,7 @@
       "rot": 311,
       "variant": "default",
       "scale": 1.07,
-      "id": "p269"
+      "id": "p268"
     },
     {
       "type": "summer-3",
@@ -8782,7 +8772,7 @@
       "rot": 309,
       "variant": "default",
       "scale": 1.07,
-      "id": "p270"
+      "id": "p269"
     },
     {
       "type": "plant-1",
@@ -8792,7 +8782,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p271"
+      "id": "p270"
     },
     {
       "type": "rock-1",
@@ -8802,7 +8792,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 10,
       "variant": "default",
-      "id": "p272"
+      "id": "p271"
     },
     {
       "type": "plant-1",
@@ -8812,7 +8802,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p273"
+      "id": "p272"
     },
     {
       "type": "flower-1",
@@ -8822,7 +8812,7 @@
       "kit": "beach_grass_s",
       "rot": 270,
       "variant": "default",
-      "id": "p274"
+      "id": "p273"
     },
     {
       "type": "summer-8",
@@ -8833,7 +8823,7 @@
       "rot": 197,
       "variant": "default",
       "scale": 1.01,
-      "id": "p275"
+      "id": "p274"
     },
     {
       "type": "summer-3",
@@ -8844,7 +8834,7 @@
       "rot": 128,
       "variant": "default",
       "scale": 0.97,
-      "id": "p276"
+      "id": "p275"
     },
     {
       "type": "summer-1",
@@ -8855,7 +8845,7 @@
       "rot": 270,
       "variant": "default",
       "scale": 1.05,
-      "id": "p277"
+      "id": "p276"
     },
     {
       "type": "rock-3",
@@ -8865,7 +8855,7 @@
       "kit": "stump_s",
       "rot": 180,
       "variant": "default",
-      "id": "p278"
+      "id": "p277"
     },
     {
       "type": "flower-1",
@@ -8875,7 +8865,7 @@
       "kit": "lilypad_s",
       "rot": 270,
       "variant": "default",
-      "id": "p279"
+      "id": "p278"
     },
     {
       "type": "rock-3",
@@ -8885,7 +8875,7 @@
       "kit": "stump_s",
       "rot": 270,
       "variant": "default",
-      "id": "p280"
+      "id": "p279"
     },
     {
       "type": "prop_driftwood_m",
@@ -8895,7 +8885,7 @@
       "kit": "prop_driftwood_m",
       "rot": 0,
       "variant": "default",
-      "id": "p281"
+      "id": "p280"
     },
     {
       "type": "lilypad_s",
@@ -8905,7 +8895,7 @@
       "kit": "lilypad_s",
       "rot": 270,
       "variant": "default",
-      "id": "p282"
+      "id": "p281"
     },
     {
       "type": "mushroom_cluster_red",
@@ -8915,7 +8905,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p283"
+      "id": "p282"
     },
     {
       "type": "bush_fern_m",
@@ -8925,7 +8915,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p284"
+      "id": "p283"
     },
     {
       "type": "bush_fern_m",
@@ -8935,7 +8925,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p285"
+      "id": "p284"
     },
     {
       "type": "bush_fern_m",
@@ -8945,7 +8935,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p286"
+      "id": "p285"
     },
     {
       "type": "bush_fern_m",
@@ -8955,7 +8945,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p287"
+      "id": "p286"
     },
     {
       "type": "bush_fern_m",
@@ -8965,7 +8955,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p288"
+      "id": "p287"
     },
     {
       "type": "bush_fern_m",
@@ -8975,7 +8965,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p289"
+      "id": "p288"
     },
     {
       "type": "bush_fern_m",
@@ -8985,7 +8975,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p290"
+      "id": "p289"
     },
     {
       "type": "summer-1",
@@ -8996,7 +8986,7 @@
       "rot": 10,
       "variant": "default",
       "scale": 0.91,
-      "id": "p291"
+      "id": "p290"
     },
     {
       "type": "summer-1",
@@ -9007,7 +8997,7 @@
       "rot": 55,
       "variant": "default",
       "scale": 0.93,
-      "id": "p292"
+      "id": "p291"
     },
     {
       "type": "rock-3",
@@ -9017,7 +9007,7 @@
       "kit": "log_fallen_m",
       "rot": 270,
       "variant": "default",
-      "id": "p293"
+      "id": "p292"
     },
     {
       "type": "summer-1",
@@ -9028,7 +9018,7 @@
       "rot": 25,
       "variant": "default",
       "scale": 0.91,
-      "id": "p294"
+      "id": "p293"
     },
     {
       "type": "plant-1",
@@ -9038,7 +9028,7 @@
       "kit": "reeds_cattail_m",
       "rot": 0,
       "variant": "default",
-      "id": "p295"
+      "id": "p294"
     },
     {
       "type": "summer-3",
@@ -9049,7 +9039,7 @@
       "rot": 71,
       "variant": "default",
       "scale": 0.94,
-      "id": "p296"
+      "id": "p295"
     },
     {
       "type": "forest-6",
@@ -9060,7 +9050,7 @@
       "rot": 47,
       "variant": "default",
       "scale": 0.93,
-      "id": "p297"
+      "id": "p296"
     },
     {
       "type": "forest-6",
@@ -9071,7 +9061,7 @@
       "rot": 22,
       "variant": "default",
       "scale": 0.91,
-      "id": "p298"
+      "id": "p297"
     },
     {
       "type": "forest-1",
@@ -9082,7 +9072,7 @@
       "rot": 67,
       "variant": "default",
       "scale": 0.94,
-      "id": "p299"
+      "id": "p298"
     },
     {
       "type": "beach_grass_s",
@@ -9092,7 +9082,7 @@
       "kit": "beach_grass_s",
       "rot": 0,
       "variant": "default",
-      "id": "p300"
+      "id": "p299"
     },
     {
       "type": "beach_grass_s",
@@ -9102,7 +9092,7 @@
       "kit": "beach_grass_s",
       "rot": 90,
       "variant": "default",
-      "id": "p301"
+      "id": "p300"
     },
     {
       "type": "mushroom_cluster_red",
@@ -9112,7 +9102,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p302"
+      "id": "p301"
     },
     {
       "type": "mushroom_cluster_red",
@@ -9122,7 +9112,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p303"
+      "id": "p302"
     },
     {
       "type": "tree_oak_l",
@@ -9133,7 +9123,7 @@
       "rot": 83,
       "scale": 0.95,
       "variant": "default",
-      "id": "p304"
+      "id": "p303"
     },
     {
       "type": "tree_oak_l",
@@ -9144,7 +9134,7 @@
       "rot": 208,
       "scale": 1.02,
       "variant": "default",
-      "id": "p305"
+      "id": "p304"
     },
     {
       "type": "bush_fern_m",
@@ -9154,7 +9144,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p306"
+      "id": "p305"
     },
     {
       "type": "tree_beech_l",
@@ -9165,7 +9155,7 @@
       "rot": 90,
       "scale": 0.95,
       "variant": "default",
-      "id": "p307"
+      "id": "p306"
     },
     {
       "type": "bush_fern_m",
@@ -9175,7 +9165,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p308"
+      "id": "p307"
     },
     {
       "type": "bush_fern_m",
@@ -9185,7 +9175,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p309"
+      "id": "p308"
     },
     {
       "type": "log_fallen_m",
@@ -9195,7 +9185,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p310"
+      "id": "p309"
     },
     {
       "type": "rock_mossy_cool_m",
@@ -9205,7 +9195,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 59,
       "variant": "default",
-      "id": "p311"
+      "id": "p310"
     },
     {
       "type": "bush_fern_m",
@@ -9215,7 +9205,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p312"
+      "id": "p311"
     },
     {
       "type": "bush_fern_m",
@@ -9225,7 +9215,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p313"
+      "id": "p312"
     },
     {
       "type": "bush_fern_m",
@@ -9235,7 +9225,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p314"
+      "id": "p313"
     },
     {
       "type": "bush_fern_m",
@@ -9245,7 +9235,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p315"
+      "id": "p314"
     },
     {
       "type": "summer-11",
@@ -9256,7 +9246,7 @@
       "rot": 217,
       "variant": "default",
       "scale": 1.02,
-      "id": "p316"
+      "id": "p315"
     },
     {
       "type": "summer-3",
@@ -9267,7 +9257,7 @@
       "rot": 333,
       "variant": "default",
       "scale": 1.09,
-      "id": "p317"
+      "id": "p316"
     },
     {
       "type": "rock-3",
@@ -9277,7 +9267,7 @@
       "kit": "prop_driftwood_m",
       "rot": 270,
       "variant": "default",
-      "id": "p318"
+      "id": "p317"
     },
     {
       "type": "summer-8",
@@ -9288,7 +9278,7 @@
       "rot": 37,
       "variant": "default",
       "scale": 0.92,
-      "id": "p319"
+      "id": "p318"
     },
     {
       "type": "rock-1",
@@ -9298,7 +9288,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 247,
       "variant": "default",
-      "id": "p320"
+      "id": "p319"
     },
     {
       "type": "summer-10",
@@ -9309,7 +9299,7 @@
       "rot": 83,
       "variant": "default",
       "scale": 0.95,
-      "id": "p321"
+      "id": "p320"
     },
     {
       "type": "forest-1",
@@ -9320,7 +9310,7 @@
       "rot": 183,
       "variant": "default",
       "scale": 1,
-      "id": "p322"
+      "id": "p321"
     },
     {
       "type": "plant-1",
@@ -9330,7 +9320,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p323"
+      "id": "p322"
     },
     {
       "type": "beach_grass_s",
@@ -9340,7 +9330,7 @@
       "kit": "beach_grass_s",
       "rot": 0,
       "variant": "default",
-      "id": "p324"
+      "id": "p323"
     },
     {
       "type": "tree_dead_snag_m",
@@ -9351,7 +9341,7 @@
       "rot": 3,
       "scale": 0.9,
       "variant": "default",
-      "id": "p325"
+      "id": "p324"
     },
     {
       "type": "tree_willow_m",
@@ -9362,7 +9352,7 @@
       "rot": 171,
       "scale": 1,
       "variant": "default",
-      "id": "p326"
+      "id": "p325"
     },
     {
       "type": "mushroom_cluster_red",
@@ -9372,7 +9362,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p327"
+      "id": "p326"
     },
     {
       "type": "bush_fern_m",
@@ -9382,7 +9372,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p328"
+      "id": "p327"
     },
     {
       "type": "bush_fern_m",
@@ -9392,7 +9382,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p329"
+      "id": "p328"
     },
     {
       "type": "mushroom_cluster_red",
@@ -9402,7 +9392,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p330"
+      "id": "p329"
     },
     {
       "type": "log_fallen_m",
@@ -9412,7 +9402,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p331"
+      "id": "p330"
     },
     {
       "type": "bush_fern_m",
@@ -9422,7 +9412,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p332"
+      "id": "p331"
     },
     {
       "type": "mushroom_cluster_red",
@@ -9432,7 +9422,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p333"
+      "id": "p332"
     },
     {
       "type": "rock-1",
@@ -9442,7 +9432,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 142,
       "variant": "default",
-      "id": "p334"
+      "id": "p333"
     },
     {
       "type": "flower-1",
@@ -9452,7 +9442,7 @@
       "kit": "reeds_cattail_m",
       "rot": 270,
       "variant": "default",
-      "id": "p335"
+      "id": "p334"
     },
     {
       "type": "forest-6",
@@ -9463,7 +9453,7 @@
       "rot": 322,
       "variant": "default",
       "scale": 1.08,
-      "id": "p336"
+      "id": "p335"
     },
     {
       "type": "forest-1",
@@ -9474,7 +9464,7 @@
       "rot": 305,
       "variant": "default",
       "scale": 1.07,
-      "id": "p337"
+      "id": "p336"
     },
     {
       "type": "flower-1",
@@ -9484,7 +9474,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p338"
+      "id": "p337"
     },
     {
       "type": "summer-3",
@@ -9495,7 +9485,7 @@
       "rot": 242,
       "variant": "default",
       "scale": 1.03,
-      "id": "p339"
+      "id": "p338"
     },
     {
       "type": "summer-3",
@@ -9506,7 +9496,7 @@
       "rot": 71,
       "variant": "default",
       "scale": 0.94,
-      "id": "p340"
+      "id": "p339"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -9516,7 +9506,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 180,
       "variant": "default",
-      "id": "p341"
+      "id": "p340"
     },
     {
       "type": "tree_pine_coastal_m",
@@ -9527,7 +9517,7 @@
       "rot": 259,
       "scale": 1.04,
       "variant": "default",
-      "id": "p342"
+      "id": "p341"
     },
     {
       "type": "reeds_cattail_m",
@@ -9537,7 +9527,7 @@
       "kit": "reeds_cattail_m",
       "rot": 0,
       "variant": "default",
-      "id": "p343"
+      "id": "p342"
     },
     {
       "type": "tree_willow_m",
@@ -9548,7 +9538,7 @@
       "rot": 350,
       "scale": 1.1,
       "variant": "default",
-      "id": "p344"
+      "id": "p343"
     },
     {
       "type": "bush_fern_m",
@@ -9558,7 +9548,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p345"
+      "id": "p344"
     },
     {
       "type": "bush_fern_m",
@@ -9568,7 +9558,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p346"
+      "id": "p345"
     },
     {
       "type": "bush_fern_m",
@@ -9578,7 +9568,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p347"
+      "id": "p346"
     },
     {
       "type": "tree_oak_l",
@@ -9589,7 +9579,7 @@
       "rot": 248,
       "scale": 1.04,
       "variant": "default",
-      "id": "p348"
+      "id": "p347"
     },
     {
       "type": "log_fallen_m",
@@ -9599,7 +9589,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p349"
+      "id": "p348"
     },
     {
       "type": "bush_fern_m",
@@ -9609,7 +9599,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p350"
+      "id": "p349"
     },
     {
       "type": "bush_fern_m",
@@ -9619,7 +9609,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p351"
+      "id": "p350"
     },
     {
       "type": "bush_fern_m",
@@ -9629,7 +9619,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p352"
+      "id": "p351"
     },
     {
       "type": "summer-10",
@@ -9640,7 +9630,7 @@
       "rot": 14,
       "variant": "default",
       "scale": 0.91,
-      "id": "p353"
+      "id": "p352"
     },
     {
       "type": "summer-11",
@@ -9651,7 +9641,7 @@
       "rot": 116,
       "variant": "default",
       "scale": 0.96,
-      "id": "p354"
+      "id": "p353"
     },
     {
       "type": "forest-6",
@@ -9662,7 +9652,7 @@
       "rot": 47,
       "variant": "default",
       "scale": 0.93,
-      "id": "p355"
+      "id": "p354"
     },
     {
       "type": "rock-1",
@@ -9672,7 +9662,7 @@
       "kit": "prop_driftwood_m",
       "rot": 90,
       "variant": "default",
-      "id": "p356"
+      "id": "p355"
     },
     {
       "type": "summer-3",
@@ -9683,6 +9673,16 @@
       "rot": 312,
       "variant": "default",
       "scale": 1.07,
+      "id": "p356"
+    },
+    {
+      "type": "host_forage_patch",
+      "class": "host",
+      "x": 2830.5,
+      "y": 4978.5,
+      "kit": "host_forage_patch",
+      "rot": 0,
+      "variant": "default",
       "id": "p357"
     },
     {
@@ -10671,6 +10671,16 @@
       "id": "p453"
     },
     {
+      "type": "host_forage_patch",
+      "class": "host",
+      "x": 2808.5,
+      "y": 4993.5,
+      "kit": "host_forage_patch",
+      "rot": 0,
+      "variant": "default",
+      "id": "p454"
+    },
+    {
       "type": "summer-3",
       "class": "tree",
       "x": 2842.18,
@@ -10679,7 +10689,7 @@
       "rot": 320,
       "variant": "default",
       "scale": 1.08,
-      "id": "p454"
+      "id": "p455"
     },
     {
       "type": "rock_boulder_cool_m",
@@ -10689,7 +10699,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 337,
       "variant": "default",
-      "id": "p455"
+      "id": "p456"
     },
     {
       "type": "mushroom_cluster_red",
@@ -10699,7 +10709,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p456"
+      "id": "p457"
     },
     {
       "type": "bush_fern_m",
@@ -10709,7 +10719,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p457"
+      "id": "p458"
     },
     {
       "type": "bush_fern_m",
@@ -10719,7 +10729,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p458"
+      "id": "p459"
     },
     {
       "type": "bush_fern_m",
@@ -10729,7 +10739,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p459"
+      "id": "p460"
     },
     {
       "type": "bush_fern_m",
@@ -10739,7 +10749,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p460"
+      "id": "p461"
     },
     {
       "type": "bush_fern_m",
@@ -10749,7 +10759,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p461"
+      "id": "p462"
     },
     {
       "type": "mushroom_cluster_red",
@@ -10759,7 +10769,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p462"
+      "id": "p463"
     },
     {
       "type": "bush_fern_m",
@@ -10769,7 +10779,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p463"
+      "id": "p464"
     },
     {
       "type": "summer-8",
@@ -10780,7 +10790,7 @@
       "rot": 342,
       "variant": "default",
       "scale": 1.09,
-      "id": "p464"
+      "id": "p465"
     },
     {
       "type": "summer-11",
@@ -10791,7 +10801,7 @@
       "rot": 257,
       "variant": "default",
       "scale": 1.04,
-      "id": "p465"
+      "id": "p466"
     },
     {
       "type": "flower-1",
@@ -10801,7 +10811,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p466"
+      "id": "p467"
     },
     {
       "type": "rock-1",
@@ -10811,7 +10821,7 @@
       "kit": "stump_s",
       "rot": 90,
       "variant": "default",
-      "id": "p467"
+      "id": "p468"
     },
     {
       "type": "summer-10",
@@ -10822,7 +10832,7 @@
       "rot": 264,
       "variant": "default",
       "scale": 1.05,
-      "id": "p468"
+      "id": "p469"
     },
     {
       "type": "summer-3",
@@ -10833,7 +10843,7 @@
       "rot": 333,
       "variant": "default",
       "scale": 1.09,
-      "id": "p469"
+      "id": "p470"
     },
     {
       "type": "flower-1",
@@ -10843,7 +10853,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p470"
+      "id": "p471"
     },
     {
       "type": "rock-1",
@@ -10853,7 +10863,7 @@
       "kit": "stump_s",
       "rot": 180,
       "variant": "default",
-      "id": "p471"
+      "id": "p472"
     },
     {
       "type": "rock-1",
@@ -10863,7 +10873,7 @@
       "kit": "prop_driftwood_m",
       "rot": 0,
       "variant": "default",
-      "id": "p472"
+      "id": "p473"
     },
     {
       "type": "rock_boulder_cool_m",
@@ -10873,7 +10883,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 62,
       "variant": "default",
-      "id": "p473"
+      "id": "p474"
     },
     {
       "type": "tree_beech_l",
@@ -10884,7 +10894,7 @@
       "rot": 139,
       "scale": 0.98,
       "variant": "default",
-      "id": "p474"
+      "id": "p475"
     },
     {
       "type": "bush_fern_m",
@@ -10894,7 +10904,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p475"
+      "id": "p476"
     },
     {
       "type": "bush_fern_m",
@@ -10904,7 +10914,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p476"
+      "id": "p477"
     },
     {
       "type": "bush_fern_m",
@@ -10914,7 +10924,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p477"
+      "id": "p478"
     },
     {
       "type": "tree_birch_m",
@@ -10925,7 +10935,7 @@
       "rot": 358,
       "scale": 1.1,
       "variant": "default",
-      "id": "p478"
+      "id": "p479"
     },
     {
       "type": "mushroom_cluster_red",
@@ -10935,7 +10945,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p479"
+      "id": "p480"
     },
     {
       "type": "bush_fern_m",
@@ -10945,7 +10955,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p480"
+      "id": "p481"
     },
     {
       "type": "bush_fern_m",
@@ -10955,7 +10965,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p481"
+      "id": "p482"
     },
     {
       "type": "bush_fern_m",
@@ -10965,7 +10975,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p482"
+      "id": "p483"
     },
     {
       "type": "tree_birch_m",
@@ -10976,7 +10986,7 @@
       "rot": 111,
       "scale": 0.96,
       "variant": "default",
-      "id": "p483"
+      "id": "p484"
     },
     {
       "type": "plant-1",
@@ -10986,7 +10996,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p484"
+      "id": "p485"
     },
     {
       "type": "summer-10",
@@ -10997,7 +11007,7 @@
       "rot": 233,
       "variant": "default",
       "scale": 1.03,
-      "id": "p485"
+      "id": "p486"
     },
     {
       "type": "summer-11",
@@ -11008,7 +11018,7 @@
       "rot": 303,
       "variant": "default",
       "scale": 1.07,
-      "id": "p486"
+      "id": "p487"
     },
     {
       "type": "summer-11",
@@ -11019,7 +11029,7 @@
       "rot": 263,
       "variant": "default",
       "scale": 1.05,
-      "id": "p487"
+      "id": "p488"
     },
     {
       "type": "summer-10",
@@ -11030,7 +11040,7 @@
       "rot": 349,
       "variant": "default",
       "scale": 1.09,
-      "id": "p488"
+      "id": "p489"
     },
     {
       "type": "flower-1",
@@ -11040,7 +11050,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p489"
+      "id": "p490"
     },
     {
       "type": "rock-1",
@@ -11050,7 +11060,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p490"
+      "id": "p491"
     },
     {
       "type": "summer-1",
@@ -11061,7 +11071,7 @@
       "rot": 205,
       "variant": "default",
       "scale": 1.01,
-      "id": "p491"
+      "id": "p492"
     },
     {
       "type": "bush_fern_m",
@@ -11071,7 +11081,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p492"
+      "id": "p493"
     },
     {
       "type": "bush_fern_m",
@@ -11081,7 +11091,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p493"
+      "id": "p494"
     },
     {
       "type": "mushroom_cluster_red",
@@ -11091,7 +11101,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p494"
+      "id": "p495"
     },
     {
       "type": "bush_fern_m",
@@ -11101,7 +11111,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p495"
+      "id": "p496"
     },
     {
       "type": "stump_s",
@@ -11111,7 +11121,7 @@
       "kit": "stump_s",
       "rot": 270,
       "variant": "default",
-      "id": "p496"
+      "id": "p497"
     },
     {
       "type": "bush_fern_m",
@@ -11121,7 +11131,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p497"
+      "id": "p498"
     },
     {
       "type": "log_fallen_m",
@@ -11131,7 +11141,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p498"
+      "id": "p499"
     },
     {
       "type": "bush_fern_m",
@@ -11141,7 +11151,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p499"
+      "id": "p500"
     },
     {
       "type": "summer-8",
@@ -11152,7 +11162,7 @@
       "rot": 26,
       "variant": "default",
       "scale": 0.91,
-      "id": "p500"
+      "id": "p501"
     },
     {
       "type": "rock-3",
@@ -11162,7 +11172,7 @@
       "kit": "stump_s",
       "rot": 270,
       "variant": "default",
-      "id": "p501"
+      "id": "p502"
     },
     {
       "type": "plant-1",
@@ -11172,7 +11182,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p502"
+      "id": "p503"
     },
     {
       "type": "rock-3",
@@ -11182,7 +11192,7 @@
       "kit": "log_fallen_m",
       "rot": 90,
       "variant": "default",
-      "id": "p503"
+      "id": "p504"
     },
     {
       "type": "summer-3",
@@ -11193,7 +11203,7 @@
       "rot": 2,
       "variant": "default",
       "scale": 0.9,
-      "id": "p504"
+      "id": "p505"
     },
     {
       "type": "rock-3",
@@ -11203,7 +11213,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p505"
+      "id": "p506"
     },
     {
       "type": "summer-11",
@@ -11214,7 +11224,7 @@
       "rot": 226,
       "variant": "default",
       "scale": 1.03,
-      "id": "p506"
+      "id": "p507"
     },
     {
       "type": "rock-3",
@@ -11224,7 +11234,7 @@
       "kit": "prop_driftwood_m",
       "rot": 0,
       "variant": "default",
-      "id": "p507"
+      "id": "p508"
     },
     {
       "type": "plant-1",
@@ -11234,7 +11244,7 @@
       "kit": "beach_grass_s",
       "rot": 270,
       "variant": "default",
-      "id": "p508"
+      "id": "p509"
     },
     {
       "type": "prop_driftwood_m",
@@ -11244,7 +11254,7 @@
       "kit": "prop_driftwood_m",
       "rot": 180,
       "variant": "default",
-      "id": "p509"
+      "id": "p510"
     },
     {
       "type": "bush_fern_m",
@@ -11254,7 +11264,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p510"
+      "id": "p511"
     },
     {
       "type": "bush_fern_m",
@@ -11264,7 +11274,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p511"
+      "id": "p512"
     },
     {
       "type": "bush_fern_m",
@@ -11274,7 +11284,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p512"
+      "id": "p513"
     },
     {
       "type": "bush_fern_m",
@@ -11284,7 +11294,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p513"
+      "id": "p514"
     },
     {
       "type": "stump_s",
@@ -11294,7 +11304,7 @@
       "kit": "stump_s",
       "rot": 90,
       "variant": "default",
-      "id": "p514"
+      "id": "p515"
     },
     {
       "type": "stump_s",
@@ -11304,7 +11314,7 @@
       "kit": "stump_s",
       "rot": 0,
       "variant": "default",
-      "id": "p515"
+      "id": "p516"
     },
     {
       "type": "bush_fern_m",
@@ -11314,7 +11324,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p516"
+      "id": "p517"
     },
     {
       "type": "bush_fern_m",
@@ -11324,7 +11334,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p517"
+      "id": "p518"
     },
     {
       "type": "mushroom_cluster_red",
@@ -11334,7 +11344,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p518"
+      "id": "p519"
     },
     {
       "type": "summer-3",
@@ -11345,7 +11355,7 @@
       "rot": 270,
       "variant": "default",
       "scale": 1.05,
-      "id": "p519"
+      "id": "p520"
     },
     {
       "type": "summer-3",
@@ -11356,7 +11366,7 @@
       "rot": 135,
       "variant": "default",
       "scale": 0.98,
-      "id": "p520"
+      "id": "p521"
     },
     {
       "type": "flower-1",
@@ -11366,7 +11376,7 @@
       "kit": "reeds_cattail_m",
       "rot": 90,
       "variant": "default",
-      "id": "p521"
+      "id": "p522"
     },
     {
       "type": "summer-8",
@@ -11377,7 +11387,7 @@
       "rot": 285,
       "variant": "default",
       "scale": 1.06,
-      "id": "p522"
+      "id": "p523"
     },
     {
       "type": "plant-1",
@@ -11387,7 +11397,7 @@
       "kit": "reeds_cattail_m",
       "rot": 90,
       "variant": "default",
-      "id": "p523"
+      "id": "p524"
     },
     {
       "type": "rock-1",
@@ -11397,7 +11407,7 @@
       "kit": "stump_s",
       "rot": 0,
       "variant": "default",
-      "id": "p524"
+      "id": "p525"
     },
     {
       "type": "summer-3",
@@ -11408,7 +11418,7 @@
       "rot": 122,
       "variant": "default",
       "scale": 0.97,
-      "id": "p525"
+      "id": "p526"
     },
     {
       "type": "forest-8",
@@ -11419,7 +11429,7 @@
       "rot": 50,
       "variant": "default",
       "scale": 0.93,
-      "id": "p526"
+      "id": "p527"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -11429,7 +11439,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 0,
       "variant": "default",
-      "id": "p527"
+      "id": "p528"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -11439,7 +11449,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 0,
       "variant": "default",
-      "id": "p528"
+      "id": "p529"
     },
     {
       "type": "mushroom_cluster_red",
@@ -11449,7 +11459,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p529"
+      "id": "p530"
     },
     {
       "type": "bush_fern_m",
@@ -11459,7 +11469,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p530"
+      "id": "p531"
     },
     {
       "type": "tree_beech_l",
@@ -11470,7 +11480,7 @@
       "rot": 347,
       "scale": 1.09,
       "variant": "default",
-      "id": "p531"
+      "id": "p532"
     },
     {
       "type": "bush_fern_m",
@@ -11480,7 +11490,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p532"
+      "id": "p533"
     },
     {
       "type": "bush_fern_m",
@@ -11490,7 +11500,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p533"
+      "id": "p534"
     },
     {
       "type": "bush_fern_m",
@@ -11500,7 +11510,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p534"
+      "id": "p535"
     },
     {
       "type": "bush_fern_m",
@@ -11510,7 +11520,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p535"
+      "id": "p536"
     },
     {
       "type": "bush_fern_m",
@@ -11520,7 +11530,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p536"
+      "id": "p537"
     },
     {
       "type": "bush_fern_m",
@@ -11530,7 +11540,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p537"
+      "id": "p538"
     },
     {
       "type": "bush_fern_m",
@@ -11540,7 +11550,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p538"
+      "id": "p539"
     },
     {
       "type": "bush_fern_m",
@@ -11550,7 +11560,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p539"
+      "id": "p540"
     },
     {
       "type": "summer-3",
@@ -11561,7 +11571,7 @@
       "rot": 270,
       "variant": "default",
       "scale": 1.05,
-      "id": "p540"
+      "id": "p541"
     },
     {
       "type": "summer-11",
@@ -11572,7 +11582,7 @@
       "rot": 232,
       "variant": "default",
       "scale": 1.03,
-      "id": "p541"
+      "id": "p542"
     },
     {
       "type": "rock-3",
@@ -11582,7 +11592,7 @@
       "kit": "log_fallen_m",
       "rot": 270,
       "variant": "default",
-      "id": "p542"
+      "id": "p543"
     },
     {
       "type": "summer-10",
@@ -11593,7 +11603,7 @@
       "rot": 243,
       "variant": "default",
       "scale": 1.04,
-      "id": "p543"
+      "id": "p544"
     },
     {
       "type": "summer-11",
@@ -11604,7 +11614,7 @@
       "rot": 349,
       "variant": "default",
       "scale": 1.09,
-      "id": "p544"
+      "id": "p545"
     },
     {
       "type": "rock-3",
@@ -11614,7 +11624,7 @@
       "kit": "log_fallen_m",
       "rot": 0,
       "variant": "default",
-      "id": "p545"
+      "id": "p546"
     },
     {
       "type": "summer-1",
@@ -11625,7 +11635,7 @@
       "rot": 120,
       "variant": "default",
       "scale": 0.97,
-      "id": "p546"
+      "id": "p547"
     },
     {
       "type": "summer-8",
@@ -11636,7 +11646,7 @@
       "rot": 262,
       "variant": "default",
       "scale": 1.05,
-      "id": "p547"
+      "id": "p548"
     },
     {
       "type": "summer-11",
@@ -11647,7 +11657,7 @@
       "rot": 57,
       "variant": "default",
       "scale": 0.93,
-      "id": "p548"
+      "id": "p549"
     },
     {
       "type": "plant-1",
@@ -11657,7 +11667,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p549"
+      "id": "p550"
     },
     {
       "type": "beach_grass_s",
@@ -11667,7 +11677,7 @@
       "kit": "beach_grass_s",
       "rot": 90,
       "variant": "default",
-      "id": "p550"
+      "id": "p551"
     },
     {
       "type": "bush_fern_m",
@@ -11677,7 +11687,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p551"
+      "id": "p552"
     },
     {
       "type": "bush_fern_m",
@@ -11687,7 +11697,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p552"
+      "id": "p553"
     },
     {
       "type": "bush_fern_m",
@@ -11697,7 +11707,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p553"
+      "id": "p554"
     },
     {
       "type": "tree_oak_l",
@@ -11708,7 +11718,7 @@
       "rot": 263,
       "scale": 1.05,
       "variant": "default",
-      "id": "p554"
+      "id": "p555"
     },
     {
       "type": "tree_pine_m",
@@ -11719,7 +11729,7 @@
       "rot": 148,
       "scale": 0.98,
       "variant": "default",
-      "id": "p555"
+      "id": "p556"
     },
     {
       "type": "bush_fern_m",
@@ -11729,7 +11739,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p556"
+      "id": "p557"
     },
     {
       "type": "bush_fern_m",
@@ -11739,7 +11749,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p557"
+      "id": "p558"
     },
     {
       "type": "mushroom_cluster_red",
@@ -11749,7 +11759,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p558"
+      "id": "p559"
     },
     {
       "type": "log_fallen_m",
@@ -11759,7 +11769,7 @@
       "kit": "log_fallen_m",
       "rot": 90,
       "variant": "default",
-      "id": "p559"
+      "id": "p560"
     },
     {
       "type": "summer-11",
@@ -11770,7 +11780,7 @@
       "rot": 91,
       "variant": "default",
       "scale": 0.95,
-      "id": "p560"
+      "id": "p561"
     },
     {
       "type": "summer-11",
@@ -11781,7 +11791,7 @@
       "rot": 344,
       "variant": "default",
       "scale": 1.09,
-      "id": "p561"
+      "id": "p562"
     },
     {
       "type": "summer-8",
@@ -11792,7 +11802,7 @@
       "rot": 249,
       "variant": "default",
       "scale": 1.04,
-      "id": "p562"
+      "id": "p563"
     },
     {
       "type": "plant-1",
@@ -11802,7 +11812,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p563"
+      "id": "p564"
     },
     {
       "type": "flower-1",
@@ -11812,7 +11822,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p564"
+      "id": "p565"
     },
     {
       "type": "rock-3",
@@ -11822,7 +11832,7 @@
       "kit": "prop_driftwood_m",
       "rot": 180,
       "variant": "default",
-      "id": "p565"
+      "id": "p566"
     },
     {
       "type": "plant-1",
@@ -11832,7 +11842,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 180,
       "variant": "default",
-      "id": "p566"
+      "id": "p567"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -11842,7 +11852,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 90,
       "variant": "default",
-      "id": "p567"
+      "id": "p568"
     },
     {
       "type": "tree_pine_coastal_m",
@@ -11853,7 +11863,7 @@
       "rot": 337,
       "scale": 1.09,
       "variant": "default",
-      "id": "p568"
+      "id": "p569"
     },
     {
       "type": "bush_fern_m",
@@ -11863,7 +11873,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p569"
+      "id": "p570"
     },
     {
       "type": "bush_fern_m",
@@ -11873,7 +11883,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p570"
+      "id": "p571"
     },
     {
       "type": "bush_fern_m",
@@ -11883,7 +11893,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p571"
+      "id": "p572"
     },
     {
       "type": "bush_fern_m",
@@ -11893,7 +11903,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p572"
+      "id": "p573"
     },
     {
       "type": "tree_beech_l",
@@ -11904,7 +11914,7 @@
       "rot": 191,
       "scale": 1.01,
       "variant": "default",
-      "id": "p573"
+      "id": "p574"
     },
     {
       "type": "mushroom_cluster_red",
@@ -11914,7 +11924,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p574"
+      "id": "p575"
     },
     {
       "type": "bush_fern_m",
@@ -11924,7 +11934,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p575"
+      "id": "p576"
     },
     {
       "type": "bush_fern_m",
@@ -11934,7 +11944,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p576"
+      "id": "p577"
     },
     {
       "type": "tree_beech_l",
@@ -11945,7 +11955,7 @@
       "rot": 81,
       "scale": 0.95,
       "variant": "default",
-      "id": "p577"
+      "id": "p578"
     },
     {
       "type": "mushroom_cluster_red",
@@ -11955,7 +11965,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p578"
+      "id": "p579"
     },
     {
       "type": "rock-1",
@@ -11965,7 +11975,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 2,
       "variant": "default",
-      "id": "p579"
+      "id": "p580"
     },
     {
       "type": "summer-3",
@@ -11976,7 +11986,7 @@
       "rot": 115,
       "variant": "default",
       "scale": 0.96,
-      "id": "p580"
+      "id": "p581"
     },
     {
       "type": "rock-3",
@@ -11986,7 +11996,7 @@
       "kit": "stump_s",
       "rot": 90,
       "variant": "default",
-      "id": "p581"
+      "id": "p582"
     },
     {
       "type": "summer-10",
@@ -11997,7 +12007,7 @@
       "rot": 27,
       "variant": "default",
       "scale": 0.92,
-      "id": "p582"
+      "id": "p583"
     },
     {
       "type": "rock-3",
@@ -12007,7 +12017,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 169,
       "variant": "default",
-      "id": "p583"
+      "id": "p584"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -12017,7 +12027,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 180,
       "variant": "default",
-      "id": "p584"
+      "id": "p585"
     },
     {
       "type": "beach_grass_s",
@@ -12027,7 +12037,7 @@
       "kit": "beach_grass_s",
       "rot": 90,
       "variant": "default",
-      "id": "p585"
+      "id": "p586"
     },
     {
       "type": "bush_fern_m",
@@ -12037,7 +12047,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p586"
+      "id": "p587"
     },
     {
       "type": "bush_fern_m",
@@ -12047,7 +12057,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p587"
+      "id": "p588"
     },
     {
       "type": "log_fallen_m",
@@ -12057,7 +12067,7 @@
       "kit": "log_fallen_m",
       "rot": 270,
       "variant": "default",
-      "id": "p588"
+      "id": "p589"
     },
     {
       "type": "bush_fern_m",
@@ -12067,7 +12077,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p589"
+      "id": "p590"
     },
     {
       "type": "bush_fern_m",
@@ -12077,7 +12087,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p590"
+      "id": "p591"
     },
     {
       "type": "tree_oak_l",
@@ -12088,7 +12098,7 @@
       "rot": 310,
       "scale": 1.07,
       "variant": "default",
-      "id": "p591"
+      "id": "p592"
     },
     {
       "type": "bush_fern_m",
@@ -12098,7 +12108,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p592"
+      "id": "p593"
     },
     {
       "type": "tree_oak_l",
@@ -12109,7 +12119,7 @@
       "rot": 220,
       "scale": 1.02,
       "variant": "default",
-      "id": "p593"
+      "id": "p594"
     },
     {
       "type": "bush_fern_m",
@@ -12119,7 +12129,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p594"
+      "id": "p595"
     },
     {
       "type": "bush_fern_m",
@@ -12129,7 +12139,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p595"
+      "id": "p596"
     },
     {
       "type": "bush_fern_m",
@@ -12139,7 +12149,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p596"
+      "id": "p597"
     },
     {
       "type": "bush_fern_m",
@@ -12149,7 +12159,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p597"
+      "id": "p598"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12159,7 +12169,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p598"
+      "id": "p599"
     },
     {
       "type": "bush_fern_m",
@@ -12169,7 +12179,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p599"
+      "id": "p600"
     },
     {
       "type": "bush_fern_m",
@@ -12179,7 +12189,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p600"
+      "id": "p601"
     },
     {
       "type": "beach_grass_s",
@@ -12189,7 +12199,7 @@
       "kit": "beach_grass_s",
       "rot": 180,
       "variant": "default",
-      "id": "p601"
+      "id": "p602"
     },
     {
       "type": "bush_fern_m",
@@ -12199,7 +12209,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p602"
+      "id": "p603"
     },
     {
       "type": "bush_fern_m",
@@ -12209,7 +12219,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p603"
+      "id": "p604"
     },
     {
       "type": "bush_fern_m",
@@ -12219,7 +12229,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p604"
+      "id": "p605"
     },
     {
       "type": "tree_oak_l",
@@ -12230,7 +12240,7 @@
       "rot": 351,
       "scale": 1.1,
       "variant": "default",
-      "id": "p605"
+      "id": "p606"
     },
     {
       "type": "log_fallen_m",
@@ -12240,7 +12250,7 @@
       "kit": "log_fallen_m",
       "rot": 90,
       "variant": "default",
-      "id": "p606"
+      "id": "p607"
     },
     {
       "type": "bush_fern_m",
@@ -12250,7 +12260,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p607"
+      "id": "p608"
     },
     {
       "type": "tree_beech_l",
@@ -12261,7 +12271,7 @@
       "rot": 218,
       "scale": 1.02,
       "variant": "default",
-      "id": "p608"
+      "id": "p609"
     },
     {
       "type": "tree_beech_l",
@@ -12272,7 +12282,7 @@
       "rot": 27,
       "scale": 0.92,
       "variant": "default",
-      "id": "p609"
+      "id": "p610"
     },
     {
       "type": "bush_fern_m",
@@ -12282,7 +12292,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p610"
+      "id": "p611"
     },
     {
       "type": "bush_fern_m",
@@ -12292,7 +12302,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p611"
+      "id": "p612"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12302,7 +12312,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p612"
+      "id": "p613"
     },
     {
       "type": "bush_fern_m",
@@ -12312,7 +12322,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p613"
+      "id": "p614"
     },
     {
       "type": "bush_fern_m",
@@ -12322,7 +12332,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p614"
+      "id": "p615"
     },
     {
       "type": "bush_fern_m",
@@ -12332,7 +12342,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p615"
+      "id": "p616"
     },
     {
       "type": "bush_fern_m",
@@ -12342,7 +12352,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p616"
+      "id": "p617"
     },
     {
       "type": "prop_driftwood_m",
@@ -12352,7 +12362,7 @@
       "kit": "prop_driftwood_m",
       "rot": 0,
       "variant": "default",
-      "id": "p617"
+      "id": "p618"
     },
     {
       "type": "beach_grass_s",
@@ -12362,7 +12372,7 @@
       "kit": "beach_grass_s",
       "rot": 270,
       "variant": "default",
-      "id": "p618"
+      "id": "p619"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12372,7 +12382,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p619"
+      "id": "p620"
     },
     {
       "type": "bush_fern_m",
@@ -12382,7 +12392,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p620"
+      "id": "p621"
     },
     {
       "type": "bush_fern_m",
@@ -12392,7 +12402,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p621"
+      "id": "p622"
     },
     {
       "type": "bush_fern_m",
@@ -12402,7 +12412,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p622"
+      "id": "p623"
     },
     {
       "type": "tree_oak_l",
@@ -12413,7 +12423,7 @@
       "rot": 240,
       "scale": 1.03,
       "variant": "default",
-      "id": "p623"
+      "id": "p624"
     },
     {
       "type": "bush_fern_m",
@@ -12423,7 +12433,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p624"
+      "id": "p625"
     },
     {
       "type": "log_fallen_m",
@@ -12433,7 +12443,7 @@
       "kit": "log_fallen_m",
       "rot": 180,
       "variant": "default",
-      "id": "p625"
+      "id": "p626"
     },
     {
       "type": "tree_beech_l",
@@ -12444,7 +12454,7 @@
       "rot": 291,
       "scale": 1.06,
       "variant": "default",
-      "id": "p626"
+      "id": "p627"
     },
     {
       "type": "bush_fern_m",
@@ -12454,7 +12464,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p627"
+      "id": "p628"
     },
     {
       "type": "bush_fern_m",
@@ -12464,7 +12474,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p628"
+      "id": "p629"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12474,7 +12484,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p629"
+      "id": "p630"
     },
     {
       "type": "bush_fern_m",
@@ -12484,7 +12494,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p630"
+      "id": "p631"
     },
     {
       "type": "bush_fern_m",
@@ -12494,7 +12504,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p631"
+      "id": "p632"
     },
     {
       "type": "beach_grass_s",
@@ -12504,7 +12514,7 @@
       "kit": "beach_grass_s",
       "rot": 0,
       "variant": "default",
-      "id": "p632"
+      "id": "p633"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12514,7 +12524,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p633"
+      "id": "p634"
     },
     {
       "type": "bush_fern_m",
@@ -12524,7 +12534,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p634"
+      "id": "p635"
     },
     {
       "type": "log_fallen_m",
@@ -12534,7 +12544,7 @@
       "kit": "log_fallen_m",
       "rot": 90,
       "variant": "default",
-      "id": "p635"
+      "id": "p636"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12544,7 +12554,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p636"
+      "id": "p637"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12554,7 +12564,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p637"
+      "id": "p638"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12564,7 +12574,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p638"
+      "id": "p639"
     },
     {
       "type": "stump_s",
@@ -12574,7 +12584,7 @@
       "kit": "stump_s",
       "rot": 270,
       "variant": "default",
-      "id": "p639"
+      "id": "p640"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12584,7 +12594,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p640"
+      "id": "p641"
     },
     {
       "type": "bush_fern_m",
@@ -12594,7 +12604,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p641"
+      "id": "p642"
     },
     {
       "type": "bush_fern_m",
@@ -12604,7 +12614,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p642"
+      "id": "p643"
     },
     {
       "type": "bush_fern_m",
@@ -12614,7 +12624,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p643"
+      "id": "p644"
     },
     {
       "type": "bush_fern_m",
@@ -12624,7 +12634,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p644"
+      "id": "p645"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12634,7 +12644,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p645"
+      "id": "p646"
     },
     {
       "type": "bush_fern_m",
@@ -12644,7 +12654,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p646"
+      "id": "p647"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12654,7 +12664,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p647"
+      "id": "p648"
     },
     {
       "type": "beach_grass_s",
@@ -12664,7 +12674,7 @@
       "kit": "beach_grass_s",
       "rot": 270,
       "variant": "default",
-      "id": "p648"
+      "id": "p649"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -12674,7 +12684,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 180,
       "variant": "default",
-      "id": "p649"
+      "id": "p650"
     },
     {
       "type": "beach_grass_s",
@@ -12684,7 +12694,7 @@
       "kit": "beach_grass_s",
       "rot": 90,
       "variant": "default",
-      "id": "p650"
+      "id": "p651"
     },
     {
       "type": "rock_boulder_cool_m",
@@ -12694,7 +12704,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 255,
       "variant": "default",
-      "id": "p651"
+      "id": "p652"
     },
     {
       "type": "tree_birch_m",
@@ -12705,7 +12715,7 @@
       "rot": 174,
       "scale": 1,
       "variant": "default",
-      "id": "p652"
+      "id": "p653"
     },
     {
       "type": "bush_fern_m",
@@ -12715,7 +12725,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p653"
+      "id": "p654"
     },
     {
       "type": "bush_fern_m",
@@ -12725,7 +12735,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p654"
+      "id": "p655"
     },
     {
       "type": "bush_fern_m",
@@ -12735,7 +12745,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p655"
+      "id": "p656"
     },
     {
       "type": "bush_fern_m",
@@ -12745,7 +12755,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p656"
+      "id": "p657"
     },
     {
       "type": "bush_fern_m",
@@ -12755,7 +12765,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p657"
+      "id": "p658"
     },
     {
       "type": "log_fallen_m",
@@ -12765,7 +12775,7 @@
       "kit": "log_fallen_m",
       "rot": 0,
       "variant": "default",
-      "id": "p658"
+      "id": "p659"
     },
     {
       "type": "bush_fern_m",
@@ -12775,7 +12785,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p659"
+      "id": "p660"
     },
     {
       "type": "tree_pine_m",
@@ -12786,7 +12796,7 @@
       "rot": 346,
       "scale": 1.09,
       "variant": "default",
-      "id": "p660"
+      "id": "p661"
     },
     {
       "type": "tree_beech_l",
@@ -12797,7 +12807,7 @@
       "rot": 230,
       "scale": 1.03,
       "variant": "default",
-      "id": "p661"
+      "id": "p662"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12807,7 +12817,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p662"
+      "id": "p663"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12817,7 +12827,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p663"
+      "id": "p664"
     },
     {
       "type": "bush_fern_m",
@@ -12827,7 +12837,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p664"
+      "id": "p665"
     },
     {
       "type": "bush_fern_m",
@@ -12837,7 +12847,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p665"
+      "id": "p666"
     },
     {
       "type": "prop_driftwood_m",
@@ -12847,7 +12857,7 @@
       "kit": "prop_driftwood_m",
       "rot": 90,
       "variant": "default",
-      "id": "p666"
+      "id": "p667"
     },
     {
       "type": "bush_fern_m",
@@ -12857,7 +12867,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p667"
+      "id": "p668"
     },
     {
       "type": "bush_fern_m",
@@ -12867,7 +12877,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p668"
+      "id": "p669"
     },
     {
       "type": "bush_fern_m",
@@ -12877,7 +12887,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p669"
+      "id": "p670"
     },
     {
       "type": "bush_fern_m",
@@ -12887,7 +12897,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p670"
+      "id": "p671"
     },
     {
       "type": "bush_fern_m",
@@ -12897,7 +12907,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p671"
+      "id": "p672"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12907,7 +12917,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p672"
+      "id": "p673"
     },
     {
       "type": "bush_fern_m",
@@ -12917,7 +12927,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p673"
+      "id": "p674"
     },
     {
       "type": "bush_fern_m",
@@ -12927,7 +12937,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p674"
+      "id": "p675"
     },
     {
       "type": "bush_fern_m",
@@ -12937,7 +12947,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p675"
+      "id": "p676"
     },
     {
       "type": "bush_fern_m",
@@ -12947,7 +12957,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p676"
+      "id": "p677"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12957,7 +12967,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 180,
       "variant": "default",
-      "id": "p677"
+      "id": "p678"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12967,7 +12977,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p678"
+      "id": "p679"
     },
     {
       "type": "tree_oak_l",
@@ -12978,7 +12988,7 @@
       "rot": 300,
       "scale": 1.07,
       "variant": "default",
-      "id": "p679"
+      "id": "p680"
     },
     {
       "type": "mushroom_cluster_red",
@@ -12988,7 +12998,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p680"
+      "id": "p681"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -12998,7 +13008,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 180,
       "variant": "default",
-      "id": "p681"
+      "id": "p682"
     },
     {
       "type": "prop_driftwood_m",
@@ -13008,7 +13018,7 @@
       "kit": "prop_driftwood_m",
       "rot": 180,
       "variant": "default",
-      "id": "p682"
+      "id": "p683"
     },
     {
       "type": "prop_driftwood_m",
@@ -13018,7 +13028,7 @@
       "kit": "prop_driftwood_m",
       "rot": 0,
       "variant": "default",
-      "id": "p683"
+      "id": "p684"
     },
     {
       "type": "bush_fern_m",
@@ -13028,7 +13038,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p684"
+      "id": "p685"
     },
     {
       "type": "bush_fern_m",
@@ -13038,7 +13048,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p685"
+      "id": "p686"
     },
     {
       "type": "tree_birch_m",
@@ -13049,7 +13059,7 @@
       "rot": 65,
       "scale": 0.94,
       "variant": "default",
-      "id": "p686"
+      "id": "p687"
     },
     {
       "type": "bush_fern_m",
@@ -13059,7 +13069,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p687"
+      "id": "p688"
     },
     {
       "type": "bush_fern_m",
@@ -13069,7 +13079,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p688"
+      "id": "p689"
     },
     {
       "type": "bush_fern_m",
@@ -13079,7 +13089,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p689"
+      "id": "p690"
     },
     {
       "type": "mushroom_cluster_red",
@@ -13089,7 +13099,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p690"
+      "id": "p691"
     },
     {
       "type": "bush_fern_m",
@@ -13099,7 +13109,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p691"
+      "id": "p692"
     },
     {
       "type": "prop_driftwood_m",
@@ -13109,7 +13119,7 @@
       "kit": "prop_driftwood_m",
       "rot": 90,
       "variant": "default",
-      "id": "p692"
+      "id": "p693"
     },
     {
       "type": "tree_pine_m",
@@ -13120,7 +13130,7 @@
       "rot": 151,
       "scale": 0.98,
       "variant": "default",
-      "id": "p693"
+      "id": "p694"
     },
     {
       "type": "mushroom_cluster_red",
@@ -13130,7 +13140,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p694"
+      "id": "p695"
     },
     {
       "type": "bush_fern_m",
@@ -13140,7 +13150,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p695"
+      "id": "p696"
     },
     {
       "type": "stump_s",
@@ -13150,7 +13160,7 @@
       "kit": "stump_s",
       "rot": 180,
       "variant": "default",
-      "id": "p696"
+      "id": "p697"
     },
     {
       "type": "stump_s",
@@ -13160,7 +13170,7 @@
       "kit": "stump_s",
       "rot": 90,
       "variant": "default",
-      "id": "p697"
+      "id": "p698"
     },
     {
       "type": "bush_fern_m",
@@ -13170,7 +13180,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p698"
+      "id": "p699"
     },
     {
       "type": "bush_fern_m",
@@ -13180,7 +13190,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p699"
+      "id": "p700"
     },
     {
       "type": "tree_birch_m",
@@ -13191,7 +13201,7 @@
       "rot": 9,
       "scale": 0.9,
       "variant": "default",
-      "id": "p700"
+      "id": "p701"
     },
     {
       "type": "rock_mossy_cool_m",
@@ -13201,7 +13211,7 @@
       "kit": "rock_mossy_cool_m",
       "rot": 299,
       "variant": "default",
-      "id": "p701"
+      "id": "p702"
     },
     {
       "type": "bush_fern_m",
@@ -13211,7 +13221,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p702"
+      "id": "p703"
     },
     {
       "type": "bush_fern_m",
@@ -13221,7 +13231,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p703"
+      "id": "p704"
     },
     {
       "type": "mushroom_cluster_red",
@@ -13231,7 +13241,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p704"
+      "id": "p705"
     },
     {
       "type": "bush_fern_m",
@@ -13241,7 +13251,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p705"
+      "id": "p706"
     },
     {
       "type": "tree_pine_coastal_m",
@@ -13252,7 +13262,7 @@
       "rot": 222,
       "scale": 1.02,
       "variant": "default",
-      "id": "p706"
+      "id": "p707"
     },
     {
       "type": "tree_oak_l",
@@ -13263,7 +13273,7 @@
       "rot": 207,
       "scale": 1.02,
       "variant": "default",
-      "id": "p707"
+      "id": "p708"
     },
     {
       "type": "tree_oak_l",
@@ -13274,7 +13284,7 @@
       "rot": 7,
       "scale": 0.9,
       "variant": "default",
-      "id": "p708"
+      "id": "p709"
     },
     {
       "type": "bush_fern_m",
@@ -13284,7 +13294,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p709"
+      "id": "p710"
     },
     {
       "type": "bush_fern_m",
@@ -13294,7 +13304,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p710"
+      "id": "p711"
     },
     {
       "type": "bush_fern_m",
@@ -13304,7 +13314,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p711"
+      "id": "p712"
     },
     {
       "type": "bush_fern_m",
@@ -13314,7 +13324,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p712"
+      "id": "p713"
     },
     {
       "type": "bush_fern_m",
@@ -13324,7 +13334,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p713"
+      "id": "p714"
     },
     {
       "type": "mushroom_cluster_red",
@@ -13334,7 +13344,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 0,
       "variant": "default",
-      "id": "p714"
+      "id": "p715"
     },
     {
       "type": "tree_oak_l",
@@ -13345,7 +13355,7 @@
       "rot": 89,
       "scale": 0.95,
       "variant": "default",
-      "id": "p715"
+      "id": "p716"
     },
     {
       "type": "bush_fern_m",
@@ -13355,7 +13365,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p716"
+      "id": "p717"
     },
     {
       "type": "bush_fern_m",
@@ -13365,7 +13375,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p717"
+      "id": "p718"
     },
     {
       "type": "prop_driftwood_m",
@@ -13375,7 +13385,7 @@
       "kit": "prop_driftwood_m",
       "rot": 0,
       "variant": "default",
-      "id": "p718"
+      "id": "p719"
     },
     {
       "type": "beach_grass_s",
@@ -13385,7 +13395,7 @@
       "kit": "beach_grass_s",
       "rot": 0,
       "variant": "default",
-      "id": "p719"
+      "id": "p720"
     },
     {
       "type": "prop_shell_cluster_s",
@@ -13395,7 +13405,7 @@
       "kit": "prop_shell_cluster_s",
       "rot": 90,
       "variant": "default",
-      "id": "p720"
+      "id": "p721"
     },
     {
       "type": "beach_grass_s",
@@ -13405,7 +13415,7 @@
       "kit": "beach_grass_s",
       "rot": 270,
       "variant": "default",
-      "id": "p721"
+      "id": "p722"
     },
     {
       "type": "beach_grass_s",
@@ -13415,7 +13425,7 @@
       "kit": "beach_grass_s",
       "rot": 180,
       "variant": "default",
-      "id": "p722"
+      "id": "p723"
     },
     {
       "type": "bush_fern_m",
@@ -13425,7 +13435,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p723"
+      "id": "p724"
     },
     {
       "type": "bush_fern_m",
@@ -13435,7 +13445,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p724"
+      "id": "p725"
     },
     {
       "type": "mushroom_cluster_red",
@@ -13445,7 +13455,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p725"
+      "id": "p726"
     },
     {
       "type": "tree_pine_m",
@@ -13456,7 +13466,7 @@
       "rot": 176,
       "scale": 1,
       "variant": "default",
-      "id": "p726"
+      "id": "p727"
     },
     {
       "type": "tree_oak_l",
@@ -13467,7 +13477,7 @@
       "rot": 38,
       "scale": 0.92,
       "variant": "default",
-      "id": "p727"
+      "id": "p728"
     },
     {
       "type": "bush_fern_m",
@@ -13477,7 +13487,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p728"
+      "id": "p729"
     },
     {
       "type": "bush_fern_m",
@@ -13487,7 +13497,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p729"
+      "id": "p730"
     },
     {
       "type": "bush_fern_m",
@@ -13497,7 +13507,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p730"
+      "id": "p731"
     },
     {
       "type": "bush_fern_m",
@@ -13507,7 +13517,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p731"
+      "id": "p732"
     },
     {
       "type": "bush_fern_m",
@@ -13517,7 +13527,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p732"
+      "id": "p733"
     },
     {
       "type": "bush_fern_m",
@@ -13527,7 +13537,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p733"
+      "id": "p734"
     },
     {
       "type": "prop_driftwood_m",
@@ -13537,7 +13547,7 @@
       "kit": "prop_driftwood_m",
       "rot": 0,
       "variant": "default",
-      "id": "p734"
+      "id": "p735"
     },
     {
       "type": "beach_grass_s",
@@ -13547,7 +13557,7 @@
       "kit": "beach_grass_s",
       "rot": 90,
       "variant": "default",
-      "id": "p735"
+      "id": "p736"
     },
     {
       "type": "beach_grass_s",
@@ -13557,7 +13567,7 @@
       "kit": "beach_grass_s",
       "rot": 180,
       "variant": "default",
-      "id": "p736"
+      "id": "p737"
     },
     {
       "type": "rock_boulder_cool_m",
@@ -13567,7 +13577,7 @@
       "kit": "rock_boulder_cool_m",
       "rot": 4,
       "variant": "default",
-      "id": "p737"
+      "id": "p738"
     },
     {
       "type": "mushroom_cluster_red",
@@ -13577,7 +13587,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 90,
       "variant": "default",
-      "id": "p738"
+      "id": "p739"
     },
     {
       "type": "bush_fern_m",
@@ -13587,7 +13597,7 @@
       "kit": "bush_fern_m",
       "rot": 180,
       "variant": "default",
-      "id": "p739"
+      "id": "p740"
     },
     {
       "type": "bush_fern_m",
@@ -13597,7 +13607,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p740"
+      "id": "p741"
     },
     {
       "type": "bush_fern_m",
@@ -13607,7 +13617,7 @@
       "kit": "bush_fern_m",
       "rot": 90,
       "variant": "default",
-      "id": "p741"
+      "id": "p742"
     },
     {
       "type": "bush_fern_m",
@@ -13617,7 +13627,7 @@
       "kit": "bush_fern_m",
       "rot": 0,
       "variant": "default",
-      "id": "p742"
+      "id": "p743"
     },
     {
       "type": "mushroom_cluster_red",
@@ -13627,7 +13637,7 @@
       "kit": "mushroom_cluster_red",
       "rot": 270,
       "variant": "default",
-      "id": "p743"
+      "id": "p744"
     },
     {
       "type": "bush_fern_m",
@@ -13637,7 +13647,7 @@
       "kit": "bush_fern_m",
       "rot": 270,
       "variant": "default",
-      "id": "p744"
+      "id": "p745"
     }
   ],
   "segments": [],
@@ -13651,7 +13661,7 @@
         "kind": "cell",
         "kit": "host_fishing_spot",
         "anchor": "exterior",
-        "ref": "p1"
+        "ref": "p0"
       },
       "x": 2816.5,
       "y": 4888.5,
@@ -13679,7 +13689,7 @@
         "kind": "cell",
         "kit": "host_fishing_spot",
         "anchor": "exterior",
-        "ref": "p2"
+        "ref": "p1"
       },
       "x": 2823.5,
       "y": 4888.5,
@@ -13707,10 +13717,10 @@
         "kind": "cell",
         "kit": "host_forage_patch",
         "anchor": "exterior",
-        "ref": "p0"
+        "ref": "p357"
       },
-      "x": 2800.5,
-      "y": 4888.5,
+      "x": 2830.5,
+      "y": 4978.5,
       "radiusM": 6,
       "schedule": {
         "hours": [
@@ -13735,10 +13745,10 @@
         "kind": "cell",
         "kit": "host_forage_patch",
         "anchor": "exterior",
-        "ref": "p0"
+        "ref": "p454"
       },
-      "x": 2801.5,
-      "y": 4888.5,
+      "x": 2808.5,
+      "y": 4993.5,
       "radiusM": 6,
       "schedule": {
         "hours": [
@@ -13763,7 +13773,7 @@
         "kind": "prop",
         "kit": "prop_chopping_block",
         "anchor": "exterior",
-        "ref": "p5"
+        "ref": "p4"
       },
       "x": 2813.5,
       "y": 4892.5,
@@ -13799,13 +13809,13 @@
     "exportedAt": "2026-10-26T00:00:00.000Z",
     "timeOfDayHours": 8,
     "season": "summer",
-    "hash": "sha1:4ca10d825c154f11f68adda8c92e6ada9d9ddc36",
+    "hash": "sha1:8687eded103304fd0be134560c3276272f44ea96",
     "notes": [
       "Street chunks are regenerated in (y, x) order for two passes. Edges do not depend on which neighbour the session generated first.",
       "Spawn is the road or dirt cell nearest the place centroid, otherwise the nearest walkable cell. The live walker is not baked in, so the same seed and place hash the same.",
       "reliefMeters is 15 times the highest per-biome multiplier among the place biome and its world tiles. Hills use 2 and mountains use 3, so they rise above the 15 m base. This is not the continental elevationMeters scale.",
       "Water level is derived. See layers.water.note. world-map does not store a water line or depth.",
-      "roads.polylines are centerlines on the 3 m grid (north-west corner of each road cell). rank, widthM, and surface match layers.surface. roads.worldTiles stay the coarse world-grid flags. Ground classes road and dirt remain the v0.5 road mask.",
+      "roads.polylines are centerlines on the 3 m grid (north-west corner of each road cell). rank, widthM, and surface match layers.surface. roads.worldTiles stay the coarse WorldData.paths flags and are not filled from polylines. Overworld paths are stamped between cities and towns, so a village can have local polylines and an empty worldTiles list. Ground classes road and dirt remain the v0.5 road mask.",
       "The border ring is visual only. Walkable cells are grid.mask (1 = place tile). grid.borderMask uses the same encoding (1 = ring cell with world terrain, 0 = void or playable) and is not walkable. The controller should use Catmull-Rom on layers.height.",
       "The ring copies the world-tile biome and a simplified ground (grass, sand, rock, dirt, water, and road along world paths). It has no buildings and no props. Neighbour names stay metadata. Void cells are 0 in both masks; ignore their biome and ground bytes.",
       "Desert maps to ground class sand. Mountain maps to rock. Other dry land is grass unless a path, lot, plaza, or yard overrides it. Snow stays grass.",

@@ -87,6 +87,11 @@ export const METERS_PER_TILE = 1;
  */
 export const SEA_LEVEL = 0.36;
 /**
+ * Normalized height added above sea level when a settlement pad is raised.
+ * Small on purpose: the controller compares raw height to `seaLevel`.
+ */
+export const SEA_CLEARANCE = 0.012;
+/**
  * Local relief span for an area before the per-biome multiplier.
  * The continental elevation readout (ELEVATION_SPAN_M, ×3200) is not used.
  */
@@ -519,7 +524,7 @@ const NOTES = [
   'Spawn is the road or dirt cell nearest the place centroid, otherwise the nearest walkable cell. The live walker is not baked in, so the same seed and place hash the same.',
   `reliefMeters is ${RELIEF_METERS} times the highest per-biome multiplier among the place biome and its world tiles. Hills use ${RELIEF_BIOME_MULT[Biome.Hills]} and mountains use ${RELIEF_BIOME_MULT[Biome.Mountain]}, so they rise above the ${RELIEF_METERS} m base. This is not the continental elevationMeters scale.`,
   'Water level is derived. See layers.water.note. world-map does not store a water line or depth.',
-  'roads.polylines are centerlines on the 3 m grid (north-west corner of each road cell). rank, widthM, and surface match layers.surface. roads.worldTiles stay the coarse world-grid flags. Ground classes road and dirt remain the v0.5 road mask.',
+  'roads.polylines are centerlines on the 3 m grid (north-west corner of each road cell). rank, widthM, and surface match layers.surface. roads.worldTiles stay the coarse WorldData.paths flags and are not filled from polylines. Overworld paths are stamped between cities and towns, so a village can have local polylines and an empty worldTiles list. Ground classes road and dirt remain the v0.5 road mask.',
   'The border ring is visual only. Walkable cells are grid.mask (1 = place tile). grid.borderMask uses the same encoding (1 = ring cell with world terrain, 0 = void or playable) and is not walkable. The controller should use Catmull-Rom on layers.height.',
   'The ring copies the world-tile biome and a simplified ground (grass, sand, rock, dirt, water, and road along world paths). It has no buildings and no props. Neighbour names stay metadata. Void cells are 0 in both masks; ignore their biome and ground bytes.',
   'Desert maps to ground class sand. Mountain maps to rock. Other dry land is grass unless a path, lot, plaza, or yard overrides it. Snow stays grass.',
@@ -536,7 +541,8 @@ const HEIGHT_NOTE =
   'The lattice covers the expanded grid plus one subdiv sample of apron on each side. ' +
   'Controller: Catmull-Rom across the lattice, then y = clamp((raw - minRaw) / (maxRaw - minRaw), 0, 1) * reliefMeters. ' +
   `minRaw/maxRaw are the percentile clip from ${HEIGHT_PERCENTILE_LO} to ${HEIGHT_PERCENTILE_HI}, widened so the span is at least ${HEIGHT_SOFT_MIN_SPAN}, then padded by ${HEIGHT_RANGE_PAD * 100}% of that span on each side, so a small continental delta does not become a full reliefMeters cliff. ` +
-  `detailMeters (${HEIGHT_DETAIL_METERS}) is optional micro-relief amplitude and is not baked into raw. Water stays flat at layers.water.level.`;
+  `detailMeters (${HEIGHT_DETAIL_METERS}) is optional micro-relief amplitude and is not baked into raw. Water stays flat at layers.water.level. ` +
+  `A settlement pad lifts building lots, roads, zones, the spawn, and the respawn anchor to at least sea level plus ${SEA_CLEARANCE} and blends back to the sampled terrain. Cells that stay below sea level are tagged water.`;
 
 /**
  * Fold one inner tile into a surface class.
@@ -675,12 +681,15 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
 
   const relief = reliefFor(world, place, tiles);
   const height = sampleSubdiv(world, originInner, gw, gh);
+  raiseSettlementPad(height, plan, buildings, ground, mask, originX, originY, gw, gh);
+  tagSeaWater(height, ground, biomeGrid, mask, borderMask, originX, originY, gw, gh);
   const range = softHeightRange(height.raw);
   const water = deriveWater(world, gx0, gy0, gx1, gy1, ground, mask, range.minRaw, range.maxRaw, relief.meters);
   const entries = deriveEntries(originX, originY, gw, gh, mask, ground);
   const season = seasonFor(place.biome);
   const population = settlementPopulation(world, place, buildings, props, originX, originY, gw, gh, mask, ground, opts);
   const minigameSlots = emitMinigames(world, place, plan, buildings, props, biomeGrid, ground, surface, mask, borderMask, originX, originY, gw, gh);
+  dedupeExportedProps(props);
   props.sort((a, b) => a.y - b.y || a.x - b.x || a.type.localeCompare(b.type) || (a.kit ?? '').localeCompare(b.kit ?? ''));
   props.forEach((prop, i) => {
     prop.id = `p${i}`;
@@ -774,6 +783,8 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
       water,
     },
     roads: {
+      // Coarse overworld flags only. Local polylines are separate; villages off the
+      // city/town highway legitimately export an empty list.
       worldTiles: tiles.filter((t) => inWorld(world, t.x, t.y) && world.paths[t.x + t.y * world.width] === 1).map((t) => [t.x, t.y]),
       polylines: plan
         ? plan.roads.map((road) => ({
@@ -957,7 +968,7 @@ function emitMinigames(
   const biome = biomeName(place.biome);
   let playable = 0;
   for (const cell of mask) if (cell) playable++;
-  for (let iy = 0; iy < gh && (fish.length < 4 || forage.length < 4 || ford.length < 2); iy++) {
+  for (let iy = 0; iy < gh && (fish.length < 4 || ford.length < 2); iy++) {
     for (let ix = 0; ix < gw; ix++) {
       const gi = ix + iy * gw;
       const here = mask[gi] === 1 || borderMask[gi] === 1;
@@ -983,8 +994,12 @@ function emitMinigames(
       const y = originY + iy + 0.5;
       if (water && landNeighbor && fish.length < 4) fish.push({ x, y });
       if (!water && roadHere && waterNeighbor && ford.length < 2) ford.push({ x, y });
-      if (!water && FORAGE_BIOMES.has(biome) && forage.length < 4 && ground[gi] === GROUND.grass) forage.push({ x, y });
     }
+  }
+  if (FORAGE_BIOMES.has(biome)) {
+    const wild = forageCells(place.seed, buildings, plan, ground, surface, mask, originX, originY, gw, gh, true);
+    const loose = wild.length ? wild : forageCells(place.seed, buildings, plan, ground, surface, mask, originX, originY, gw, gh, false);
+    forage.push(...loose);
   }
   void biomeGrid;
   const trees = props.filter((prop) => prop.class === 'tree');
@@ -1321,6 +1336,237 @@ function reliefFor(world: WorldData, place: MapNode, tiles: Vec2[]): { biome: Bi
     }
   }
   return { biome, mult, meters: round3(RELIEF_METERS * mult) };
+}
+
+function dedupeExportedProps(props: AreaProp[]): void {
+  const seen = new Set<string>();
+  let write = 0;
+  for (const prop of props) {
+    const key = `${prop.kit ?? prop.type}@${prop.x},${prop.y}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    props[write++] = prop;
+  }
+  props.length = write;
+}
+
+/** Lattice sample that contains an inner-tile point. Same read the sea-level check uses. */
+function latticeRawAt(
+  height: { w: number; h: number; originInner: { x: number; y: number }; raw: number[] },
+  x: number,
+  y: number,
+): number {
+  const step = HEIGHT_SUBDIV_METERS;
+  const i = Math.max(0, Math.min(height.w - 1, Math.floor((x - height.originInner.x) / step)));
+  const j = Math.max(0, Math.min(height.h - 1, Math.floor((y - height.originInner.y) / step)));
+  return height.raw[i + j * height.w] ?? 0;
+}
+
+/**
+ * Flatten the settlement onto a pad above sea level and blend it into the
+ * sampled terrain. Lots, roads, zones, and the respawn anchor stay dry, and
+ * so does every road or yard cell already painted on the mask.
+ */
+function raiseSettlementPad(
+  height: { w: number; h: number; originInner: { x: number; y: number }; raw: number[] },
+  plan: SettlementPlan | null,
+  buildings: AreaBuilding[],
+  ground: Uint8Array,
+  mask: Uint8Array,
+  originX: number,
+  originY: number,
+  gw: number,
+  gh: number,
+): void {
+  const foot = new Uint8Array(gw * gh);
+  const mark = (x0: number, y0: number, w: number, d: number) => {
+    const ix0 = Math.max(0, Math.floor(x0 - originX));
+    const iy0 = Math.max(0, Math.floor(y0 - originY));
+    const ix1 = Math.min(gw, Math.ceil(x0 + w - originX));
+    const iy1 = Math.min(gh, Math.ceil(y0 + d - originY));
+    for (let y = iy0; y < iy1; y++) {
+      for (let x = ix0; x < ix1; x++) foot[x + y * gw] = 1;
+    }
+  };
+  for (const building of buildings) {
+    const lot = building.lot;
+    if (lot) mark(lot.x, lot.y, lot.w, lot.d);
+    else mark(building.plotX, building.plotY, building.plotW, building.plotD);
+    mark(building.structureX, building.structureY, building.structureW, building.structureD);
+  }
+  if (plan) {
+    for (const cell of plan.roadCells) {
+      const pad = cell.widthM >= 4.5 ? 1 : 0;
+      mark(cell.gx * 3 - pad, cell.gy * 3 - pad, 3 + pad * 2, 3 + pad * 2);
+    }
+    for (const zone of plan.zones) mark(zone.rect.x, zone.rect.y, zone.rect.w, zone.rect.d);
+    mark(plan.respawnAnchor.x - 1.5, plan.respawnAnchor.y - 1.5, 3, 3);
+  }
+  for (let i = 0; i < ground.length; i++) {
+    if (mask[i] !== 1) continue;
+    const g = ground[i];
+    if (g === GROUND.road || g === GROUND.dirt || g === GROUND.lot || g === GROUND.plaza || g === GROUND.yard || g === GROUND.park) {
+      foot[i] = 1;
+    }
+  }
+  const dist = new Float32Array(gw * gh);
+  dist.fill(1e9);
+  for (let i = 0; i < foot.length; i++) if (foot[i]) dist[i] = 0;
+  for (let y = 0; y < gh; y++) {
+    for (let x = 0; x < gw; x++) {
+      const i = x + y * gw;
+      let d = dist[i]!;
+      if (x > 0) d = Math.min(d, dist[i - 1]! + 1);
+      if (y > 0) d = Math.min(d, dist[i - gw]! + 1);
+      if (x > 0 && y > 0) d = Math.min(d, dist[i - gw - 1]! + 1.4142);
+      if (x + 1 < gw && y > 0) d = Math.min(d, dist[i - gw + 1]! + 1.4142);
+      dist[i] = d;
+    }
+  }
+  for (let y = gh - 1; y >= 0; y--) {
+    for (let x = gw - 1; x >= 0; x--) {
+      const i = x + y * gw;
+      let d = dist[i]!;
+      if (x + 1 < gw) d = Math.min(d, dist[i + 1]! + 1);
+      if (y + 1 < gh) d = Math.min(d, dist[i + gw]! + 1);
+      if (x + 1 < gw && y + 1 < gh) d = Math.min(d, dist[i + gw + 1]! + 1.4142);
+      if (x > 0 && y + 1 < gh) d = Math.min(d, dist[i + gw - 1]! + 1.4142);
+      dist[i] = d;
+    }
+  }
+  const distanceAt = (sx: number, sy: number): number => {
+    const ix = Math.floor(sx - originX);
+    const iy = Math.floor(sy - originY);
+    if (ix >= 0 && iy >= 0 && ix < gw && iy < gh) return dist[ix + iy * gw]!;
+    const cx = Math.max(0, Math.min(gw - 1, ix));
+    const cy = Math.max(0, Math.min(gh - 1, iy));
+    return dist[cx + cy * gw]! + Math.hypot(sx - (originX + cx + 0.5), sy - (originY + cy + 0.5));
+  };
+  const target = round5(SEA_LEVEL + SEA_CLEARANCE);
+  const step = HEIGHT_SUBDIV_METERS;
+  const pinned = new Uint8Array(height.w * height.h);
+  const lift = (i: number, j: number) => {
+    if (i < 0 || j < 0 || i >= height.w || j >= height.h) return;
+    const idx = i + j * height.w;
+    pinned[idx] = 1;
+    if ((height.raw[idx] ?? 0) < target) height.raw[idx] = target;
+  };
+  for (let iy = 0; iy < gh; iy++) {
+    for (let ix = 0; ix < gw; ix++) {
+      if (!foot[ix + iy * gw]) continue;
+      const cx = originX + ix + 0.5;
+      const cy = originY + iy + 0.5;
+      const i0 = Math.floor((cx - height.originInner.x) / step);
+      const j0 = Math.floor((cy - height.originInner.y) / step);
+      for (let j = j0 - 1; j <= j0 + 2; j++) {
+        for (let i = i0 - 1; i <= i0 + 2; i++) lift(i, j);
+      }
+    }
+  }
+  const blend = 16;
+  for (let j = 0; j < height.h; j++) {
+    const sy = height.originInner.y + j * step;
+    for (let i = 0; i < height.w; i++) {
+      const idx = i + j * height.w;
+      if (pinned[idx]) continue;
+      const sx = height.originInner.x + i * step;
+      const away = distanceAt(sx, sy);
+      if (away <= 0 || away > blend) continue;
+      const t = away / blend;
+      const smooth = t * t * (3 - 2 * t);
+      const raw = height.raw[idx] ?? 0;
+      const lifted = target * (1 - smooth) + raw * smooth;
+      if (lifted > raw) height.raw[idx] = round5(lifted);
+    }
+  }
+}
+
+/** Cells that remain under sea level are water, on both the ground and biome layers. */
+function tagSeaWater(
+  height: { w: number; h: number; originInner: { x: number; y: number }; raw: number[] },
+  ground: Uint8Array,
+  biomeGrid: Uint8Array,
+  mask: Uint8Array,
+  borderMask: Uint8Array,
+  originX: number,
+  originY: number,
+  gw: number,
+  gh: number,
+): void {
+  for (let iy = 0; iy < gh; iy++) {
+    for (let ix = 0; ix < gw; ix++) {
+      const gi = ix + iy * gw;
+      if (mask[gi] !== 1 && borderMask[gi] !== 1) continue;
+      if (latticeRawAt(height, originX + ix + 0.5, originY + iy + 0.5) >= SEA_LEVEL) continue;
+      ground[gi] = GROUND.water;
+      biomeGrid[gi] = Biome.Water;
+    }
+  }
+}
+
+function pointInRect(x: number, y: number, rect: { x: number; y: number; w: number; d: number }, pad = 0): boolean {
+  return x >= rect.x - pad && x < rect.x + rect.w + pad && y >= rect.y - pad && y < rect.y + rect.d + pad;
+}
+
+/**
+ * Playable natural cells that are not roads or lots. `outsideDistricts` keeps
+ * the slot off the built-up bounding boxes. Empty means the caller drops the slot.
+ */
+function forageCells(
+  placeSeed: number,
+  buildings: AreaBuilding[],
+  plan: SettlementPlan | null,
+  ground: Uint8Array,
+  surface: Uint8Array,
+  mask: Uint8Array,
+  originX: number,
+  originY: number,
+  gw: number,
+  gh: number,
+  outsideDistricts: boolean,
+): Array<{ x: number; y: number }> {
+  const candidates: Array<{ x: number; y: number }> = [];
+  for (let iy = 0; iy < gh; iy++) {
+    for (let ix = 0; ix < gw; ix++) {
+      const gi = ix + iy * gw;
+      if (mask[gi] !== 1) continue;
+      const g = ground[gi] ?? 0;
+      if (g !== GROUND.grass && g !== GROUND.sand) continue;
+      if (surface[gi]) continue;
+      const x = originX + ix + 0.5;
+      const y = originY + iy + 0.5;
+      const onLot = buildings.some((building) => {
+        const lot = building.lot ?? { x: building.plotX, y: building.plotY, w: building.plotW, d: building.plotD };
+        return pointInRect(x, y, lot, 1);
+      });
+      if (onLot) continue;
+      if (plan) {
+        let blocked = false;
+        for (const zone of plan.zones) {
+          const built = zone.kind === 'plaza' || zone.kind === 'green' || zone.kind === 'wagon_yard';
+          const district = outsideDistricts && zone.kind === 'district';
+          if ((built || district) && pointInRect(x, y, zone.rect)) {
+            blocked = true;
+            break;
+          }
+        }
+        if (blocked) continue;
+      }
+      candidates.push({ x, y });
+    }
+  }
+  if (!candidates.length) return [];
+  const want = Math.min(4, candidates.length);
+  const shift = Math.abs(placeSeed) % candidates.length;
+  const out: Array<{ x: number; y: number }> = [];
+  const used = new Set<number>();
+  for (let n = 1; n <= want; n++) {
+    const index = (shift + Math.floor((n * candidates.length) / (want + 1))) % candidates.length;
+    if (used.has(index)) continue;
+    used.add(index);
+    out.push(candidates[index]!);
+  }
+  return out;
 }
 
 /**
