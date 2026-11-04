@@ -254,7 +254,9 @@ export class WorldSetupComponent implements AfterViewInit {
 
   sizeLine(): string {
     const n = worldExtent(this.draft().worldScale);
-    return `${n} × ${n} tiles · ${MAP_STYLE_LABELS[this.draft().mapStyle]}`;
+    const km = (n * 8) / 1000;
+    const kmText = km >= 10 ? km.toFixed(1) : km.toFixed(2);
+    return `${n} × ${n} tiles · ${kmText} km · ${MAP_STYLE_LABELS[this.draft().mapStyle]}`;
   }
 
   setScale(scale: WorldScale): void {

@@ -1,5 +1,10 @@
 export const TILE = 16;
 export const WORLD_BASE = 192;
+/**
+ * 16× is about 24.6 km. The height field’s coarse stride grows with the map
+ * (`coarseStride` in terrain.ts), so a 32× preset is a one-line addition here
+ * once the full-resolution grids (~300 MB) are acceptable.
+ */
 export const WORLD_SCALES = [1, 2, 4, 8, 16] as const;
 export type WorldScale = (typeof WORLD_SCALES)[number];
 export const ZONE_SCALE = 8;
@@ -270,7 +275,7 @@ export const DEFAULT_AVG_PER_HOUSE = 2.5;
 export const DEFAULT_AVG_PER_PLACE = 24;
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
-  worldScale: 8,
+  worldScale: 16,
   mapStyle: 'continent',
   poiCount: 72,
   wanderers: 40,
@@ -392,7 +397,7 @@ export function leaveScaleForFit(fit: number): number {
 }
 
 export function clampSettings(raw: Partial<WorldSettings>): WorldSettings {
-  const scale = WORLD_SCALES.includes(raw.worldScale as WorldScale) ? (raw.worldScale as WorldScale) : 8;
+  const scale = WORLD_SCALES.includes(raw.worldScale as WorldScale) ? (raw.worldScale as WorldScale) : 16;
   const mapStyle = MAP_STYLES.includes(raw.mapStyle as MapStyle) ? (raw.mapStyle as MapStyle) : 'continent';
   return {
     worldScale: scale,
@@ -783,7 +788,15 @@ export interface WorldData {
   height: number;
   settings: WorldSettings;
   biomes: Uint8Array;
-  /** Normalized elevation, one sample per world tile (0 deep, 1 peak). */
+  /**
+   * Metres above sea level, one sample per world tile. Sea level is 0.
+   * About −4,000 m on trench floors and +3,000 m on peaks.
+   */
+  heightM: Float32Array;
+  /**
+   * Normalized copy of `heightM` (sea level = 0.36). Kept so the legacy
+   * area-export remap still has a 0..1 field. Do not treat 0 as sea level.
+   */
   heights: Float32Array;
   paths: Uint8Array;
   nodes: MapNode[];

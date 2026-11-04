@@ -16,7 +16,7 @@ The overworld is a biome map baked from Pixel Kingdom grasslands (street zoom us
 - **Authored** cities/towns are pre-marked (cities are large blobs, towns and groves smaller). Generated places use a kind-based radius; a 2× / 4× / 8× roll (or a shrink) plus rotated lobes so some wilderness pockets are mini open-world maps and some stay small.
 - **POIs** are pre-placed and steer generation. Author overlay (map dock / settings) shows every marker. In adventure mode with the overlay off, a POI only appears after you **walk through it** or **zoom into a detail chunk on or adjacent to it**.
 - **World markers** (default on) keep travelers, caravans, and hosts on the map even through isolation fog or unexplored land.
-- Default load: **8×** continent, **adventure mode on**, camera at **Close (32×)** in the starting town. **Adventure** opens a name + look picker, then remakes the map and dives in. The walker is a named Time Fantasy sprite so a later hosted session can reuse the same player shape.
+- Default load: **16×** continent (~24.6 km), **adventure mode on**, camera at **Close (32×)** in the starting town. Height is metres above sea level (0 m), from about −4,000 m in trenches to +3,000 m on peaks. **Adventure** opens a name + look picker, then remakes the map and dives in. The walker is a named Time Fantasy sprite so a later hosted session can reuse the same player shape.
 
 Do not go back to continuous rectangle/polygon streaming that broke zoom isolation.
 

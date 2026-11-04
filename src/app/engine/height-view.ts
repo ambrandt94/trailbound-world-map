@@ -1,31 +1,32 @@
 /**
- * Continental elevation for the 2D map.
- * WorldData.heights is 0..1. Metres are that sample times ELEVATION_SPAN_M.
- * Area-export relief is a separate local span and does not use this scale.
+ * Continental elevation for the 2D map, in real metres. Sea level is 0.
  * The overlay image is baked once per world; frames only blit the visible rect.
  */
 import { TILE, WorldData } from '../models/world.models';
+import { PEAK_M, TRENCH_FLOOR_M } from './terrain';
 
-/** Normalized height 1 maps to this many metres above the depth datum. */
-export const ELEVATION_SPAN_M = 3200;
-/** Legend ticks, high to low, matching the colour ramp. */
-export const ELEVATION_LEGEND_M = [3200, 2400, 1600, 800, 0] as const;
+/**
+ * Legacy name. The ramp is no longer "0 maps to the trench, 1 maps to this".
+ * Kept so older imports still resolve; the readout uses `heightM` directly.
+ */
+export const ELEVATION_SPAN_M = PEAK_M - TRENCH_FLOOR_M;
+/** Legend ticks, high to low, matching the colour ramp. Sea level is 0 m. */
+export const ELEVATION_LEGEND_M = [3000, 1000, 0, -1200, -4000] as const;
 /** Isoline spacing. Index lines are every second interval (800 m). */
 export const CONTOUR_INTERVAL_M = 400;
-/**
- * First contour. World-gen treats height under 0.33 as water (~1,056 m),
- * so lines start at the next interval and stay on land.
- */
-export const CONTOUR_MIN_M = 1200;
+/** Deepest contour. Lines run through the ocean as well as the land. */
+export const CONTOUR_MIN_M = TRENCH_FLOOR_M;
 
 const RAMP: ReadonlyArray<readonly [number, readonly [number, number, number]]> = [
-  [0, [18, 46, 88]],
-  [0.3, [38, 108, 146]],
-  [0.38, [72, 146, 102]],
-  [0.52, [122, 162, 78]],
-  [0.66, [186, 168, 90]],
-  [0.78, [166, 118, 76]],
-  [0.88, [174, 166, 158]],
+  [0, [8, 18, 46]],
+  [0.16, [16, 48, 96]],
+  [0.3, [28, 108, 138]],
+  [0.42, [64, 158, 156]],
+  [0.5, [78, 150, 96]],
+  [0.62, [116, 164, 78]],
+  [0.74, [186, 164, 86]],
+  [0.84, [158, 116, 78]],
+  [0.93, [176, 170, 162]],
   [1, [246, 247, 248]],
 ];
 
@@ -37,12 +38,22 @@ export function formatMeters(meters: number): string {
   return `${n < 0 ? '-' : ''}${body} m`;
 }
 
-/** Nearest world-tile elevation in continental metres. */
+/** Nearest world-tile elevation in metres above sea level. */
 export function elevationMetersAt(world: WorldData, x: number, y: number): number {
   const ix = Math.floor(x);
   const iy = Math.floor(y);
-  if (!world.heights || ix < 0 || iy < 0 || ix >= world.width || iy >= world.height) return 0;
-  return (world.heights[ix + iy * world.width] ?? 0) * ELEVATION_SPAN_M;
+  const field = world.heightM ?? world.heights;
+  if (!field || ix < 0 || iy < 0 || ix >= world.width || iy >= world.height) return 0;
+  return field[ix + iy * world.width] ?? 0;
+}
+
+/** 0 at the trench floor, about 0.42 at sea level, 1 at a +3,000 m peak. */
+export function elevationRampT(metres: number): number {
+  if (metres <= 0) {
+    const t = Math.min(1, metres / TRENCH_FLOOR_M);
+    return 0.42 * (1 - t);
+  }
+  return 0.42 + 0.58 * Math.min(1, metres / PEAK_M);
 }
 
 /** CSS gradient, low at the bottom, matching the baked ramp. */
@@ -54,7 +65,7 @@ export function elevationRampCss(): string {
 /** One pixel per world tile. Hillshade is mixed into the ramp; alpha lets biomes show through. */
 export function bakeElevationOverlay(world: WorldData): HTMLCanvasElement | null {
   if (typeof document === 'undefined') return null;
-  const heights = world.heights;
+  const heights = world.heightM ?? world.heights;
   const w = world.width;
   const h = world.height;
   if (!heights || heights.length !== w * h || w < 2 || h < 2) return null;
@@ -65,7 +76,7 @@ export function bakeElevationOverlay(world: WorldData): HTMLCanvasElement | null
   if (!ctx) return null;
   const img = ctx.createImageData(w, h);
   const pix = img.data;
-  const zf = 20;
+  const zf = 0.11;
   const lx = -0.48;
   const ly = -0.56;
   const lz = 0.67;
@@ -79,8 +90,8 @@ export function bakeElevationOverlay(world: WorldData): HTMLCanvasElement | null
     const rowN = yN * w;
     const rowS = yS * w;
     for (let x = 0; x < w; x++) {
-      const xW = x > 0 ? x - 1 : w - 1;
-      const xE = x + 1 < w ? x + 1 : 0;
+      const xW = x > 0 ? x - 1 : 0;
+      const xE = x + 1 < w ? x + 1 : w - 1;
       const hc = heights[row + x] ?? 0;
       const zx = ((heights[row + xE] ?? hc) - (heights[row + xW] ?? hc)) * zf;
       const zy = ((heights[rowS + x] ?? hc) - (heights[rowN + x] ?? hc)) * zf;
@@ -88,7 +99,8 @@ export function bakeElevationOverlay(world: WorldData): HTMLCanvasElement | null
       let ndot = (-zx * inv * lx + -zy * inv * ly + inv * lz) * invL;
       if (ndot < 0) ndot = 0;
       else if (ndot > 1) ndot = 1;
-      const li = (hc <= 0 ? 0 : hc >= 1 ? 255 : (hc * 255) | 0) * 3;
+      const t = elevationRampT(hc);
+      const li = (t <= 0 ? 0 : t >= 1 ? 255 : (t * 255) | 0) * 3;
       const light = 0.34 + ndot * 0.9;
       const o = (row + x) * 4;
       pix[o] = clampByte(RAMP_LUT[li]! * light);
@@ -117,16 +129,17 @@ export function buildContours(
 ): ContourPaths {
   const minor = new Path2D();
   const major = new Path2D();
-  const heights = world.heights;
+  const heights = world.heightM ?? world.heights;
   const w = world.width;
   const h = world.height;
   if (!heights || step < 1) return { minor, major };
-  const interval = CONTOUR_INTERVAL_M / ELEVATION_SPAN_M;
-  const minLevel = CONTOUR_MIN_M / ELEVATION_SPAN_M;
+  const interval = CONTOUR_INTERVAL_M;
+  const minLevel = CONTOUR_MIN_M;
   const sample = (x: number, y: number): number => {
     const yy = y < 0 ? 0 : y >= h ? h - 1 : y;
-    let xx = x % w;
-    if (xx < 0) xx += w;
+    let xx = x;
+    if (xx < 0) xx = 0;
+    else if (xx >= w) xx = w - 1;
     return heights[xx + yy * w] ?? 0;
   };
   const add = (path: Path2D, ax: number, ay: number, bx: number, by: number) => {

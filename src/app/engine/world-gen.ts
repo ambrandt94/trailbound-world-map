@@ -4,7 +4,6 @@ import {
   Biome,
   MapNode,
   MapStyle,
-  WORLD_BASE,
   WorldData,
   WorldFeature,
   WorldSettings,
@@ -13,9 +12,10 @@ import {
   worldExtent,
   clamp,
 } from '../models/world.models';
-import { fbm, Rng, ridged } from './noise';
+import { fbm, Rng } from './noise';
 import { placePois } from './pois';
 import { prepareLandSketch, sampleLandSketch } from './land-sketch';
+import { buildTerrain, metersToNormalized, reinforceClimate, sampleMacroMeters } from './terrain';
 
 const AUTHORED: Array<Omit<MapNode, 'cx' | 'cy' | 'biome' | 'x0' | 'y0' | 'x1' | 'y1' | 'tiles'> & { want: Biome }> = [
   { id: 'ashfen', name: 'Ashfen', origin: 'authored', kind: 'city', radius: 11.4, seed: 1101, want: Biome.Plains },
@@ -37,40 +37,23 @@ function inBounds(x: number, y: number, w: number, h: number): boolean {
   return x >= 0 && y >= 0 && x < w && y < h;
 }
 
-function classify(height: number, moist: number, temp: number, river: number): Biome {
-  if (height < 0.33 || (river > 0.88 && height < 0.58)) return Biome.Water;
-  if (height < 0.375) return Biome.Sand;
-  if (height < 0.46 && moist > 0.68) return Biome.Marsh;
-  if (height > 0.86 || (temp < 0.22 && height > 0.7)) return Biome.Snow;
-  if (height > 0.78 && moist < 0.28 && temp > 0.55) return Biome.Ashlands;
-  if (height > 0.76) return Biome.Mountain;
-  if (temp < 0.3 && moist > 0.45) return Biome.Taiga;
-  if (temp < 0.32) return Biome.Snow;
-  if (temp > 0.78 && moist < 0.32 && height > 0.42) return Biome.Desert;
-  if (temp > 0.72 && moist > 0.62 && height < 0.68) return Biome.Jungle;
-  if (height > 0.64 && moist < 0.5) return Biome.Hills;
-  if (temp > 0.7 && moist < 0.42 && height > 0.45) return Biome.Heath;
-  if (moist > 0.7 && temp < 0.55) return Biome.DarkForest;
-  if (moist > 0.56 && height < 0.7) return Biome.Forest;
-  if (moist > 0.42 && temp > 0.48 && height < 0.62) return Biome.Meadow;
-  return Biome.Plains;
-}
-
 function smooth(biomes: Uint8Array, w: number, h: number): void {
   const next = new Uint8Array(biomes);
+  const counts = new Uint16Array(BIOME_COUNT);
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
-      const counts = new Array<number>(BIOME_COUNT).fill(0);
+      counts.fill(0);
       for (let oy = -1; oy <= 1; oy++) {
         for (let ox = -1; ox <= 1; ox++) {
           counts[biomes[idx(x + ox, y + oy, w)]]++;
         }
       }
-      let best = biomes[idx(x, y, w)];
+      let best = biomes[idx(x, y, w)]!;
       let bestN = -1;
       for (let b = 0; b < counts.length; b++) {
-        if (counts[b] > bestN) {
-          bestN = counts[b];
+        const n = counts[b]!;
+        if (n > bestN) {
+          bestN = n;
           best = b;
         }
       }
@@ -172,81 +155,19 @@ function styleMask(nx: number, ny: number, style: MapStyle, seed: number): numbe
   }
 }
 
-function heightBlend(style: MapStyle, sketch: Float32Array | null): { noiseW: number; maskW: number } {
-  const noiseW = sketch
-    ? 0.28
-    : style === 'continent' || style === 'isthmus'
-      ? 0.4
-      : style === 'archipelago' || style === 'shattered'
-        ? 0.58
-        : style === 'desert'
-          ? 0.36
-          : style === 'fjords'
-            ? 0.48
-            : 0.44;
-  return { noiseW, maskW: 1 - noiseW };
-}
-
-/** Normalized elevation and land mask at a fractional world-tile coordinate. */
-function elevationAt(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  freq: number,
-  seed: number,
-  style: MapStyle,
-  sketch: Float32Array | null,
-  noiseW: number,
-  maskW: number,
-): { height: number; mask: number } {
-  const nx = x / w;
-  const ny = y / h;
-  const mask = landMask(nx, ny, style, seed, sketch);
-  const height = fbm(nx * freq, ny * freq, seed, 5) * noiseW + mask * maskW;
-  return { height, mask };
-}
-
 /**
- * Sampler for the same FBM + land-mask formula stored in `WorldData.heights`.
- * `x` and `y` are world-tile coordinates and may be fractional. Integer coordinates
- * match `heights[x + y * width]`. This does not bilinear the stored grid.
+ * Normalized elevation at a world-tile coordinate, fractional coordinates included.
+ * Integer coordinates match `heights[x + y * width]`. The sample is a Catmull-Rom
+ * read of `heightM` (metres, sea level 0), then the shared sea-level mapping.
+ * It is not a bilinear of the stored normalized grid.
  */
 export function worldHeightSampler(
-  world: Pick<WorldData, 'seed' | 'width' | 'height' | 'settings'>,
+  world: Pick<WorldData, 'width' | 'height' | 'heightM'>,
 ): (x: number, y: number) => number {
+  const field = world.heightM;
   const w = world.width;
   const h = world.height;
-  const seed = world.seed;
-  const style = world.settings.mapStyle ?? 'continent';
-  const sketch = style === 'custom' ? prepareLandSketch(world.settings.landSketch) : null;
-  const freq = styleFreq(style, w / WORLD_BASE);
-  const { noiseW, maskW } = heightBlend(style, sketch);
-  return (x: number, y: number) => elevationAt(x, y, w, h, freq, seed, style, sketch, noiseW, maskW).height;
-}
-
-function styleFreq(style: MapStyle, geo: number): number {
-  const g = Math.sqrt(geo);
-  switch (style) {
-    case 'continent':
-      return 2.35 * g;
-    case 'archipelago':
-      return 5.5 * g;
-    case 'isthmus':
-      return 2.7 * g;
-    case 'lakes':
-      return 3.15 * g;
-    case 'highlands':
-      return 3.5 * g;
-    case 'fjords':
-      return 3.8 * g;
-    case 'desert':
-      return 2.6 * g;
-    case 'shattered':
-      return 5.8 * g;
-    case 'custom':
-      return 2.35 * g;
-  }
+  return (x: number, y: number) => metersToNormalized(sampleMacroMeters(field, w, h, x, y));
 }
 
 function findSite(
@@ -346,49 +267,20 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
   const w = worldExtent(settings.worldScale);
   const h = w;
   const rng = new Rng(seed);
-  const biomes = new Uint8Array(w * h);
-  const heights = new Float32Array(w * h);
   const paths = new Uint8Array(w * h);
-  const geo = w / WORLD_BASE;
   const style = settings.mapStyle ?? 'continent';
   const sketch = style === 'custom' ? prepareLandSketch(settings.landSketch) : null;
-  const freq = styleFreq(style, geo);
-  const { noiseW, maskW } = heightBlend(style, sketch);
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const { height, mask } = elevationAt(x, y, w, h, freq, seed, style, sketch, noiseW, maskW);
-      heights[idx(x, y, w)] = height;
-      const nx = x / w;
-      const ny = y / h;
-      const moist = fbm(nx * (freq * 1.17) + 9.2, ny * (freq * 1.17), seed + 17, 4);
-      const temp = fbm(nx * (freq * 0.74) - 2.1, ny * (freq * 0.83) + 4.4, seed + 53, 4);
-      const river = ridged(nx * (freq * 1.54), ny * (freq * 1.54), seed + 31);
-      let biome = classify(height, moist, temp, river);
-      if (style === 'custom' && mask < 0.12) biome = Biome.Water;
-      else if (mask < 0.07 && style !== 'highlands' && style !== 'desert') biome = Biome.Water;
-      if (style === 'lakes' && river > 0.8 && height < 0.78 && biome !== Biome.Water && mask > 0.2) {
-        biome = Biome.Water;
-      }
-      if (style === 'archipelago' && height < 0.38) biome = Biome.Water;
-      if (style === 'shattered' && height < 0.4) biome = Biome.Water;
-      if (style === 'desert' && biome !== Biome.Water && biome !== Biome.Mountain && biome !== Biome.Sand) {
-        if (moist < 0.45 || temp > 0.55) biome = height > 0.7 ? Biome.Ashlands : Biome.Desert;
-      }
-      if (style === 'fjords' && biome === Biome.Plains && moist > 0.5) biome = Biome.Forest;
-      biomes[idx(x, y, w)] = biome;
-    }
-  }
+  const terrain = buildTerrain({
+    seed,
+    width: w,
+    height: h,
+    style,
+    landAt: (nx, ny) => landMask(nx, ny, style, seed, sketch),
+  });
+  const { heightM, heights, biomes } = terrain;
   smooth(biomes, w, h);
   smooth(biomes, w, h);
-
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      if (biomes[idx(x, y, w)] !== Biome.Marsh) continue;
-      const n = hashNoise(x, y, seed + 9);
-      if (n > 0.62) biomes[idx(x, y, w)] = Biome.Water;
-    }
-  }
+  reinforceClimate(biomes, heightM, w, h);
 
   const nodes: MapNode[] = [];
   const blocked = new Set<string>();
@@ -505,7 +397,7 @@ export function generateWorld(seed: number, settings: WorldSettings = DEFAULT_WO
     settings.poiCount,
   );
 
-  return { seed, width: w, height: h, settings, biomes, heights, paths, nodes, pois, features };
+  return { seed, width: w, height: h, settings, biomes, heights, heightM, paths, nodes, pois, features };
 }
 
 function treeFor(b: Biome, n: number): { threshold: number; sprite: string } | null {

@@ -1,8 +1,55 @@
-# AreaExport v0.6
+# AreaExport v0.7
 
 World-map is the authority for a place. The Trailbound controller does not invent geography. The TypeScript types in `src/app/engine/area-export.ts` are the schema. This note is the field guide; if they disagree, the types win.
 
-`buildAreaExport(world, place, opts)` returns one `AreaExport`. Version is `0.6.0`. Every new field is optional for readers: a missing `borderWorldTiles` means 0, a missing `grid.borderMask` means no ring, and `layers.height.sampling` of `world-tile-corners` is the 0.2 lattice. v0.3 and later always write the ring. v0.4 adds optional `npcs` (zone metres) and `session` (`{ sid, live: 1 }` only while a live link is open). v0.5 adds optional `population` on a city, town, village, or hamlet. v0.6 adds settlement layout, a surface layer, kit fields, zones, fence segments, and minigame slots. Older readers ignore every field they do not know. A grove or camp omits `population`. A camp still writes `area.settlement`.
+`buildAreaExport(world, place, opts)` returns one `AreaExport`. Version is `0.7.0`. Every new field is optional for readers: a missing `borderWorldTiles` means 0, a missing `grid.borderMask` means no ring, and `layers.height.sampling` of `world-tile-corners` is the 0.2 lattice. v0.3 and later always write the ring. v0.4 adds optional `npcs` (zone metres) and `session` (`{ sid, live: 1 }` only while a live link is open). v0.5 adds optional `population` on a city, town, village, or hamlet. v0.6 adds settlement layout, a surface layer, kit fields, zones, fence segments, and minigame slots. v0.7 adds world metres beside that normalized height. Older readers ignore every field they do not know. A grove or camp omits `population`. A camp still writes `area.settlement`.
+
+## v0.7 height (controller contract)
+
+v0.7 is additive. A reader that only understands 0.6 keeps using `layers.height` and `units.seaLevel` and ignores the fields below. Every 0.6 field is still written and means the same thing. The version string is `0.7.0`; the major version is still 0.
+
+World height is stored in **metres above sea level**. Sea level is **0 m everywhere** (`units.seaLevelM`, `units.heightDatum: "sea"`). The same zero is the world-gen water line: a sample below 0 m is water, and its normalized `layers.height.raw` is below `units.seaLevel` (0.36). There is no second threshold. That is what removes the old Sunspire class of bug, where land between the world-gen water line (0.33) and the export sea level (0.36) was treated as flooded.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `units.seaLevel` | number | Normalized sea level, `0.36`. v0.6 readers compare `layers.height.raw` to this. |
+| `units.seaLevelM` | number | `0`. Metres. |
+| `units.heightDatum` | `"sea"` | Datum for `seaLevelM` and `layers.heightM`. |
+| `units.verticalExaggeration` | number | `0.1`. One playable scale for every area. |
+| `units.detailSeed` | number | Detail noise seed. Derived from the world seed, never from the area id. The same on every area of a world. |
+| `layers.heightM` | object | The same lattice as `layers.height`, in world metres, detail and the settlement pad included. |
+
+`layers.heightM` is `{ sampling, subdivMeters, w, h, originInner, enc, quantM, data, note }`. `sampling` is `world-subdiv`. `subdivMeters`, `w`, `h`, and `originInner` match `layers.height`. `enc` is `b64i16le`: little-endian int16 samples, **metres = int16 × quantM**. `quantM` is `0.2`. Int16 decimetres only reach ±3,276.8 m, and trench floors are about −4,000 m, so the lattice uses 0.2 m steps instead of decimetres. 0.2 m divides the 0.6 m settlement pad exactly.
+
+Decode:
+
+```
+bytes = base64(data)
+sample = int16le(bytes, i) * quantM
+```
+
+Index `i + j * w` is the same point as `layers.height.raw[i + j * w]`:
+
+```
+innerX = originInner.x + i * subdivMeters
+innerY = originInner.y + j * subdivMeters
+worldX = innerX / zoneScale
+worldY = innerY / zoneScale
+```
+
+Each sample is a Catmull-Rom read of `WorldData.heightM` (one value per 8 m world tile) plus detail noise. The detail function is seeded with `units.detailSeed` and the absolute world coordinate, so two areas that cover the same point encode the same metres. A settlement pad is the exception: it only lifts the area that owns the lots, roads, zones, spawn, and respawn anchor, to at least **0.6 m** above sea level, then blends back over 16 m. Neighbouring unpadded samples still match.
+
+**Playable height.** Do not refit each area to its own min/max. Use the one factor on the payload:
+
+```
+renderedY = heightM * units.verticalExaggeration
+```
+
+`verticalExaggeration` is `0.1` (a gentle compression of true metres, so a 2,000 m face reads as 200 m). Sea level stays at rendered Y = 0. Apply this same factor in every area, including far terrain. `layers.height.raw`, `minRaw`, `maxRaw`, and `reliefMeters` are the legacy per-area remap for v0.6 readers. They are not the metre heights, and a v0.7 controller should not stretch by them.
+
+The world range is about **−4,000 m** (trench floors) to **+3,000 m** (peaks). Ocean runs shelf (0 to −120 m), slope, abyssal plain (about −2,500 m), then occasional trenches. Climate is cold in the north and warm in the south, and snow follows a snowline that drops toward the north plus altitude. The default world scale is **16×** (192 × 16 = 3,072 tiles, 24.6 km). `source.worldScale` records the scale used for that export.
+
+Hydrology (`layers.water.bodies`), coasts, and docks are not in this payload. `layers.water` is still the v0.6 flat sheet.
 
 ## v0.6
 
@@ -112,9 +159,9 @@ Walkable = `grid.mask`. The ring is visual only. `meta.notes` says that, and tha
 
 ### Height
 
-`WorldData.heights` is the normalized elevation `generateWorld` stores (0 deep, 1 peak), one sample per world tile. It is not the continental ×3200 m readout.
+`WorldData.heightM` is metres above sea level (0), one sample per world tile. `WorldData.heights` is the normalized copy of that field: 0 m maps to `0.36`, trench floors toward 0, peaks toward 1. v0.7 controllers read `layers.heightM`. The normalized lattice below is what a v0.6 reader still uses.
 
-v0.3 does not bilinear those stored samples. `layers.height.sampling` is `world-subdiv`. `subdivMeters` is 2. `heightUnit` is `normalized`. `raw` is the same FBM + land-mask formula as `world-gen.ts` (`worldHeightSampler`), evaluated at fractional world-tile coordinates.
+v0.3 does not bilinear those stored samples. `layers.height.sampling` is `world-subdiv`. `subdivMeters` is 2. `heightUnit` is `normalized`. `raw` is the normalized mapping of the same metres as `layers.heightM` (Catmull-Rom of `heightM`, plus the world-anchored detail, plus the settlement pad). Integer world tiles match `WorldData.heights`. A fractional sample is not a bilinear of that grid.
 
 The lattice covers the expanded grid plus **one** subdiv sample of apron on each side:
 
@@ -169,11 +216,11 @@ There is no stored water line. `layers.water` is derived:
 - `present` is true when any **playable** (`mask` 1) cell’s ground class is water. Ring water does not set `present`.
 - `raw` is the lowest `WorldData.heights` sample on a Water world tile inside the exported grid (place plus border ring).
 - `level` is that raw value remapped with `height.minRaw`, `height.maxRaw`, and `reliefMeters` (metres above the remap zero). Use `level` as already-computed metres.
-- If no Water world tile is in range, `raw` falls back to `units.seaLevel` (`0.36`, the contract value; world-gen’s hard water cutoff is height &lt; 0.33 before style overrides) and the note says so.
+- If no Water world tile is in range, `raw` falls back to `units.seaLevel` (`0.36`, which is 0 m) and the note says so.
 
-Water cells should stay flat at `level`.
+Water cells should stay flat at `level` for a v0.6 reader. v0.7 depth is the `layers.heightM` sample (negative metres). There is one sea level: world-gen treats `heightM < 0` as water, and that is the same line as `raw < units.seaLevel`.
 
-A playable or border cell whose height sample is below `units.seaLevel` is tagged `layers.ground` water and `layers.biome` Water, and `layers.water.present` is true when any playable cell has that ground class. Settlement lots, roads, zones, the spawn, and `respawnAnchor` are lifted onto a pad at least `0.012` above sea level (normalized) and blended back into the sampled terrain, so those features stay dry land. The pad is part of `layers.height.raw`; samples outside the blend are still the world-gen formula.
+A playable or border cell whose height is below 0 m is tagged `layers.ground` water and `layers.biome` Water, and `layers.water.present` is true when any playable cell has that ground class. Settlement lots, roads, zones, the spawn, and `respawnAnchor` are lifted to at least **0.6 m** above sea level and blended back over 16 m, so those features stay dry land. The pad is part of both `layers.height.raw` and `layers.heightM`. Samples outside the blend are the world height plus detail.
 
 ### Spawn and edges
 
@@ -265,15 +312,20 @@ Two back-to-back runs of the check script write identical bytes. `meta.exportedA
 
 | File | Place | Bytes | Hash |
 | --- | --- | --- | --- |
-| `fixtures/area-veldcross.json` | Ironmarch builder payload, population.named = 6 | 369669 | `sha1:126d58f19b359c3456bea4a2e426112581f68856` |
-| `fixtures/area-veldcross-v05.json` | Ironmarch download: same payload plus `npcs`, no `session` | 374876 | `sha1:126d58f19b359c3456bea4a2e426112581f68856` |
-| `fixtures/area-hollowmere.json` | Shadowglen, grove, trees, no buildings, no population | 215266 | `sha1:793f9b131cfcb1e3e111d635aa697104dcb178fc` |
-| `fixtures/area-jadewild.json` | Jadewild, forest grove with water, no population | 231515 | `sha1:e2682534c614f3ebd1f0090fea96e5931cee0f2a` |
-| `fixtures/area-hollowmere-v04.json` | Shadowglen plus a forced NPC snapshot (hash unchanged) | 217223 | `sha1:793f9b131cfcb1e3e111d635aa697104dcb178fc` |
+| `fixtures/area-veldcross.json` | Ironmarch builder payload, population.named = 6 | 647229 | `sha1:0afe74275206c1751f50894fad49e51032e7f94a` |
+| `fixtures/area-veldcross-v05.json` | Ironmarch download: same payload plus `npcs`, no `session` | 652436 | `sha1:0afe74275206c1751f50894fad49e51032e7f94a` |
+| `fixtures/area-sunspire.json` | Sunspire village. Land sits above sea level; the 0.6 m pad keeps lots, roads, and the spawn dry | 515820 | `sha1:5c366c1ff68c8d78ceb850d379cf6a89ddb1e194` |
+| `fixtures/area-hollowmere.json` | Shadowglen, grove, trees, no buildings, no population | 334485 | `sha1:2c31176c19421893b869a7802d975cf56e0c1fc5` |
+| `fixtures/area-jadewild.json` | Jadewild, grove, no population | 406850 | `sha1:a60f43b916ffa230675cf09fde8b5d02b4cd6f97` |
+| `fixtures/area-hollowmere-v04.json` | Shadowglen plus a forced NPC snapshot (hash unchanged) | 336442 | `sha1:2c31176c19421893b869a7802d975cf56e0c1fc5` |
+| `fixtures/area-peak.json` | Generated patch on a snowy peak (seed 7741). `layers.heightM` reaches about +2,953 m | 242668 | `sha1:fec6e55f8dd26a98c06b400a3311cf2d072d1c8c` |
+| `fixtures/area-deep.json` | Generated patch on a trench floor (seed 7741). `layers.heightM` reaches about −3,977 m | 194838 | `sha1:94fb34c827b25a3d906d998005407cf6229184fc` |
+
+Seed 7741 at the default 16× scale. A shifted copy of Shadowglen shares 3,905 lattice samples with the original and every unpadded sample matches, so neighbouring areas agree. `units.detailSeed` is the same number on every fixture above. The check also times generation: scale 16 (3,072 tiles, 24.6 km) is about 2.1 s and scale 8 is about 0.6 s in the fixture run.
 
 Most of the growth versus 0.2 is the expanded base64 grids (mask, borderMask, biome, ground). The height `raw` array is about 40–70 KB of the file. No extra quantization.
 
-Jadewild header (grids and `raw` omitted):
+Jadewild header from before v0.7 (grids and `raw` omitted). The current payload is `0.7.0` at world scale 16 and adds the fields in the v0.7 section above. Coordinates in this snippet are the old 8× world:
 
 ```json
 {

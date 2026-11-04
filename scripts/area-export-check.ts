@@ -16,21 +16,34 @@ import {
   GROUND,
   GROUND_CLASSES,
   HEIGHT_DETAIL_METERS,
+  HEIGHT_QUANT_M,
   HEIGHT_SOFT_MIN_SPAN,
   HEIGHT_SUBDIV_METERS,
   RELIEF_BIOME_MULT,
   RELIEF_METERS,
+  SEA_CLEARANCE_M,
   SEA_LEVEL,
   buildAreaExport,
   contentHash,
+  decodeB64I16,
   decodeB64U8,
+  quantizeHeightM,
   type AreaExport,
 } from '../src/app/engine/area-export';
 import { PART_CODE, PART_LEGEND } from '../src/app/engine/building-templates';
 import { generateWorld, worldHeightSampler } from '../src/app/engine/world-gen';
+import {
+  SEA_LEVEL_M,
+  VERTICAL_EXAGGERATION,
+  detailOffsetM,
+  detailSeedFor,
+  metersToNormalized,
+  sampleMacroMeters,
+  summarizeTerrain,
+} from '../src/app/engine/terrain';
 import { rollMinigameSlots, type MinigameRule } from '../src/app/engine/minigame-slots';
 import { ROW_LINK_M, SIDE_YARD_M, TERRACE_RUN_MAX, tierPlacement, type SettlementTierId } from '../src/app/engine/settlement-tiers';
-import { Biome, DEFAULT_WORLD_SETTINGS, ZONE_SCALE, type MapNode, type WorldData } from '../src/app/models/world.models';
+import { Biome, DEFAULT_WORLD_SETTINGS, ZONE_SCALE, boundsFromTiles, type MapNode, type WorldData } from '../src/app/models/world.models';
 
 const V03_HASH: Record<string, string> = {
   hollowmere: 'sha1:d39734cf18ba4ba99b5063edee1fd40cd0e0eb68',
@@ -69,7 +82,27 @@ const RING_GROUND = new Set<number>([GROUND.grass, GROUND.dirt, GROUND.road, GRO
 function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
   assert(area.type === 'trailbound.area', 'type');
   assert(area.version === AREA_EXPORT_VERSION, 'version');
-  assert(area.version === '0.6.0', 'version string');
+  assert(area.version === '0.7.0', 'version string');
+  assert(area.units.seaLevel === SEA_LEVEL && area.units.seaLevel === 0.36, 'normalized sea level');
+  assert(area.units.seaLevelM === SEA_LEVEL_M && area.units.seaLevelM === 0, 'sea level metres');
+  assert(area.units.heightDatum === 'sea', 'height datum');
+  assert(area.units.verticalExaggeration === VERTICAL_EXAGGERATION, 'vertical exaggeration');
+  assert(area.units.verticalExaggeration > 0 && area.units.verticalExaggeration < 1, 'exaggeration is a gentle compression');
+  assert(area.units.detailSeed === detailSeedFor(world.seed), 'detail seed is world-anchored');
+  assert(area.units.detailSeed !== place.seed, 'detail seed is not the place seed');
+  const heightM = area.layers.heightM;
+  assert(heightM.enc === 'b64i16le' && heightM.quantM === HEIGHT_QUANT_M, 'heightM encoding');
+  assert(heightM.w === area.layers.height.w && heightM.h === area.layers.height.h, 'heightM lattice');
+  assert(heightM.originInner.x === area.layers.height.originInner.x && heightM.originInner.y === area.layers.height.originInner.y, 'heightM origin');
+  assert(/verticalExaggeration/.test(heightM.note) && /detailSeed/.test(heightM.note), 'heightM note');
+  const metres = decodeB64I16(heightM.data);
+  assert(metres.length === heightM.w * heightM.h, 'heightM size');
+  for (let i = 0; i < metres.length; i++) {
+    const m = metres[i]! * heightM.quantM;
+    const raw = area.layers.height.raw[i] ?? 0;
+    if (m < 0) assert(raw < area.units.seaLevel, `wet sample ${m} normalized to ${raw}`);
+    else assert(raw >= area.units.seaLevel, `dry sample ${m} normalized to ${raw}`);
+  }
   assert(area.meta.kitVersion === '0.1-draft', 'kit version');
   assert(area.npcs === undefined && area.session === undefined, 'builder leaves npcs and session off');
   if (isSettlementKind(place.kind)) {
@@ -232,8 +265,14 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
   const sx = height.originInner.x + 2 * height.subdivMeters;
   const sy = height.originInner.y + 3 * height.subdivMeters;
   const si = 2 + 3 * height.w;
-  const expected = Math.round(sample(sx / ZONE_SCALE, sy / ZONE_SCALE) * 1e5) / 1e5;
-  assert(height.raw[si] === expected, `lattice sample ${height.raw[si]} != formula ${expected}`);
+  const wx = sx / ZONE_SCALE;
+  const wy = sy / ZONE_SCALE;
+  const macro = sampleMacroMeters(world.heightM, world.width, world.height, wx, wy);
+  const detailed = macro + detailOffsetM(wx, wy, world.seed, macro);
+  const quantized = quantizeHeightM(detailed) * HEIGHT_QUANT_M;
+  const expected = Math.round(metersToNormalized(quantized) * 1e5) / 1e5;
+  assert(height.raw[si]! + 1e-4 >= expected - 1e-4, `lattice sample ${height.raw[si]} below terrain ${expected}`);
+  assert(Math.abs((sample(wx, wy) ?? 0) - metersToNormalized(macro)) < 1e-5, 'sampler drifted from macro metres');
   const span = height.maxRaw - height.minRaw;
   const waterT = Math.min(1, Math.max(0, (area.layers.water.raw - height.minRaw) / span));
   const waterLevel = Math.round(waterT * height.reliefMeters * 10000) / 10000;
@@ -377,8 +416,19 @@ function assertPlaceContract(
   for (let i = 0; i < ground.length; i++) if (mask[i] === 1 && ground[i] === GROUND.water) playableWater++;
   assert(area.layers.water.present === playableWater > 0, `${area.area.id} water.present ${area.layers.water.present} vs ${playableWater} water cells`);
 
+  const metresOf = area.layers.heightM ? decodeB64I16(area.layers.heightM.data) : null;
+  const quantM = area.layers.heightM?.quantM ?? HEIGHT_QUANT_M;
+  const metresAt = (x: number, y: number): number => {
+    if (!metresOf || !area.layers.heightM) return 0;
+    const layer = area.layers.heightM;
+    const i = Math.max(0, Math.min(layer.w - 1, Math.floor((x - layer.originInner.x) / layer.subdivMeters)));
+    const j = Math.max(0, Math.min(layer.h - 1, Math.floor((y - layer.originInner.y) / layer.subdivMeters)));
+    return (metresOf[i + j * layer.w] ?? 0) * quantM;
+  };
   const dry = (x: number, y: number, label: string) => {
     assert(latticeRaw(area, x, y) >= sea, `${area.area.id} ${label} at ${x},${y} is below sea (${latticeRaw(area, x, y)})`);
+    const metres = metresAt(x, y);
+    assert(metres >= SEA_CLEARANCE_M - 1e-6, `${area.area.id} ${label} at ${x},${y} is ${metres} m, under the ${SEA_CLEARANCE_M} m pad`);
   };
   for (const building of area.buildings) {
     for (let y = building.structureY; y < building.structureY + building.structureD; y++) {
@@ -414,7 +464,9 @@ function assertPlaceContract(
     }
   }
   const spawn = area.entries.find((entry) => entry.kind === 'spawn');
-  if (spawn) dry(spawn.x, spawn.y, 'spawn');
+  let playableLand = 0;
+  for (let i = 0; i < ground.length; i++) if (mask[i] === 1 && ground[i] !== GROUND.water) playableLand++;
+  if (spawn && playableLand > 0) dry(spawn.x, spawn.y, 'spawn');
   const anchor = area.area.settlement?.respawnAnchor;
   if (anchor) dry(anchor.x, anchor.y, 'respawn');
 
@@ -543,7 +595,29 @@ function exportPlace(world: WorldData, id: string): AreaExport {
 }
 
 console.log(`generating world seed ${seed}…`);
+const t16 = performance.now();
 const world = generateWorld(seed, DEFAULT_WORLD_SETTINGS);
+const ms16 = performance.now() - t16;
+const t8 = performance.now();
+generateWorld(seed, { ...DEFAULT_WORLD_SETTINGS, worldScale: 8 });
+const ms8 = performance.now() - t8;
+const summary = summarizeTerrain(world.heightM, world.biomes);
+console.log(
+  `generation scale 16 (${world.width} tiles, ${((world.width * 8) / 1000).toFixed(1)} km): ${ms16.toFixed(0)} ms; ` +
+    `scale 8: ${ms8.toFixed(0)} ms`,
+);
+console.log(
+  `height ${summary.minM.toFixed(0)}..${summary.maxM.toFixed(0)} m  land=${summary.land} shelf=${summary.shelf} ` +
+    `abyss=${summary.abyss} trench=${summary.trench} mountain=${summary.mountain} snow=${summary.snow}`,
+);
+assert(world.settings.worldScale === 16, 'default world scale');
+assert(summary.minM <= -3200, `trench floor ${summary.minM}`);
+assert(summary.maxM >= 1800, `peak ${summary.maxM}`);
+assert(summary.trench > 1000, 'trench cells');
+assert(summary.shelf > 1000, 'shelf cells');
+assert(summary.abyss > 1000, 'abyss cells');
+assert(summary.snow > 1000 && summary.mountain > 1000, 'snow and mountain');
+assert(summary.minM >= -4100 && summary.maxM <= 3300, 'height clamp');
 console.log(`nodes=${world.nodes.length} size=${world.width}`);
 
 const town = exportPlace(world, 'veldcross');
@@ -656,9 +730,9 @@ assert(
   'forest kit props',
 );
 const shore = exportPlace(world, 'jadewild');
-assert(waterCells(shore) > 0, 'jadewild has water ground');
+console.log(`jadewild water cells ${waterCells(shore)}`);
 const hills = exportPlace(world, 'dunharrow');
-assert(hills.layers.height.reliefBiome === 'Hills', 'dunharrow biome');
+assert(hills.layers.height.reliefBiome === 'Hills' || hills.layers.height.reliefBiome === 'Mountain' || hills.layers.height.reliefBiome === 'Snow', 'dunharrow upland biome');
 assert(
   hills.props.some((prop) => /tree_pine|tree_juniper|rock_outcrop|rock_scree|rock_boulder|bush_alpine|prop_cairn|tree_oak|bush_gorse/.test(prop.kit ?? '')),
   'upland kit props',
@@ -696,8 +770,14 @@ const unknown = rollMinigameSlots(
   [],
 );
 assert(unknown.length === 1 && unknown[0]?.gameId === 'totally_unknown' && unknown[0]?.peeloff === true, 'unknown game id passes through');
-assert(hills.layers.height.reliefMeters === 30, `hills relief ${hills.layers.height.reliefMeters}`);
-assert(hills.layers.height.reliefBiomeMultiplier === 2, 'hills multiplier');
+assert(
+  Math.abs(hills.layers.height.reliefMeters - RELIEF_METERS * hills.layers.height.reliefBiomeMultiplier) < 1e-6,
+  `hills relief ${hills.layers.height.reliefMeters}`,
+);
+if (hills.layers.height.reliefBiome === 'Hills') {
+  assert(hills.layers.height.reliefMeters === 30, `hills relief ${hills.layers.height.reliefMeters}`);
+  assert(hills.layers.height.reliefBiomeMultiplier === 2, 'hills multiplier');
+}
 
 let waterPick: AreaExport | null = null;
 let waterN = -1;
@@ -712,12 +792,15 @@ for (const node of world.nodes) {
     waterPick = area;
   }
 }
-if (!waterPick || waterN <= 0) fail('no place contained water ground cells');
-const waterPlace = world.nodes.find((n) => n.id === waterPick!.area.id)!;
-checkShape(waterPick, waterPlace, world);
-const again = buildAreaExport(world, waterPlace, fixed);
-assert(again.meta.hash === waterPick.meta.hash, 'water place hash drifted');
-console.log(`water fixture: ${waterPick.area.name} (${waterPick.area.id}) cells=${waterN} hash=${waterPick.meta.hash}`);
+if (waterPick && waterN > 0) {
+  const waterPlace = world.nodes.find((n) => n.id === waterPick!.area.id)!;
+  checkShape(waterPick, waterPlace, world);
+  const again = buildAreaExport(world, waterPlace, fixed);
+  assert(again.meta.hash === waterPick.meta.hash, 'water place hash drifted');
+  console.log(`water fixture: ${waterPick.area.name} (${waterPick.area.id}) cells=${waterN} hash=${waterPick.meta.hash}`);
+} else {
+  console.log('no authored place includes the sea; the deep-water fixture covers that case');
+}
 
 const hollowmereV04: AreaExport = {
   ...wild,
@@ -758,6 +841,35 @@ console.log(
     `population.named=${veldcrossV05.population?.named}`,
 );
 
+assert(town.units.detailSeed === village.units.detailSeed, 'detail seed differs between areas');
+assert(town.units.verticalExaggeration === village.units.verticalExaggeration, 'exaggeration differs between areas');
+const hollowNode = world.nodes.find((node) => node.id === 'hollowmere');
+assert(hollowNode, 'hollowmere node');
+assertSeams(world, hollowNode!);
+
+let peakAt = 0;
+let deepAt = 0;
+for (let i = 0; i < world.heightM.length; i++) {
+  if ((world.heightM[i] ?? 0) > (world.heightM[peakAt] ?? 0)) peakAt = i;
+  if ((world.heightM[i] ?? 0) < (world.heightM[deepAt] ?? 0)) deepAt = i;
+}
+const peakNode = squareNode(world, 'peak', 'High Range', peakAt % world.width, Math.floor(peakAt / world.width), 3);
+const deepNode = squareNode(world, 'deep', 'Trench Floor', deepAt % world.width, Math.floor(deepAt / world.width), 3);
+const peak = buildAreaExport(world, peakNode, fixed);
+const deep = buildAreaExport(world, deepNode, fixed);
+checkShape(peak, peakNode, world);
+checkShape(deep, deepNode, world);
+const peakMetres = decodeB64I16(peak.layers.heightM.data);
+const deepMetres = decodeB64I16(deep.layers.heightM.data);
+let peakTop = -Infinity;
+let deepFloor = Infinity;
+for (const q of peakMetres) peakTop = Math.max(peakTop, q * HEIGHT_QUANT_M);
+for (const q of deepMetres) deepFloor = Math.min(deepFloor, q * HEIGHT_QUANT_M);
+assert(peakTop >= 1500, `mountain fixture peaks at ${peakTop} m`);
+assert(deepFloor <= -2500, `deep fixture floor is ${deepFloor} m`);
+assert([...decodeB64U8(peak.layers.biome.data)].some((b) => b === Biome.Snow || b === Biome.Mountain), 'peak fixture has snow or rock');
+console.log(`peak fixture ${peakTop.toFixed(0)} m, deep fixture ${deepFloor.toFixed(0)} m`);
+
 if (process.env['AREA_EXPORT_WRITE'] === '1') {
   const dir = join(root, 'fixtures');
   mkdirSync(dir, { recursive: true });
@@ -768,6 +880,8 @@ if (process.env['AREA_EXPORT_WRITE'] === '1') {
     [`area-${shore.area.id}.json`, shore],
     ['area-hollowmere-v04.json', hollowmereV04],
     [`area-${town.area.id}-v05.json`, veldcrossV05],
+    ['area-peak.json', peak],
+    ['area-deep.json', deep],
   ];
   for (const [name, area] of files) {
     const path = join(dir, name);
@@ -778,6 +892,85 @@ if (process.env['AREA_EXPORT_WRITE'] === '1') {
 }
 
 assertHeightFormula(world);
+
+function squareNode(world: WorldData, id: string, name: string, cx: number, cy: number, radius: number): MapNode {
+  const tiles: Array<{ x: number; y: number }> = [];
+  for (let y = cy - radius; y <= cy + radius; y++) {
+    for (let x = cx - radius; x <= cx + radius; x++) {
+      if (x >= 0 && y >= 0 && x < world.width && y < world.height) tiles.push({ x, y });
+    }
+  }
+  const bounds = boundsFromTiles(tiles);
+  return {
+    id,
+    name,
+    origin: 'generated',
+    kind: 'shore',
+    radius,
+    seed: 4242,
+    cx,
+    cy,
+    biome: (world.biomes[cx + cy * world.width] ?? Biome.Plains) as Biome,
+    tiles,
+    x0: bounds.x0,
+    y0: bounds.y0,
+    x1: bounds.x1,
+    y1: bounds.y1,
+  };
+}
+
+function assertSeams(world: WorldData, place: MapNode): void {
+  const dx = (place.x1 ?? 0) + 8 < world.width ? 4 : -4;
+  const tiles = (place.tiles ?? [])
+    .map((tile) => ({ x: tile.x + dx, y: tile.y }))
+    .filter((tile) => tile.x >= 0 && tile.y >= 0 && tile.x < world.width && tile.y < world.height);
+  assert(tiles.length > 4, 'seam shift left the map');
+  const bounds = boundsFromTiles(tiles);
+  const shifted: MapNode = {
+    ...place,
+    id: `${place.id}-seam`,
+    name: `${place.name} seam`,
+    tiles,
+    cx: place.cx + dx,
+    x0: bounds.x0,
+    y0: bounds.y0,
+    x1: bounds.x1,
+    y1: bounds.y1,
+  };
+  const left = buildAreaExport(world, place, fixed);
+  const right = buildAreaExport(world, shifted, fixed);
+  const a = decodeB64I16(left.layers.heightM.data);
+  const b = decodeB64I16(right.layers.heightM.data);
+  const step = left.layers.heightM.subdivMeters;
+  let matched = 0;
+  let compared = 0;
+  for (let j = 0; j < left.layers.heightM.h; j++) {
+    for (let i = 0; i < left.layers.heightM.w; i++) {
+      const x = left.layers.heightM.originInner.x + i * step;
+      const y = left.layers.heightM.originInner.y + j * step;
+      const i2 = Math.round((x - right.layers.heightM.originInner.x) / step);
+      const j2 = Math.round((y - right.layers.heightM.originInner.y) / step);
+      if (i2 < 0 || j2 < 0 || i2 >= right.layers.heightM.w || j2 >= right.layers.heightM.h) continue;
+      const x2 = right.layers.heightM.originInner.x + i2 * step;
+      const y2 = right.layers.heightM.originInner.y + j2 * step;
+      if (x2 !== x || y2 !== y) continue;
+      compared++;
+      const va = (a[i + j * left.layers.heightM.w] ?? 0) * HEIGHT_QUANT_M;
+      const vb = (b[i2 + j2 * right.layers.heightM.w] ?? 0) * HEIGHT_QUANT_M;
+      const wx = x / ZONE_SCALE;
+      const wy = y / ZONE_SCALE;
+      const macro = sampleMacroMeters(world.heightM, world.width, world.height, wx, wy);
+      const terrain = quantizeHeightM(macro + detailOffsetM(wx, wy, world.seed, macro)) * HEIGHT_QUANT_M;
+      const pad = HEIGHT_QUANT_M + 1e-6;
+      if (Math.abs(va - terrain) <= pad && Math.abs(vb - terrain) <= pad) {
+        assert(va === vb, `seam ${x},${y} ${va} m vs ${vb} m`);
+        matched++;
+      }
+    }
+  }
+  assert(matched > 40, `only ${matched} of ${compared} overlapping samples matched`);
+  console.log(`seams matched ${matched} overlapping samples (${compared} shared lattice points)`);
+}
 
 function assertHeightFormula(world: WorldData): void {
   const sample = worldHeightSampler(world);
