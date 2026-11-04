@@ -1,12 +1,13 @@
 /**
- * AreaExport v0.7 — deterministic place payload for the Trailbound controller.
+ * AreaExport v0.8 — deterministic place payload for the Trailbound controller.
  * Engine-only (no Angular). Types in this file are the schema source of truth.
  *
  * Street chunks are baked here in (y, x) order, twice, so shared edges do not
  * depend on which neighbour the live session happened to generate first.
  * v0.3 adds a visual border ring and a 2 m height lattice. v0.7 adds world
- * metres (`layers.heightM`) beside the v0.6 normalized remap. Readers that
- * only know v0.6 ignore the new fields and keep using `layers.height`.
+ * metres (`layers.heightM`) beside the v0.6 normalized remap. v0.8 adds
+ * `population.crowd` (roles and weights only). Readers that only know v0.7
+ * ignore `crowd` and keep the census fields.
  */
 import {
   Biome,
@@ -60,10 +61,11 @@ import {
 import { settlementPlan, type SettlementPlan } from './layout-v2';
 import { rollMinigameSlots, type MinigameSlot } from './minigame-slots';
 import { dressCell, isVegetation, labelLegacy, vegetationBudget } from './wild-props';
-import { SURFACE_LEGEND } from './settlement-tiers';
+import { crowdWater, placeCrowd, type CrowdBlock } from './crowd-mix';
+import { SURFACE_LEGEND, tierForKind } from './settlement-tiers';
 
-/** Schema version. The major version is still 0. v0.6 readers ignore unknown fields. */
-export const AREA_EXPORT_VERSION = '0.7.0';
+/** Schema version. The major version is still 0. v0.7 readers ignore `population.crowd`. */
+export const AREA_EXPORT_VERSION = '0.8.0';
 /**
  * Visual continuation around the playable place, in world tiles.
  * 4 × ZONE_SCALE = 32 inner tiles = 32 m on each side. Not walkable.
@@ -84,7 +86,7 @@ export const HEIGHT_PERCENTILE_HI = 0.98;
 /** Extra fraction of the span added on each side of the remap window. */
 export const HEIGHT_RANGE_PAD = 0.05;
 /** Date stamped into `source.build` (not a git sha). */
-export const AREA_EXPORT_BUILD = '2026-11-03';
+export const AREA_EXPORT_BUILD = '2026-11-04';
 /** Kit manifest the building and prop names were taken from. */
 export const KIT_VERSION = '0.1-draft';
 /** Alex: 1 inner tile = 1 metre. */
@@ -363,9 +365,9 @@ export interface AreaExport {
   /** Set only for a live session. Omitted from `meta.hash`. */
   session?: { sid: string; live: 1 };
   /**
-   * Town census. Present for a city, town, or hamlet. Included in `meta.hash`.
+   * Town census. Present for a city, town, village, or hamlet. Included in `meta.hash`.
    * Older readers ignore it. Named residents are not crowd members:
-   * crowd = max(0, count − named).
+   * crowd = max(0, count − named). v0.8 adds `population.crowd` on the same places.
    */
   population?: AreaPopulation;
   meta: {
@@ -551,7 +553,14 @@ export interface AreaPopulation {
   homes: number[];
   /** Plaza, market, tavern door, and well points in area metres (y down). */
   hotspots: { x: number; y: number }[];
+  /**
+   * Role mix for the local crowd. World data only (no recipes).
+   * Same places as `population`. Older readers ignore it.
+   */
+  crowd: CrowdBlock;
 }
+
+export type { CrowdBlock as AreaCrowd };
 
 export interface AreaExportOptions {
   /** Stored on meta. Not part of the content hash. */
@@ -582,6 +591,7 @@ const NOTES = [
   'population is the town census for a city, town, village, or hamlet, and it is part of meta.hash. count = round(avg × (the dwelling count when mode is perHouse, otherwise 1) × a seeded ±25% jitter from the world seed and place id). The jitter does not use the sim RNG. named is the count of named residents (real map entities) for this place, so crowd = max(0, count − named) does not depend on npcs. homes lists dwelling building indexes, repeated once per 30 m² of structure. hotspots are the plaza centre, market stands, tavern doors, and wells in area metres (offset from innerOrigin, y down). The named residents are not part of the crowd. A missing population field means there is no crowd; v0.4 readers ignore the field.',
   'v0.6 is additive. buildings[].type stays the legacy sprite (shop, tavern, cottage-1, …). specialty is the §5 id and kit is the manifest name. layers.biome id 7 is Badlands; legendAliases.Heath is Badlands for one version. Ids 15–26 are reserved names and are not emitted yet. layers.surface, area.settlement, zones, segments, minigameSlots, and meta.kitVersion are new. A camp, hamlet, village, town, or city writes area.settlement with variant default. City layout is the town row until the city tier is built. minigameSlots are deterministic and part of the hash. Schedules are hours. peeloff is set on wild slots and ford_crossing.',
   'v0.7 is additive. layers.height.raw, minRaw, maxRaw, and reliefMeters are unchanged in meaning: a v0.6 reader still remaps raw into reliefMeters and compares raw with units.seaLevel. layers.heightM is the same lattice in world metres (sea level 0). units.seaLevelM is 0, units.heightDatum is sea, units.verticalExaggeration is the single playable scale (apply it to heightM; do not refit per area), and units.detailSeed is the world-anchored detail seed. Playable height is heightM times verticalExaggeration.',
+  'v0.8 is additive. population.crowd is { profile: "trailbound", seed, mix, culture: null, tier } on a city, town, village, or hamlet. mix rows are { role, w } in role order. w is a multiple of 0.001 and the thousandths sum to 1000. Roles are farmer, merchant, smith, guard, sailor, fisher, noble, pioneer, laborer, crafter. Nobles are omitted below town. Sailor and fisher are omitted unless the place has open water, a Sand coast, a Marsh river, or a dock, quay, wharf, harbour, pier, or port building. crowd.seed is FNV-1a 32 of utf8("crowd"), 0, little-endian uint32 world seed, 0, utf8(place id), then xor-folded (h ^ h>>>16), or 1 when that fold is 0. It does not use the sim RNG. Crowd member i (from 0) is the same FNV-1a of little-endian crowd.seed then little-endian i, xor-folded the same way. The census formula is unchanged. A grove or camp still omits population. Older readers ignore crowd.',
 ];
 
 const HEIGHT_NOTE =
@@ -1159,6 +1169,9 @@ function settlementPopulation(
   opts: AreaExportOptions,
 ): AreaPopulation | undefined {
   if (!isSettlementKind(place.kind)) return undefined;
+  const tier = tierForKind(place.kind);
+  if (!tier) return undefined;
+  const listed = buildings.map((building) => ({ specialty: building.specialty, kit: building.kit }));
   const defaults: ResidentDefaults = opts.residents ?? {
     residentsMode: world.settings.residentsMode === 'perHouse' ? 'perHouse' : 'perPlace',
     avgPerHouse: world.settings.avgPerHouse,
@@ -1185,6 +1198,13 @@ function settlementPopulation(
       buildings,
       props,
       plaza: plazaCenter(originX, originY, gw, gh, mask, ground),
+    }),
+    crowd: placeCrowd({
+      worldSeed: world.seed,
+      placeId: place.id,
+      tier,
+      buildings: listed,
+      water: crowdWater(world, place, listed),
     }),
   };
 }
@@ -1230,7 +1250,7 @@ export function bakeAreaChunks(world: WorldData, tiles: Vec2[]): Map<string, Chu
 /**
  * sha1 of the canonical payload. `exportedAt`, `timeOfDayHours`, `hash`, `npcs`,
  * and `session` are omitted, so a live snapshot does not change the place hash.
- * `population` is included: a new resident count changes the hash.
+ * `population` is included: a new resident count or crowd mix changes the hash.
  */
 export function contentHash(area: AreaExport): string {
   const copy = JSON.parse(JSON.stringify(area)) as AreaExport;

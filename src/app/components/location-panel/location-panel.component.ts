@@ -1,7 +1,9 @@
 import { Component, computed, inject } from '@angular/core';
 import { MatChipsModule } from '@angular/material/chips';
+import { crowdMixSummary, crowdWater, placeCrowd } from '../../engine/crowd-mix';
 import { residentCountFor } from '../../engine/entities';
 import { formatMeters } from '../../engine/height-view';
+import { settlementPlan } from '../../engine/layout-v2';
 import {
   crowdSize,
   countDwellings,
@@ -9,6 +11,7 @@ import {
   residentCensus,
   resolveResidentParams,
 } from '../../engine/residents';
+import { tierForKind } from '../../engine/settlement-tiers';
 import { ENTITY_LABELS, POI_LABELS, ResidentsMode, minScaleFor, zoomProgress } from '../../models/world.models';
 import { WorldService } from '../../services/world.service';
 
@@ -76,6 +79,9 @@ import { WorldService } from '../../services/world.service';
             }
             · crowd {{ row.crowd }} · {{ row.named }} named
           </p>
+          @if (row.mix) {
+            <p class="mix">{{ row.mix }}</p>
+          }
         </div>
       }
       @if (heard(); as line) {
@@ -241,12 +247,14 @@ import { WorldService } from '../../services/world.service';
       margin: 0 0 0.35rem;
     }
     .note,
-    .count {
+    .count,
+    .mix {
       margin: 0.12rem 0 0;
       font-size: 0.78rem;
       line-height: 1.35;
     }
-    .note {
+    .note,
+    .mix {
       color: var(--tb-muted);
     }
     .avg {
@@ -341,6 +349,22 @@ export class LocationPanelComponent {
       avg: params.avg,
       houses,
     });
+    const tier = tierForKind(place.kind);
+    const listed = (settlementPlan(world, place)?.buildings ?? []).map((building) => ({
+      specialty: building.specialty,
+      kit: building.kit,
+    }));
+    const mix = tier
+      ? crowdMixSummary(
+          placeCrowd({
+            worldSeed: world.seed,
+            placeId: place.id,
+            tier,
+            buildings: listed,
+            water: crowdWater(world, place, listed),
+          }).mix,
+        )
+      : '';
     return {
       id: place.id,
       override,
@@ -350,6 +374,7 @@ export class LocationPanelComponent {
       named,
       count,
       crowd: crowdSize(count, named),
+      mix,
     };
   });
 
