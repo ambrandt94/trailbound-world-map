@@ -1,5 +1,5 @@
 /**
- * Determinism check and fixture writer for AreaExport v0.5.
+ * Determinism check and fixture writer for AreaExport v0.8.
  *   npx tsx scripts/area-export-check.ts
  * Writes fixtures/ when AREA_EXPORT_WRITE=1.
  */
@@ -7,6 +7,16 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  CROWD_ROLES,
+  TIER_BASE,
+  crowdMemberSeed,
+  crowdSeed,
+  crowdWater,
+  placeCrowd,
+  type CrowdRole,
+  type CrowdWater,
+} from '../src/app/engine/crowd-mix';
 import { residentCountFor, spawnEntities, spawnResidents } from '../src/app/engine/entities';
 import { forcedFixtureNpcs, snapshotNpcs } from '../src/app/engine/live-link';
 import { countDwellings, crowdSize, isDwellingType, isSettlementKind, residentCensus } from '../src/app/engine/residents';
@@ -42,7 +52,7 @@ import {
   summarizeTerrain,
 } from '../src/app/engine/terrain';
 import { rollMinigameSlots, type MinigameRule } from '../src/app/engine/minigame-slots';
-import { ROW_LINK_M, SIDE_YARD_M, TERRACE_RUN_MAX, tierPlacement, type SettlementTierId } from '../src/app/engine/settlement-tiers';
+import { ROW_LINK_M, SIDE_YARD_M, TERRACE_RUN_MAX, tierForKind, tierPlacement, type SettlementTierId } from '../src/app/engine/settlement-tiers';
 import { Biome, DEFAULT_WORLD_SETTINGS, ZONE_SCALE, boundsFromTiles, type MapNode, type WorldData } from '../src/app/models/world.models';
 
 const V03_HASH: Record<string, string> = {
@@ -82,7 +92,8 @@ const RING_GROUND = new Set<number>([GROUND.grass, GROUND.dirt, GROUND.road, GRO
 function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
   assert(area.type === 'trailbound.area', 'type');
   assert(area.version === AREA_EXPORT_VERSION, 'version');
-  assert(area.version === '0.7.0', 'version string');
+  assert(area.version === '0.8.0', 'version string');
+  assert(area.meta.notes.some((line) => line.startsWith('v0.8 ')), 'v0.8 note');
   assert(area.units.seaLevel === SEA_LEVEL && area.units.seaLevel === 0.36, 'normalized sea level');
   assert(area.units.seaLevelM === SEA_LEVEL_M && area.units.seaLevelM === 0, 'sea level metres');
   assert(area.units.heightDatum === 'sea', 'height datum');
@@ -129,6 +140,7 @@ function checkShape(area: AreaExport, place: MapNode, world: WorldData): void {
       assert(Number.isFinite(spot.x) && Number.isFinite(spot.y), 'hotspot');
       assert(spot.x >= 0 && spot.y >= 0 && spot.x <= area.grid.w && spot.y <= area.grid.h, `hotspot outside area ${spot.x},${spot.y}`);
     }
+    assertCrowdPayload(area, place, world);
   } else {
     assert(area.population === undefined, `${place.id} should omit population`);
   }
@@ -594,6 +606,179 @@ function exportPlace(world: WorldData, id: string): AreaExport {
   return a;
 }
 
+function assertWaterSignals(world: WorldData, town: AreaExport): void {
+  const place = world.nodes.find((node) => node.id === 'veldcross');
+  assert(place?.tiles?.length, 'Ironmarch tiles');
+  if (!place?.tiles) return;
+  const listed = town.buildings.map((building) => ({ specialty: building.specialty, kit: building.kit }));
+  const dry = crowdWater(world, place, listed);
+  assert(!dry.shore && !dry.coast && !dry.river && !dry.harbour, 'Ironmarch water signals');
+  const coast = crowdWater(world, { ...place, biome: Biome.Sand }, listed);
+  assert(coast.coast && !coast.shore, 'Sand site is a coast');
+  const coastal = placeCrowd({
+    worldSeed: world.seed,
+    placeId: place.id,
+    tier: 'town',
+    buildings: listed,
+    water: coast,
+  });
+  assert(coastal.seed === town.population?.crowd.seed, 'a coast does not change crowd.seed');
+  assert(weightOf(coastal.mix, 'sailor') > weightOf(coastal.mix, 'fisher') && weightOf(coastal.mix, 'fisher') > 0, 'coastal town');
+  const riverWater = crowdWater(world, { ...place, biome: Biome.Marsh }, listed);
+  assert(riverWater.river && !riverWater.shore && !riverWater.coast, 'Marsh site is a river');
+  const river = placeCrowd({
+    worldSeed: world.seed,
+    placeId: place.id,
+    tier: 'town',
+    buildings: listed,
+    water: riverWater,
+  });
+  assert(weightOf(river.mix, 'fisher') > 0 && weightOf(river.mix, 'sailor') === 0, 'river town');
+  const edge = place.tiles.find((tile) => {
+    const x = tile.x + 1;
+    if (x >= world.width) return false;
+    return !place.tiles.some((other) => other.x === x && other.y === tile.y);
+  });
+  assert(edge, 'Ironmarch east edge');
+  if (!edge) return;
+  const biomes = world.biomes.slice();
+  biomes[edge.x + 1 + edge.y * world.width] = Biome.Water;
+  const shore = crowdWater({ ...world, biomes }, place, listed);
+  assert(shore.shore, 'adjacent Water is a shore');
+  const quay = { specialty: 'quay', kit: 'bld_work_quay_coastal_6x9' };
+  const harbour = crowdWater(world, place, [...listed, quay]);
+  assert(harbour.harbour && !harbour.shore, 'quay kit is a harbour');
+  const port = placeCrowd({
+    worldSeed: world.seed,
+    placeId: place.id,
+    tier: 'town',
+    buildings: [...listed, quay],
+    water: harbour,
+  });
+  assert(weightOf(port.mix, 'sailor') > weightOf(coastal.mix, 'sailor'), 'harbour adds sailors');
+  const show = (mix: ReadonlyArray<{ role: string; w: number }>) =>
+    mix
+      .filter((row) => row.role === 'sailor' || row.role === 'fisher')
+      .map((row) => `${row.role} ${row.w}`)
+      .join(', ');
+  console.log(`  water signals coast: ${show(coastal.mix)}; river: ${show(river.mix)}; harbour: ${show(port.mix)}`);
+}
+
+function weightOf(mix: ReadonlyArray<{ role: string; w: number }>, role: string): number {
+  return mix.find((row) => row.role === role)?.w ?? 0;
+}
+
+function assertCrowdPayload(area: AreaExport, place: MapNode, world: WorldData): void {
+  const pop = area.population;
+  assert(pop?.crowd, `${place.id} missing crowd`);
+  if (!pop?.crowd) return;
+  const crowd = pop.crowd;
+  assert(crowd.profile === 'trailbound', 'crowd profile');
+  assert(crowd.culture === null, 'crowd culture');
+  const tier = tierForKind(place.kind);
+  assert(tier !== null && crowd.tier === tier, `${place.id} crowd tier ${crowd.tier}`);
+  assert(area.area.settlement?.tier === crowd.tier, `${place.id} crowd tier disagrees with settlement`);
+  assert(crowd.seed === crowdSeed(world.seed, place.id), `${place.id} crowd seed`);
+  assert(crowd.seed > 0 && crowd.seed === (crowd.seed >>> 0), `${place.id} crowd seed range`);
+  let milli = 0;
+  let prev = -1;
+  for (const row of crowd.mix) {
+    assert((CROWD_ROLES as readonly string[]).includes(row.role), `${place.id} role ${row.role}`);
+    const index = CROWD_ROLES.indexOf(row.role as CrowdRole);
+    assert(index > prev, `${place.id} mix order`);
+    prev = index;
+    const part = Math.round(row.w * 1000);
+    assert(part > 0 && Math.abs(row.w * 1000 - part) < 1e-6, `${place.id} weight ${row.role} ${row.w}`);
+    milli += part;
+  }
+  assert(milli === 1000, `${place.id} mix thousandths ${milli}`);
+  const listed = area.buildings.map((building) => ({ specialty: building.specialty, kit: building.kit }));
+  const water = crowdWater(world, place, listed);
+  const rebuilt = placeCrowd({
+    worldSeed: world.seed,
+    placeId: place.id,
+    tier: tier!,
+    buildings: listed,
+    water,
+  });
+  assert(JSON.stringify(rebuilt) === JSON.stringify(crowd), `${place.id} crowd drifted from the rule table`);
+  const sailor = weightOf(crowd.mix, 'sailor');
+  const fisher = weightOf(crowd.mix, 'fisher');
+  const noble = weightOf(crowd.mix, 'noble');
+  const open = water.shore || water.coast || water.harbour;
+  if (!open && !water.river) assert(sailor === 0 && fisher === 0, `${place.id} inland water roles`);
+  if (!open) assert(sailor === 0, `${place.id} sailor without a coast or harbour`);
+  if (open) assert(sailor > 0 && fisher > 0, `${place.id} water access missing sailor or fisher`);
+  else if (water.river) assert(fisher > 0, `${place.id} river missing fishers`);
+  if (tier === 'hamlet' || tier === 'village') assert(noble === 0, `${place.id} noble below town`);
+  if (tier === 'town' || tier === 'city' || tier === 'capital') assert(noble > 0, `${place.id} missing nobles`);
+  if (tier === 'hamlet') assert(weightOf(crowd.mix, 'guard') === 0, `${place.id} hamlet guard`);
+  if (tier === 'village' || tier === 'town' || tier === 'city' || tier === 'capital') {
+    assert(weightOf(crowd.mix, 'guard') > 0, `${place.id} guard`);
+  }
+  if (tier === 'hamlet' || tier === 'village') {
+    const lean = weightOf(crowd.mix, 'farmer') + weightOf(crowd.mix, 'laborer') + weightOf(crowd.mix, 'pioneer');
+    assert(lean >= 0.45, `${place.id} farmer/laborer/pioneer lean ${lean.toFixed(3)}`);
+  }
+  const stripped = JSON.parse(JSON.stringify(area)) as AreaExport;
+  if (stripped.population) delete (stripped.population as { crowd?: unknown }).crowd;
+  assert(contentHash(stripped) !== area.meta.hash, `${place.id} crowd is outside the hash`);
+  const flags = [
+    water.shore ? 'shore' : '',
+    water.coast ? 'coast' : '',
+    water.river ? 'river' : '',
+    water.harbour ? 'harbour' : '',
+  ].filter(Boolean);
+  console.log(
+    `  crowd ${place.name}: ${crowd.mix.map((row) => `${row.role} ${row.w}`).join(', ')}` +
+      ` seed=${crowd.seed} water=${flags.join('+') || 'inland'}`,
+  );
+}
+
+function assertCrowdTable(): void {
+  for (const tier of ['camp', 'hamlet', 'village', 'town', 'city', 'capital'] as const) {
+    let sum = 0;
+    for (const role of CROWD_ROLES) sum += TIER_BASE[tier][role] ?? 0;
+    assert(sum === 1000, `${tier} base sums to ${sum}`);
+  }
+  const dry: CrowdWater = { shore: false, coast: false, river: false, harbour: false };
+  const at = (tier: SettlementTierId, water: CrowdWater, role: CrowdRole, buildings: { specialty?: string }[] = []) =>
+    weightOf(placeCrowd({ worldSeed: 7741, placeId: 'sample', tier, buildings, water }).mix, role);
+  assert(at('hamlet', dry, 'noble') === 0 && at('village', dry, 'noble') === 0, 'nobles below town');
+  assert(at('town', dry, 'noble') > 0 && at('town', dry, 'noble') < at('city', dry, 'noble'), 'noble scale town to city');
+  assert(at('city', dry, 'noble') < at('capital', dry, 'noble'), 'noble scale city to capital');
+  assert(at('hamlet', dry, 'guard') === 0, 'hamlet guard');
+  assert(at('village', dry, 'guard') < at('town', dry, 'guard'), 'guard scale village to town');
+  assert(at('town', dry, 'guard') < at('city', dry, 'guard'), 'guard scale town to city');
+  assert(at('city', dry, 'guard') < at('capital', dry, 'guard'), 'guard scale city to capital');
+  const hamletLean = at('hamlet', dry, 'farmer') + at('hamlet', dry, 'laborer') + at('hamlet', dry, 'pioneer');
+  const villageLean = at('village', dry, 'farmer') + at('village', dry, 'laborer') + at('village', dry, 'pioneer');
+  assert(hamletLean >= 0.9 && villageLean >= 0.7 && hamletLean > villageLean, `bare lean ${hamletLean} ${villageLean}`);
+  const shore: CrowdWater = { shore: true, coast: false, river: false, harbour: false };
+  assert(at('town', shore, 'sailor') > 0 && at('town', shore, 'fisher') > 0, 'shore roles');
+  assert(at('town', dry, 'sailor') === 0 && at('town', dry, 'fisher') === 0, 'inland has no sailor or fisher');
+  const river: CrowdWater = { shore: false, coast: false, river: true, harbour: false };
+  assert(at('village', river, 'fisher') > 0 && at('village', river, 'sailor') === 0, 'river is fishers');
+  const coast: CrowdWater = { shore: false, coast: true, river: false, harbour: false };
+  assert(at('city', coast, 'sailor') > at('city', coast, 'fisher'), 'a coastal city leans sailor');
+  const harbour: CrowdWater = { shore: false, coast: false, river: false, harbour: true };
+  assert(at('town', harbour, 'sailor') > at('town', shore, 'sailor'), 'a harbour adds sailors');
+  assert(at('hamlet', dry, 'smith', [{ specialty: 'smithy' }]) > at('hamlet', dry, 'smith'), 'smithy bump');
+  assert(at('hamlet', dry, 'farmer', [{ specialty: 'barn' }]) > at('hamlet', dry, 'farmer'), 'barn bump');
+  assert(at('village', dry, 'noble', [{ specialty: 'manor' }]) === 0, 'a village manor does not add nobles');
+  assert(at('town', dry, 'noble', [{ specialty: 'manor' }]) > at('town', dry, 'noble'), 'a town manor adds nobles');
+  assert(crowdSeed(7741, 'veldcross') === 3689121389, 'Ironmarch crowd seed');
+  assert(crowdMemberSeed(3689121389, 0) === 2634054944, 'member 0');
+  assert(crowdMemberSeed(3689121389, 1) === 3979211292, 'member 1');
+  assert(crowdMemberSeed(3689121389, 2) === 1029268251, 'member 2');
+  assert(crowdSeed(7741, 'sunspire') === 1713742167, 'Sunspire crowd seed');
+  assert(crowdSeed(7741, 'veldcross') !== crowdSeed(7742, 'veldcross'), 'world seed changes the crowd seed');
+  assert(crowdMemberSeed(3689121389, 0) !== crowdMemberSeed(3689121389, 1), 'member index changes the seed');
+  console.log('crowd table ok');
+}
+
+assertCrowdTable();
+
 console.log(`generating world seed ${seed}…`);
 const t16 = performance.now();
 const world = generateWorld(seed, DEFAULT_WORLD_SETTINGS);
@@ -659,6 +844,24 @@ assertSettlement(town, 'town', 25, 80);
 const village = exportPlace(world, 'sunspire');
 assert(village.area.kind === 'village', 'sunspire is a village');
 assertSettlement(village, 'village', 8, 25);
+assert(weightOf(village.population?.crowd.mix ?? [], 'noble') === 0, 'sunspire nobles');
+assert(weightOf(village.population?.crowd.mix ?? [], 'sailor') === 0, 'sunspire is inland');
+const saltgate = exportPlace(world, 'saltgate');
+assert(saltgate.area.kind === 'city', 'saltgate is a city');
+assert(saltgate.population?.crowd.tier === 'city', 'saltgate crowd tier stays city');
+assert(
+  weightOf(town.population?.crowd.mix ?? [], 'guard') > weightOf(village.population?.crowd.mix ?? [], 'guard'),
+  'Ironmarch guard outweighs Sunspire',
+);
+assert(
+  weightOf(saltgate.population?.crowd.mix ?? [], 'noble') > weightOf(town.population?.crowd.mix ?? [], 'noble'),
+  'Saltgate nobles outweigh Ironmarch',
+);
+assert(
+  weightOf(saltgate.population?.crowd.mix ?? [], 'guard') > weightOf(town.population?.crowd.mix ?? [], 'guard'),
+  'Saltgate guard outweighs Ironmarch',
+);
+assertWaterSignals(world, town);
 assert([...decodeB64U8(town.layers.ground.data)].some((v) => v === GROUND.yard), 'town has yard ground');
 function assertSettlement(area: AreaExport, tier: string, minBuildings: number, maxBuildings: number): void {
   const settlement = area.area.settlement;
