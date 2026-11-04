@@ -1,11 +1,12 @@
 /**
- * AreaExport v0.5 — deterministic place payload for the Trailbound controller.
+ * AreaExport v0.7 — deterministic place payload for the Trailbound controller.
  * Engine-only (no Angular). Types in this file are the schema source of truth.
  *
  * Street chunks are baked here in (y, x) order, twice, so shared edges do not
  * depend on which neighbour the live session happened to generate first.
- * v0.3 adds a visual border ring and a 2 m height lattice sampled from the
- * world-gen FBM. New fields are always written; 0.2 readers should ignore them.
+ * v0.3 adds a visual border ring and a 2 m height lattice. v0.7 adds world
+ * metres (`layers.heightM`) beside the v0.6 normalized remap. Readers that
+ * only know v0.6 ignore the new fields and keep using `layers.height`.
  */
 import {
   Biome,
@@ -47,14 +48,22 @@ import {
   type ResidentDefaults,
   type ResidentOverride,
 } from './residents';
-import { worldHeightSampler } from './world-gen';
+import {
+  NORMALIZED_SEA_LEVEL,
+  SEA_LEVEL_M,
+  VERTICAL_EXAGGERATION,
+  detailOffsetM,
+  detailSeedFor,
+  sampleMacroMeters,
+  metersToNormalized,
+} from './terrain';
 import { settlementPlan, type SettlementPlan } from './layout-v2';
 import { rollMinigameSlots, type MinigameSlot } from './minigame-slots';
 import { dressCell, isVegetation, labelLegacy, vegetationBudget } from './wild-props';
 import { SURFACE_LEGEND } from './settlement-tiers';
 
-/** Schema version. The controller rejects an unknown major version. */
-export const AREA_EXPORT_VERSION = '0.6.0';
+/** Schema version. The major version is still 0. v0.6 readers ignore unknown fields. */
+export const AREA_EXPORT_VERSION = '0.7.0';
 /**
  * Visual continuation around the playable place, in world tiles.
  * 4 × ZONE_SCALE = 32 inner tiles = 32 m on each side. Not walkable.
@@ -75,25 +84,34 @@ export const HEIGHT_PERCENTILE_HI = 0.98;
 /** Extra fraction of the span added on each side of the remap window. */
 export const HEIGHT_RANGE_PAD = 0.05;
 /** Date stamped into `source.build` (not a git sha). */
-export const AREA_EXPORT_BUILD = '2026-10-29';
+export const AREA_EXPORT_BUILD = '2026-11-03';
 /** Kit manifest the building and prop names were taken from. */
 export const KIT_VERSION = '0.1-draft';
 /** Alex: 1 inner tile = 1 metre. */
 export const METERS_PER_TILE = 1;
 /**
- * Normalized sea reference used when an area has no Water world tile.
- * world-gen treats height < 0.33 as water before style overrides; 0.36 matches
- * the approved contract's seaLevel field.
+ * Normalized sea level. The same constant world-gen writes into `heights`
+ * when `heightM` is 0, so classification and export agree.
  */
-export const SEA_LEVEL = 0.36;
+export const SEA_LEVEL = NORMALIZED_SEA_LEVEL;
 /**
- * Normalized height added above sea level when a settlement pad is raised.
- * Small on purpose: the controller compares raw height to `seaLevel`.
+ * Legacy normalized pad delta. The pad itself is `SEA_CLEARANCE_M` metres.
+ * Kept so older notes and imports still name the constant.
  */
 export const SEA_CLEARANCE = 0.012;
 /**
+ * Lots, roads, zones, the spawn, and the respawn sit at least this far above sea level.
+ * Sea level is 0 m. One water body (the sea) until hydrology lands.
+ */
+export const SEA_CLEARANCE_M = 0.6;
+/**
+ * `layers.heightM` sample size. Int16 decimetres only reach ±3,276.8 m, short of
+ * the −4,000 m trench floor, so the lattice is stored in 0.2 m steps.
+ */
+export const HEIGHT_QUANT_M = 0.2;
+/**
  * Local relief span for an area before the per-biome multiplier.
- * The continental elevation readout (ELEVATION_SPAN_M, ×3200) is not used.
+ * v0.7 playable metres are `layers.heightM` times `units.verticalExaggeration`, not this span.
  */
 export const RELIEF_METERS = 15;
 /** How many fixed-order chunk passes to run so edges see their neighbours. */
@@ -231,7 +249,22 @@ export interface AreaExport {
     metersPerTile: number;
     upAxis: 'y';
     gridAxes: 'x-right,y-down';
+    /** Normalized sea level for v0.6 readers. Matches `layers.height` raw, not metres. */
     seaLevel: number;
+    /** Metres. Sea level is 0 everywhere. v0.6 readers ignore this. */
+    seaLevelM: number;
+    /** Datum for `layers.heightM` and `seaLevelM`. */
+    heightDatum: 'sea';
+    /**
+     * Multiply `layers.heightM` by this to get playable world-Y. One value for every
+     * area of every world. Do not refit it per area.
+     */
+    verticalExaggeration: number;
+    /**
+     * Seed for detail noise. Derived from the world seed, never from the area id,
+     * so two areas that sample the same world coordinate share the detail.
+     */
+    detailSeed: number;
   };
   grid: {
     w: number;
@@ -275,9 +308,24 @@ export interface AreaExport {
       reliefBiome: string;
       reliefMeters: number;
       /** Optional micro-relief amplitude in metres. Not included in `raw`. */
-      detailMeters: number;
-      note: string;
-    };
+        detailMeters: number;
+        note: string;
+      };
+      /**
+       * Same lattice as `height`, in world metres (sea level 0). v0.6 readers ignore it.
+       * `data` is little-endian int16, metres = sample * `quantM`.
+       */
+      heightM: {
+        sampling: 'world-subdiv';
+        subdivMeters: number;
+        w: number;
+        h: number;
+        originInner: { x: number; y: number };
+        enc: 'b64i16le';
+        quantM: number;
+        data: string;
+        note: string;
+      };
     /** Road / plaza / park surface, one byte per inner tile. v0.5 readers keep using `ground`. */
     surface: EncodedU8;
     water: {
@@ -533,16 +581,25 @@ const NOTES = [
   'meta.exportedAt, meta.timeOfDayHours, npcs, and session are excluded from meta.hash.',
   'population is the town census for a city, town, village, or hamlet, and it is part of meta.hash. count = round(avg × (the dwelling count when mode is perHouse, otherwise 1) × a seeded ±25% jitter from the world seed and place id). The jitter does not use the sim RNG. named is the count of named residents (real map entities) for this place, so crowd = max(0, count − named) does not depend on npcs. homes lists dwelling building indexes, repeated once per 30 m² of structure. hotspots are the plaza centre, market stands, tavern doors, and wells in area metres (offset from innerOrigin, y down). The named residents are not part of the crowd. A missing population field means there is no crowd; v0.4 readers ignore the field.',
   'v0.6 is additive. buildings[].type stays the legacy sprite (shop, tavern, cottage-1, …). specialty is the §5 id and kit is the manifest name. layers.biome id 7 is Badlands; legendAliases.Heath is Badlands for one version. Ids 15–26 are reserved names and are not emitted yet. layers.surface, area.settlement, zones, segments, minigameSlots, and meta.kitVersion are new. A camp, hamlet, village, town, or city writes area.settlement with variant default. City layout is the town row until the city tier is built. minigameSlots are deterministic and part of the hash. Schedules are hours. peeloff is set on wild slots and ford_crossing.',
+  'v0.7 is additive. layers.height.raw, minRaw, maxRaw, and reliefMeters are unchanged in meaning: a v0.6 reader still remaps raw into reliefMeters and compares raw with units.seaLevel. layers.heightM is the same lattice in world metres (sea level 0). units.seaLevelM is 0, units.heightDatum is sea, units.verticalExaggeration is the single playable scale (apply it to heightM; do not refit per area), and units.detailSeed is the world-anchored detail seed. Playable height is heightM times verticalExaggeration.',
 ];
 
 const HEIGHT_NOTE =
-  'sampling is world-subdiv. raw is normalized (heightUnit normalized): the world-gen FBM plus land-mask evaluated at fractional world-tile coordinates, not a bilinear of stored WorldData.heights. ' +
+  'sampling is world-subdiv. raw is normalized (heightUnit normalized): metres from the world height map, mapped so sea level (0 m) is units.seaLevel. It is a Catmull-Rom read of WorldData.heightM plus world-anchored detail, not a bilinear of stored WorldData.heights. ' +
   `Samples are every ${HEIGHT_SUBDIV_METERS} m. Sample [0] is originInner in absolute inner-tile metres, and originCorner equals originInner. ` +
   'The lattice covers the expanded grid plus one subdiv sample of apron on each side. ' +
-  'Controller: Catmull-Rom across the lattice, then y = clamp((raw - minRaw) / (maxRaw - minRaw), 0, 1) * reliefMeters. ' +
+  'v0.6 controller: Catmull-Rom across the lattice, then y = clamp((raw - minRaw) / (maxRaw - minRaw), 0, 1) * reliefMeters. ' +
   `minRaw/maxRaw are the percentile clip from ${HEIGHT_PERCENTILE_LO} to ${HEIGHT_PERCENTILE_HI}, widened so the span is at least ${HEIGHT_SOFT_MIN_SPAN}, then padded by ${HEIGHT_RANGE_PAD * 100}% of that span on each side, so a small continental delta does not become a full reliefMeters cliff. ` +
-  `detailMeters (${HEIGHT_DETAIL_METERS}) is optional micro-relief amplitude and is not baked into raw. Water stays flat at layers.water.level. ` +
-  `A settlement pad lifts building lots, roads, zones, the spawn, and the respawn anchor to at least sea level plus ${SEA_CLEARANCE} and blends back to the sampled terrain. Cells that stay below sea level are tagged water.`;
+  `detailMeters (${HEIGHT_DETAIL_METERS}) is the legacy micro-relief hint and is not baked into raw. v0.7 detail is baked into layers.heightM and seeded by units.detailSeed. Water stays flat at layers.water.level for a v0.6 reader. ` +
+  `A settlement pad lifts building lots, roads, zones, the spawn, and the respawn anchor to at least ${SEA_CLEARANCE_M} m above sea level and blends back to the sampled terrain. Cells that stay below sea level are tagged water.`;
+
+const HEIGHT_M_NOTE =
+  'World metres above sea level (units.seaLevelM = 0, units.heightDatum = sea). Same lattice as layers.height: subdivMeters, originInner, w, h. ' +
+  `enc is b64i16le, little-endian int16, metres = int16 * quantM. quantM is ${HEIGHT_QUANT_M} because int16 decimetres only reach ±3,276.8 m and trench floors are about −4,000 m. ` +
+  'Each sample is a Catmull-Rom read of WorldData.heightM (one value per 8 m world tile) plus detail noise. The detail seed is units.detailSeed, mixed with absolute world coordinates, not the area id. Two areas that cover the same point encode the same metres, apart from a settlement pad that only lifts the area that owns the lots, roads, and zones. ' +
+  `The pad is included: those features sit at least ${SEA_CLEARANCE_M} m above sea. ` +
+  'Controller playable height is sampleMetres * units.verticalExaggeration. verticalExaggeration is one world constant (a gentle compression of true metres). Apply that same factor in every area. Do not refit min/max per area. ' +
+  'layers.height.raw and reliefMeters stay for v0.6 readers. They are not the metre heights.';
 
 /**
  * Fold one inner tile into a surface class.
@@ -572,6 +629,9 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
   if (!tiles.length) throw new Error(`Place ${place.id} has no tiles to export`);
   if (!world.heights || world.heights.length !== world.width * world.height) {
     throw new Error('WorldData.heights is required for area export');
+  }
+  if (!world.heightM || world.heightM.length !== world.width * world.height) {
+    throw new Error('WorldData.heightM is required for area export');
   }
 
   const bounds = boundsFromTiles(tiles);
@@ -682,6 +742,7 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
   const relief = reliefFor(world, place, tiles);
   const height = sampleSubdiv(world, originInner, gw, gh);
   raiseSettlementPad(height, plan, buildings, ground, mask, originX, originY, gw, gh);
+  const quant = finalizeHeight(height);
   tagSeaWater(height, ground, biomeGrid, mask, borderMask, originX, originY, gw, gh);
   const range = softHeightRange(height.raw);
   const water = deriveWater(world, gx0, gy0, gx1, gy1, ground, mask, range.minRaw, range.maxRaw, relief.meters);
@@ -750,6 +811,10 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
       upAxis: 'y',
       gridAxes: 'x-right,y-down',
       seaLevel: SEA_LEVEL,
+      seaLevelM: SEA_LEVEL_M,
+      heightDatum: 'sea',
+      verticalExaggeration: VERTICAL_EXAGGERATION,
+      detailSeed: detailSeedFor(world.seed),
     },
     grid: {
       w: gw,
@@ -778,6 +843,17 @@ export function buildAreaExport(world: WorldData, place: MapNode, opts: AreaExpo
         reliefMeters: relief.meters,
         detailMeters: HEIGHT_DETAIL_METERS,
         note: HEIGHT_NOTE,
+      },
+      heightM: {
+        sampling: 'world-subdiv',
+        subdivMeters: HEIGHT_SUBDIV_METERS,
+        w: height.w,
+        h: height.h,
+        originInner: height.originInner,
+        enc: 'b64i16le',
+        quantM: HEIGHT_QUANT_M,
+        data: encodeB64I16(quant),
+        note: HEIGHT_M_NOTE,
       },
       surface: encodeLayer(surface, [...SURFACE_LEGEND]),
       water,
@@ -1350,16 +1426,16 @@ function dedupeExportedProps(props: AreaProp[]): void {
   props.length = write;
 }
 
-/** Lattice sample that contains an inner-tile point. Same read the sea-level check uses. */
-function latticeRawAt(
-  height: { w: number; h: number; originInner: { x: number; y: number }; raw: number[] },
+/** Lattice sample that contains an inner-tile point, in metres. */
+function latticeMetresAt(
+  height: { w: number; h: number; originInner: { x: number; y: number }; metres: ArrayLike<number> },
   x: number,
   y: number,
 ): number {
   const step = HEIGHT_SUBDIV_METERS;
   const i = Math.max(0, Math.min(height.w - 1, Math.floor((x - height.originInner.x) / step)));
   const j = Math.max(0, Math.min(height.h - 1, Math.floor((y - height.originInner.y) / step)));
-  return height.raw[i + j * height.w] ?? 0;
+  return height.metres[i + j * height.w] ?? 0;
 }
 
 /**
@@ -1368,7 +1444,7 @@ function latticeRawAt(
  * so does every road or yard cell already painted on the mask.
  */
 function raiseSettlementPad(
-  height: { w: number; h: number; originInner: { x: number; y: number }; raw: number[] },
+  height: { w: number; h: number; originInner: { x: number; y: number }; metres: Float64Array },
   plan: SettlementPlan | null,
   buildings: AreaBuilding[],
   ground: Uint8Array,
@@ -1442,14 +1518,14 @@ function raiseSettlementPad(
     const cy = Math.max(0, Math.min(gh - 1, iy));
     return dist[cx + cy * gw]! + Math.hypot(sx - (originX + cx + 0.5), sy - (originY + cy + 0.5));
   };
-  const target = round5(SEA_LEVEL + SEA_CLEARANCE);
+  const target = SEA_CLEARANCE_M;
   const step = HEIGHT_SUBDIV_METERS;
   const pinned = new Uint8Array(height.w * height.h);
   const lift = (i: number, j: number) => {
     if (i < 0 || j < 0 || i >= height.w || j >= height.h) return;
     const idx = i + j * height.w;
     pinned[idx] = 1;
-    if ((height.raw[idx] ?? 0) < target) height.raw[idx] = target;
+    if ((height.metres[idx] ?? 0) < target) height.metres[idx] = target;
   };
   for (let iy = 0; iy < gh; iy++) {
     for (let ix = 0; ix < gw; ix++) {
@@ -1474,16 +1550,16 @@ function raiseSettlementPad(
       if (away <= 0 || away > blend) continue;
       const t = away / blend;
       const smooth = t * t * (3 - 2 * t);
-      const raw = height.raw[idx] ?? 0;
+      const raw = height.metres[idx] ?? 0;
       const lifted = target * (1 - smooth) + raw * smooth;
-      if (lifted > raw) height.raw[idx] = round5(lifted);
+      if (lifted > raw) height.metres[idx] = lifted;
     }
   }
 }
 
 /** Cells that remain under sea level are water, on both the ground and biome layers. */
 function tagSeaWater(
-  height: { w: number; h: number; originInner: { x: number; y: number }; raw: number[] },
+  height: { w: number; h: number; originInner: { x: number; y: number }; metres: Float64Array },
   ground: Uint8Array,
   biomeGrid: Uint8Array,
   mask: Uint8Array,
@@ -1497,7 +1573,7 @@ function tagSeaWater(
     for (let ix = 0; ix < gw; ix++) {
       const gi = ix + iy * gw;
       if (mask[gi] !== 1 && borderMask[gi] !== 1) continue;
-      if (latticeRawAt(height, originX + ix + 0.5, originY + iy + 0.5) >= SEA_LEVEL) continue;
+      if (latticeMetresAt(height, originX + ix + 0.5, originY + iy + 0.5) >= SEA_LEVEL_M) continue;
       ground[gi] = GROUND.water;
       biomeGrid[gi] = Biome.Water;
     }
@@ -1573,12 +1649,22 @@ function forageCells(
  * Height lattice for the expanded grid. Sample [0] sits one `subdivMeters`
  * step outside the grid on both axes (the apron). Spacing is inner-tile metres.
  */
+interface HeightLattice {
+  w: number;
+  h: number;
+  originInner: { x: number; y: number };
+  /** Exact metres while the pad runs, then the quantized metres. */
+  metres: Float64Array;
+  /** Normalized remap of `metres`, filled by `finalizeHeight`. */
+  raw: number[];
+}
+
 function sampleSubdiv(
   world: WorldData,
   gridOrigin: { x: number; y: number },
   gw: number,
   gh: number,
-): { w: number; h: number; originInner: { x: number; y: number }; raw: number[] } {
+): HeightLattice {
   const step = HEIGHT_SUBDIV_METERS;
   const originInner = { x: gridOrigin.x - step, y: gridOrigin.y - step };
   const w = gw / step + 3;
@@ -1586,16 +1672,58 @@ function sampleSubdiv(
   if (!Number.isInteger(w) || !Number.isInteger(h)) {
     throw new Error('height lattice is not aligned to subdivMeters');
   }
-  const sample = worldHeightSampler(world);
-  const raw: number[] = [];
+  const metres = new Float64Array(w * h);
+  let k = 0;
   for (let j = 0; j < h; j++) {
     const wy = (originInner.y + j * step) / ZONE_SCALE;
     for (let i = 0; i < w; i++) {
       const wx = (originInner.x + i * step) / ZONE_SCALE;
-      raw.push(round5(sample(wx, wy)));
+      const macro = sampleMacroMeters(world.heightM, world.width, world.height, wx, wy);
+      metres[k++] = macro + detailOffsetM(wx, wy, world.seed, macro);
     }
   }
-  return { w, h, originInner, raw };
+  return { w, h, originInner, metres, raw: [] };
+}
+
+/** Quantize metres, then derive the legacy normalized `raw` from those same metres. */
+function finalizeHeight(height: HeightLattice): Int16Array {
+  const quant = new Int16Array(height.metres.length);
+  const raw: number[] = new Array(height.metres.length);
+  for (let i = 0; i < height.metres.length; i++) {
+    const q = quantizeHeightM(height.metres[i] ?? 0);
+    quant[i] = q;
+    const metres = q * HEIGHT_QUANT_M;
+    height.metres[i] = metres;
+    raw[i] = round5(metersToNormalized(metres));
+  }
+  height.raw = raw;
+  return quant;
+}
+
+export function quantizeHeightM(metres: number): number {
+  let q = Math.round(metres / HEIGHT_QUANT_M);
+  if (metres < SEA_LEVEL_M && q >= 0) q = -1;
+  if (metres >= SEA_CLEARANCE_M && q * HEIGHT_QUANT_M < SEA_CLEARANCE_M - 1e-6) {
+    q = Math.ceil(SEA_CLEARANCE_M / HEIGHT_QUANT_M);
+  }
+  if (q < -32768) q = -32768;
+  if (q > 32767) q = 32767;
+  return q;
+}
+
+export function encodeB64I16(values: ArrayLike<number>): string {
+  const bytes = new Uint8Array(values.length * 2);
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < values.length; i++) view.setInt16(i * 2, values[i] ?? 0, true);
+  return encodeB64U8(bytes);
+}
+
+export function decodeB64I16(data: string): Int16Array {
+  const bytes = decodeB64U8(data);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const out = new Int16Array(Math.floor(bytes.length / 2));
+  for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true);
+  return out;
 }
 
 /** Percentile clip, then widen so a tiny local delta is not the full relief. */
@@ -1715,9 +1843,9 @@ function deriveWater(
   const level = toRelief(raw, rawMin, rawMax, reliefMeters);
   const note = present
     ? usedFallback
-      ? 'Water shows up on playable inner tiles but no Water world tile sits in the exported grid (place plus border ring). level is SEA_LEVEL (0.36) remapped with height.minRaw, height.maxRaw, and reliefMeters. world-map stores no water line.'
-      : 'Derived from the lowest WorldData.heights sample on a Water world tile in the exported grid (place plus border ring), then remapped with (raw - minRaw) / (maxRaw - minRaw) * reliefMeters. Those cells stay flat. world-map stores no water line or depth.'
-    : 'No water cells in the playable mask. level is still SEA_LEVEL (0.36) remapped with height.minRaw and height.maxRaw so a controller has a water line. world-map stores no water line.';
+      ? 'Water shows up on playable inner tiles but no Water world tile sits in the exported grid (place plus border ring). level is the normalized sea level (0.36, which is 0 m) remapped with height.minRaw, height.maxRaw, and reliefMeters. v0.7 metres live on layers.heightM.'
+      : 'Derived from the lowest normalized WorldData.heights sample on a Water world tile in the exported grid (place plus border ring), then remapped with (raw - minRaw) / (maxRaw - minRaw) * reliefMeters. Those cells stay flat for a v0.6 reader. Sea level is 0 m; the normalized sea level is 0.36. Depth in metres is layers.heightM.'
+    : 'No water cells in the playable mask. level is still the normalized sea level (0.36, which is 0 m) remapped with height.minRaw and height.maxRaw so a v0.6 controller has a water line.';
   return { level, raw, fromBiome: true, present, note };
 }
 

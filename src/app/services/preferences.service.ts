@@ -23,10 +23,10 @@ const HERO_SHEET_KEY = 'tb-world-map-hero-sheet';
 const HERO_CHAR_KEY = 'tb-world-map-hero-char';
 const PREFS_VERSION_KEY = 'tb-world-map-prefs-v';
 /** Bump to clear stale gameplay prefs once, then keep persisting new choices. */
-const PREFS_VERSION = '10';
+const PREFS_VERSION = '11';
 const SETUP_KEY = 'tb-world-map-setup';
 
-/** One-shot reset so new defaults (8×, adventure on) replace old saved setup. */
+/** One-shot reset so new defaults (16×, adventure on) replace old saved setup. */
 export function migrateWorldMapPrefs(): void {
   try {
     if (localStorage.getItem(PREFS_VERSION_KEY) === PREFS_VERSION) return;
