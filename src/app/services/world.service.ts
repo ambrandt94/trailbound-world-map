@@ -96,6 +96,7 @@ import { defaultPlayerStart, generateWorld } from '../engine/world-gen';
 import { elevationMetersAt } from '../engine/height-view';
 import { migrateWorldMapPrefs, PreferencesService } from './preferences.service';
 import { ChatBubble } from '../models/room.models';
+import { PeopleService } from './people.service';
 
 const SEED_KEY = 'tb-world-map-seed';
 const OUTLINES_KEY = 'tb-world-map-outlines';
@@ -115,6 +116,19 @@ const START_HOUR = 8;
 @Injectable({ providedIn: 'root' })
 export class WorldService {
   private readonly prefs = inject(PreferencesService);
+  private readonly people = inject(PeopleService);
+  private peopleEpoch = 0;
+  /** True until the saved clock (or a fresh 08:00) has been read. */
+  private clockHeld = true;
+
+  constructor() {
+    this.people.onRestored = (hours) => {
+      this.clockHours = hours;
+      this.simHours.set(hours);
+      this.clockHeld = false;
+      this.simTick.update((n) => n + 1);
+    };
+  }
   readonly world = signal<WorldData | null>(null);
   readonly player = signal<PlayerState>(this.heroFromPrefs({ x: 80, y: 80 }));
   readonly showOutlines = signal(this.readOutlines());
@@ -166,15 +180,23 @@ export class WorldService {
     const { day, clock } = formatClock(hours);
     const list = this.entities();
     const player = this.player();
-    const near = nearestEntity(list, player.x, player.y, 10);
+    const near = nearestEntity(
+      list.filter((entity) => !entity.resident),
+      player.x,
+      player.y,
+      10,
+    );
     return {
       mode: this.simMode(),
       hours,
       day,
       clock,
-      wanderers: list.filter((e) => e.kind === 'wanderer').length,
+      wanderers: list.filter((e) => e.kind === 'wanderer' && !e.resident && e.token !== 'camp' && e.token !== 'wagon-circle').length,
       caravans: list.filter((e) => e.kind === 'caravan').length,
       armies: list.filter((e) => e.kind === 'army').length,
+      hiddenResidents: this.people.hiddenResidents(),
+      camps: this.people.campCount(),
+      money: this.people.totalMoney(),
       nearbyName: near?.name ?? null,
       nearbyKind: near?.kind ?? null,
       nearbyDist: near ? Math.hypot(near.x - player.x, near.y - player.y) : null,
@@ -317,7 +339,21 @@ export class WorldService {
     this.followPlayer.set(true);
     this.simHours.set(START_HOUR);
     this.clockHours = START_HOUR;
-    this.entities.set([...spawnEntities(world, this.seed), ...spawnResidents(world, this.seed)]);
+    this.clockHeld = true;
+    const entities = [...spawnEntities(world, this.seed), ...spawnResidents(world, this.seed)];
+    this.entities.set(entities);
+    const epoch = ++this.peopleEpoch;
+    const boundSeed = this.seed;
+    void this.people.bind(world, entities, this.residentOverrides()).then((hours) => {
+      if (epoch !== this.peopleEpoch || this.seed !== boundSeed) return;
+      this.clockHours = hours;
+      this.simHours.set(hours);
+      this.clockHeld = false;
+      this.simTick.update((n) => n + 1);
+    }).catch((err) => {
+      console.error(err);
+      if (epoch === this.peopleEpoch) this.clockHeld = false;
+    });
     this.simRng = new Rng(this.seed ^ 0x91a2);
     this.residentRng = new Rng((this.seed ^ 0x51a7) >>> 0);
     this.simTick.update((n) => n + 1);
@@ -605,7 +641,10 @@ export class WorldService {
     if (this.director && !this.director.fallback) syncDirector(this.director, list, this.clockHours, true);
     stepResidentRoutines(list, this.clockHours);
     stepEntities(world, list, dt, this.simRng);
-    this.clockHours += dt * GAME_HOURS_PER_REAL_SEC;
+    if (!this.clockHeld) {
+      this.clockHours += dt * GAME_HOURS_PER_REAL_SEC;
+      this.people.noteClock(this.clockHours, list);
+    }
     if (this.prefs.npcChatter()) {
       const travelers = list.filter((entity) => !entity.resident);
       const residents = list.filter((entity) => !!entity.resident);

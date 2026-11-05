@@ -11,6 +11,7 @@ import { RoomService } from '../../services/room.service';
 import { WorldService } from '../../services/world.service';
 import { WorldSettings, travelPaceHint } from '../../models/world.models';
 import { LocationPanelComponent } from '../location-panel/location-panel.component';
+import { PeoplePanelComponent } from '../people-panel/people-panel.component';
 import { MapViewportComponent } from '../map-viewport/map-viewport.component';
 import { SettingsPanelComponent } from '../settings-panel/settings-panel.component';
 import { WorldSetupComponent } from '../world-setup/world-setup.component';
@@ -31,6 +32,7 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
     MatInputModule,
     MapViewportComponent,
     LocationPanelComponent,
+    PeoplePanelComponent,
     WorldSetupComponent,
     SettingsPanelComponent,
     HeroPickerComponent,
@@ -210,6 +212,7 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
         @if (!room.connected() || room.hostControls()) {
           <app-world-setup class="setup-sheet" [class.open]="setupOpen()" (rebuilt)="onRebuild($event)" />
         }
+        <app-people-panel class="people-sheet" />
         <app-location-panel class="loc-sheet" />
         <p class="hint">
           Scroll · drag
@@ -408,6 +411,13 @@ import { RoomPresenceComponent } from '../room-presence/room-presence.component'
     }
     .overlay > * {
       pointer-events: auto;
+    }
+    .people-sheet {
+      position: absolute;
+      left: 0;
+      top: 7.6rem;
+      max-height: calc(100% - 9.2rem);
+      overflow: auto;
     }
     .hint {
       position: absolute;

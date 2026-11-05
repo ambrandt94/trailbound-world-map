@@ -46,7 +46,8 @@ import { WorldService } from '../../services/world.service';
         </div>
         <div>
           <dt>People</dt>
-          <dd>{{ world.simHud().wanderers }} · {{ world.simHud().caravans }} · {{ world.simHud().armies }} hosts</dd>
+          <dd>{{ world.simHud().wanderers }} travelers · {{ world.simHud().caravans }} caravans · {{ world.simHud().armies }} hosts</dd>
+          <dd class="sub">{{ world.simHud().hiddenResidents }} townsfolk hidden · {{ world.simHud().camps }} camps · {{ world.simHud().money }}c</dd>
         </div>
       </dl>
       @if (residents(); as row) {
@@ -176,6 +177,10 @@ import { WorldService } from '../../services/world.service';
     dd {
       margin: 0;
       font-size: 0.84rem;
+    }
+    dd.sub {
+      font-size: 0.72rem;
+      color: var(--tb-muted);
     }
     .zoom-track {
       height: 3px;
