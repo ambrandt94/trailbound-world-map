@@ -465,8 +465,14 @@ export interface MapEntity {
   afloat: boolean;
   /** Live-link session id while the 3D controller owns this entity. */
   heldBy?: string;
-  /** Place-seeded resident. Routines do not use the overworld sim RNG. */
+  /** Place-seeded resident. Routines do not use the overworld sim RNG. Drawn nowhere on the map. */
   resident?: ResidentHome;
+  /**
+   * Overworld token that is not a person sprite.
+   * Camps and wagon circles are temporary map objects, not POIs.
+   * Relocating parties are people in transit.
+   */
+  token?: 'camp' | 'wagon-circle' | 'relocating';
 }
 
 export interface ResidentHome {
@@ -490,6 +496,9 @@ export interface SimHud {
   wanderers: number;
   caravans: number;
   armies: number;
+  hiddenResidents: number;
+  camps: number;
+  money: number;
   nearbyName: string | null;
   nearbyKind: EntityKind | null;
   nearbyDist: number | null;

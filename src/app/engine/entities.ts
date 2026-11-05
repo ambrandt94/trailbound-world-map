@@ -314,7 +314,7 @@ export function armyVisibleFollowers(scale: number, roster: number): number {
 export function stepEntities(world: WorldData, entities: MapEntity[], dt: number, rng: Rng): void {
   if (dt <= 0) return;
   for (const e of entities) {
-    if (e.heldBy) continue;
+    if (e.heldBy || e.token) continue;
     const dist = Math.hypot(wrapDeltaX(e.x, e.destX, world.width), e.destY - e.y);
     if (!e.resident && dist < 1.15) retarget(world, e, rng);
     const step = e.speed * dt * (e.afloat ? 1.15 : 1);
@@ -388,7 +388,7 @@ export function spawnResidents(world: WorldData, seed: number): MapEntity[] {
       const first = WANDER_NAMES[Math.floor(nameRoll * WANDER_NAMES.length)] ?? 'Ash';
       const role = RESIDENT_ROLES[Math.floor(residentUnit(node.id, i, 7, seed) * RESIDENT_ROLES.length)] ?? 'Neighbor';
       const sheet = RESIDENT_SHEETS[Math.floor(lookRoll * RESIDENT_SHEETS.length)] ?? 'townsfolk';
-      const id = residentId(node.id, i);
+      const id = residentEntityId(node.id, i);
       out.push({
         id,
         name: `${first} ${role}`.slice(0, 48),
@@ -438,7 +438,8 @@ export function stepResidentRoutines(entities: MapEntity[], hours: number): void
   }
 }
 
-function residentId(placeId: string, index: number): string {
+/** Stable map-entity id for named resident `index` in a place. Aliased onto PersonCore. */
+export function residentEntityId(placeId: string, index: number): string {
   const raw = `resident-${placeId}-${index}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
   return raw.slice(0, 40).replace(/-+$/g, '') || `resident-${index}`;
 }

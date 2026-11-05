@@ -90,6 +90,7 @@ import {
 } from '../../engine/live-link';
 import { AssetLibrary } from '../../engine/assets';
 import { nearestEntity } from '../../engine/entities';
+import { isSettlementKind } from '../../engine/residents';
 import { defaultPlayerState } from '../../engine/hero';
 import { kindForBiome } from '../../engine/names';
 import { Rng } from '../../engine/noise';
@@ -100,6 +101,7 @@ import { collectStreetBuildings } from '../../engine/buildings';
 import { resolveInteriorWalk } from '../../engine/interior';
 import { PreferencesService } from '../../services/preferences.service';
 import { RoomService } from '../../services/room.service';
+import { PeopleService } from '../../services/people.service';
 import { WorldService } from '../../services/world.service';
 import { selfId } from '@trystero-p2p/mqtt';
 import { peerMarkerRgb } from '../../models/room.models';
@@ -596,6 +598,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
   dragging = false;
 
   readonly world = inject(WorldService);
+  private readonly people = inject(PeopleService);
   readonly zoomHud = computed(() => {
     const loc = this.world.location();
     const width = this.world.world()?.width ?? 192;
@@ -1091,12 +1094,31 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     return { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
   }
 
+  private mapTokens() {
+    return this.world.liveEntities().filter((entity) => !entity.resident);
+  }
+
+  private inspectAt(sx: number, sy: number): void {
+    const data = this.world.world();
+    if (!data) return;
+    const worldPt = this.screenToWorld(sx, sy);
+    const entity = nearestEntity(this.mapTokens(), worldPt.x, worldPt.y, this.entityHit());
+    if (entity && (this.prefs.showWorldMarkers() || this.world.tileExplored(entity.x, entity.y))) {
+      if (entity.token === 'camp' || entity.token === 'wagon-circle') this.people.inspectCamp(entity.id);
+      else this.people.inspectParty(entity.id);
+      return;
+    }
+    const node = nodeContaining(data.nodes, worldPt.x, worldPt.y);
+    if (node && isSettlementKind(node.kind)) this.people.inspectPlace(node.id, node.name);
+  }
+
   private onClick(sx: number, sy: number): void {
+    this.inspectAt(sx, sy);
     if (this.prefs.adventureMode()) return;
     const worldPt = this.screenToWorld(sx, sy);
     const data = this.world.world();
     if (!data) return;
-    const entity = nearestEntity(this.world.liveEntities(), worldPt.x, worldPt.y, this.entityHit());
+    const entity = nearestEntity(this.mapTokens(), worldPt.x, worldPt.y, this.entityHit());
     if (entity && (this.prefs.showWorldMarkers() || this.world.tileExplored(entity.x, entity.y))) {
       this.setFollow(false);
       this.zoomPivot = null;
@@ -1778,7 +1800,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const focus = this.camera.followPlayer ? this.player : { x: this.camera.x, y: this.camera.y };
     const detail = detailAnchor(world, focus.x, focus.y);
     const isolateKeys = isolate ? new Set(isolate.map((t) => chunkKey(t.x, t.y))) : null;
-    const live = this.world.liveEntities();
+    const live = this.mapTokens();
     const markersOn = this.prefs.showWorldMarkers();
     const inIso = (e: (typeof live)[number]) =>
       !!isolateKeys && isolateKeys.has(chunkKey(Math.floor(e.x), Math.floor(e.y)));
@@ -1840,7 +1862,7 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
     const poiPool = world.pois.filter((p) => visible.has(p.id));
     const poi = poiPool.length ? this.hitPoi(poiPool, hover.x, hover.y) : null;
     const entityHit = this.entityHit();
-    let entity = nearestEntity(this.world.liveEntities(), hover.x, hover.y, entityHit);
+    let entity = nearestEntity(this.mapTokens(), hover.x, hover.y, entityHit);
     if (entity && !this.prefs.showWorldMarkers() && !this.world.tileExplored(entity.x, entity.y)) entity = null;
     const entityId = entity?.id ?? null;
     const nodeId = entityId ? null : (node?.id ?? null);
@@ -2005,15 +2027,16 @@ export class MapViewportComponent implements AfterViewInit, OnDestroy {
         });
       }
     }
-    for (const ent of this.world.liveEntities()) {
+    for (const ent of this.mapTokens()) {
       if (!this.prefs.showWorldMarkers() && !this.world.tileExplored(ent.x, ent.y)) continue;
       const city = ent.kind === 'army';
       const caravan = ent.kind === 'caravan';
+      const camp = ent.token === 'camp' || ent.token === 'wagon-circle';
       marks.push({
         x: ent.x,
         y: ent.y,
-        color: city ? [1, 0.71, 0.71] : caravan ? [0.88, 0.66, 0.42] : [0.49, 0.81, 0.63],
-        size: base - (city ? 0.2 : 1.1),
+        color: camp ? [0.72, 0.55, 0.32] : city ? [1, 0.71, 0.71] : caravan ? [0.88, 0.66, 0.42] : [0.49, 0.81, 0.63],
+        size: base - (camp ? 0 : city ? 0.2 : 1.1),
       });
     }
     marks.push({

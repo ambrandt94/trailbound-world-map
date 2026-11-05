@@ -84,6 +84,40 @@ function applyBox(tr: DOMMatrix, b: TagBox): TagBox {
   return { x: Math.min(p.x, q.x), y: Math.min(p.y, q.y), w: Math.abs(q.x - p.x), h: Math.abs(q.y - p.y) };
 }
 
+function drawCampMarker(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  token: 'camp' | 'wagon-circle',
+): TagBox {
+  const px = x * TILE;
+  const py = y * TILE;
+  const r = (token === 'wagon-circle' ? 13 : 10) / Math.max(0.2, scale);
+  ctx.beginPath();
+  ctx.arc(px, py, r, 0, Math.PI * 2);
+  ctx.fillStyle = token === 'wagon-circle' ? 'rgba(196, 149, 90, 0.92)' : 'rgba(110, 78, 48, 0.92)';
+  ctx.fill();
+  ctx.lineWidth = 1.6 / Math.max(0.2, scale);
+  ctx.strokeStyle = '#1a120c';
+  ctx.stroke();
+  if (token === 'wagon-circle') {
+    ctx.beginPath();
+    ctx.arc(px, py, r * 0.58, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(px, py - r * 0.7);
+    ctx.lineTo(px + r * 0.55, py + r * 0.45);
+    ctx.lineTo(px - r * 0.55, py + r * 0.45);
+    ctx.closePath();
+    ctx.fillStyle = '#e6d2a8';
+    ctx.fill();
+    ctx.stroke();
+  }
+  return { x: px - r, y: py - r, w: r * 2, h: r * 2 };
+}
+
 function drawNametag(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -1516,10 +1550,24 @@ export class WorldRenderer {
     const y0 = camera.y - halfH - pad;
     const y1 = camera.y + halfH + pad;
     for (const e of entities) {
+      if (e.resident) continue;
       if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
       const mx = e.x;
       const my = e.y;
       ctx.save();
+      if (e.token === 'camp' || e.token === 'wagon-circle') {
+        drawCampMarker(ctx, mx, my, camera.scale, e.token);
+        if (e.id === hoveredId) {
+          const r = 12 / camera.scale;
+          drawNametag(ctx, e.name, mx * TILE, my * TILE, camera.scale, {
+            clearAbove: r + 4 / camera.scale,
+            avoid: [{ x: mx * TILE - r, y: my * TILE - r, w: r * 2, h: r * 2 }],
+            screenPx: this.tagScreenPx,
+          });
+        }
+        ctx.restore();
+        continue;
+      }
       if (e.afloat) {
         drawBoatMarker(ctx, mx, my, camera.scale, kindColor(e.kind), e.facing, e.kind);
       } else {
@@ -1586,9 +1634,14 @@ export class WorldRenderer {
       marks.push({ y: guest.y, kind: 'guest', guest });
     }
     for (const e of entities) {
+      if (e.resident) continue;
       if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) {
         const vis = !e.afloat && e.members.some((m) => m.x >= x0 && m.x <= x1 && m.y >= y0 && m.y <= y1);
         if (!vis) continue;
+      }
+      if (e.token === 'camp' || e.token === 'wagon-circle') {
+        marks.push({ y: e.y, kind: 'actor', e, mx: e.x, my: e.y, lead: true });
+        continue;
       }
       if (e.afloat) {
         marks.push({
@@ -1662,6 +1715,20 @@ export class WorldRenderer {
       const mx = mark.mx!;
       const my = mark.my!;
       const hovered = e.id === hoveredId;
+      if (mark.lead && (e.token === 'camp' || e.token === 'wagon-circle')) {
+        const marker = drawCampMarker(ctx, mx, my, scale, e.token);
+        occupied.push(marker);
+        if (hovered) {
+          pending.push({
+            text: e.name,
+            x: mx * TILE,
+            y: my * TILE,
+            clearAbove: marker.h + 4 / scale,
+            clearBelow: 4 / scale,
+          });
+        }
+        continue;
+      }
       const actorPinT = e.afloat ? 1 - smoothstep(0.08, 0.55, scale) : pinT;
       const actorSpriteT = e.afloat ? Math.max(spriteT, smoothstep(0.14, 1.6, scale)) : spriteT;
       let sprite: TagBox | null = null;
